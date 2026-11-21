@@ -86,7 +86,8 @@ export function Composer({
 }: {
   draft?: string;
   placeholder: string;
-  onSend: (text: string, images?: string[], replyTo?: Reply['to']) => Promise<void> | void;
+  /** `spoken`: words were dictated into the field (`Draft.dictated`), so the message counts as spoken. */
+  onSend: (text: string, images?: string[], replyTo?: Reply['to'], spoken?: boolean) => Promise<void> | void;
   label?: string;
   action?: string;
   allowEmpty?: boolean;
@@ -164,7 +165,7 @@ export function Composer({
     if (!ready) return;
     setBusy(true);
     try {
-      await onSend(text.trim(), images.length ? images : undefined, reply?.to);
+      await onSend(text.trim(), images.length ? images : undefined, reply?.to, !!d.dictated);
     } catch {
       // refused: the words stay in the field for another try (the refusal shows where onSend puts it)
       return;

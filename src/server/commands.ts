@@ -28,8 +28,9 @@ export type Command = (
    * `until` (ISO): it is planned and starts by itself then, as a planned card the owner snoozed.
    */
   /** `canvas`: another canvas of this Obeya, where the card goes instead (into its home repository). */
-  | { do: 'newCard'; title: string; body: string; start: boolean; until?: string; repo?: string; from?: string; place?: Place; canvas?: string; branch?: string; newRepo?: { path: string; canvas: boolean; from?: string } }
-  | { do: 'newIdea'; title: string; body: string; repo?: string; place?: Place; canvas?: string }
+  /** `spoken`: made from words the owner spoke (to Obeya, or dictated into a field), which its conversation says. */
+  | { do: 'newCard'; title: string; body: string; start: boolean; until?: string; repo?: string; from?: string; place?: Place; canvas?: string; branch?: string; newRepo?: { path: string; canvas: boolean; from?: string }; spoken?: boolean }
+  | { do: 'newIdea'; title: string; body: string; repo?: string; place?: Place; canvas?: string; spoken?: boolean }
   /**
    * An idea is built, or a planned task started, in a repository that does not exist yet, at `path`:
    * with a canvas of its own (`canvas`), or on this one.
@@ -157,6 +158,8 @@ export const isField = (f: unknown): f is Field => typeof f === 'string' && f in
  */
 export interface Input {
   typed?: boolean;
+  /** Not typed but dictated into `field` (or Obeya's field without one): speech recognition, perhaps edited by hand since. */
+  dictated?: boolean;
   field?: Field;
   forwarded?: string;
   /** The owner's words beside a forwarded request are the card's task, which the owner gave: they said nothing on the card since. */
@@ -461,6 +464,8 @@ export class Commander {
       // a new card lands where the owner was on the canvas; a follow-up goes beside the card it follows
       if (focus.place && ((c.do === 'newCard' && !c.from) || c.do === 'newIdea' || c.do === 'reviewPr')) c = { ...c, place: focus.place };
       if (c.do === 'reviewPr') return { ...c, spoken: !input.typed };
+      // a card made from spoken words says so; one from typed words, or from a step the Coordinator takes up without new words, does not
+      if ((c.do === 'newCard' || c.do === 'newIdea') && !input.typed && !input.after && !input.answered) c = { ...c, spoken: true };
       const told =
         TO_AGENT.includes(c.do) && 'text' in c
           ? { ...c, spoken: !input.typed, ...(verbatim && c.card === card ? { text: `${replyNote(replyTo ? this.o.board.quoted(card!, replyTo) : undefined, 'coordinator')}${transcript}` } : {}) }
@@ -1580,7 +1585,9 @@ export class Commander {
         : [
             input.typed
               ? `The owner typed${focused && input.field ? ` into ${FIELDS[input.field]}` : ''} (as written, no recognition errors): "${transcript}"`
-              : `The owner said (speech recognition, may contain errors): "${transcript}"`,
+              : input.dictated
+                ? `The owner dictated${focused && input.field ? ` into ${FIELDS[input.field]}` : ''} (speech recognition, may contain errors; they may have edited it by hand) and sent: "${transcript}"`
+                : `The owner said (speech recognition, may contain errors): "${transcript}"`,
             // in reply to a message of the open card's conversation, or of the sheet
             (focused ? replyNote(this.o.board.quoted(focused.id, input.replyTo), 'coordinator') : focus.card ? '' : talkReplyNote(this.o.board.sheet.quote(input.replyTo))).trim(),
           ].filter(Boolean)),

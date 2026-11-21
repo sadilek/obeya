@@ -129,15 +129,20 @@ export function tellers(byId: (id: string) => Item | undefined, told: ReturnType
    * them at once either way; above the mic only the Coordinator's confirmation shows, with "Undo".
    * Words Obeya refused for the card's agent reject, after the refusal shows, so the field keeps them.
    * The field has left words for the Coordinator by the time it reads them: refused, they go back into
-   * `draft` (by default the card's).
+   * `draft` (by default the card's). `spoken`: words were dictated into the field, so they go out as spoken.
    */
-  const tellTyped = async (text: string, images: string[] | undefined, target: Where, field?: Field, replyTo?: number | TalkRef, draft = target && 'card' in target ? cardDraft(target.card) : undefined) => {
+  const tellTyped = async (
+    text: string,
+    images: string[] | undefined,
+    target: Where,
+    { field, replyTo, spoken = false, draft = target && 'card' in target ? cardDraft(target.card) : undefined }: { field?: Field; replyTo?: number | TalkRef; spoken?: boolean; draft?: string } = {},
+  ) => {
     if (listening(target))
       try {
         // typed while the card's demo video stands at a place: about that place, and the video plays on
         const taken = target && 'card' in target ? take(target.card) : null;
         if (taken) videoOf((target as { card: string }).card)?.play().catch(() => {});
-        await api.command(text, target, { images, field, replyTo, spot: await sent(taken) });
+        await api.command(text, target, { images, field, replyTo, spoken, spot: await sent(taken) });
       } catch (e) {
         fail(e);
         // refused: the agent did not get the words; anything else may have come after they arrived
@@ -146,9 +151,9 @@ export function tellers(byId: (id: string) => Item | undefined, told: ReturnType
     else {
       const at = place();
       void told.tell(null, toldCard(target), () =>
-        api.command(text, target, { images, field, replyTo, ...(at ? { place: at } : {}) }).catch((e: unknown) => {
+        api.command(text, target, { images, field, replyTo, spoken, ...(at ? { place: at } : {}) }).catch((e: unknown) => {
           // refused: Obeya did nothing with the words; anything else may have come after they arrived
-          if (draft && e instanceof ApiError && e.code) putBack(draft, text, images);
+          if (draft && e instanceof ApiError && e.code) putBack(draft, text, images, spoken);
           throw e;
         }),
       );

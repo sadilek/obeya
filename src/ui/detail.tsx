@@ -1057,9 +1057,9 @@ function TaskTalk({
               key: `${item.state}:${item.need ?? ''}:${field}:${key}`,
               placeholder: { note: item.snoozed && !item.snoozed.waiting && !item.snoozed.start ? t.snooze.compose : item.paused || item.pausing ? t.pause.compose : askable(item) || item.followUp ? t.compose.followUp : agentWorks(item) ? t.compose.working : holdsNotes(item) ? t.compose.queued : t.compose.idle, answer: t.compose.question, feedback: t.compose.review, demo: t.compose.demo }[field],
               listener,
-              onWords: async (text, images, replyTo) => onTell(text, images, field, replyTo),
-              onPicked: (text, [picks = []], images, replyTo) => act({ action: 'answer', text, picks, images, ...(replyTo ? { replyTo } : {}) }, { close: false, rejects: true }),
-              onDecided: (text, findings, images, replyTo) => act({ action: 'message', text, findings, ...(images ? { images } : {}), ...(replyTo ? { replyTo } : {}) }, { close: false, rejects: true }),
+              onWords: async (text, images, replyTo, spoken) => onTell(text, images, field, replyTo, spoken),
+              onPicked: (text, [picks = []], images, replyTo, spoken) => act({ action: 'answer', text, picks, images, ...(replyTo ? { replyTo } : {}), ...(spoken ? { spoken } : {}) }, { close: false, rejects: true }),
+              onDecided: (text, findings, images, replyTo, spoken) => act({ action: 'message', text, findings, ...(images ? { images } : {}), ...(replyTo ? { replyTo } : {}), ...(spoken ? { spoken } : {}) }, { close: false, rejects: true }),
             }
           : undefined
       }

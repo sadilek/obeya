@@ -265,7 +265,7 @@ export function usePushToTalk(
       // what stands in the field goes out with the words and leaves it; nothing heard, it comes back
       const key = field(r.target);
       await uploaded(key);
-      const { text, images } = draftOf(key);
+      const { text, images, dictated } = draftOf(key);
       updateDraft(key, (d) => ({ text: '', images: d.images.filter((id) => !images.includes(id)) }));
       // said in reply to the message the field quotes, as typed words are
       const reply = replyOn(key);
@@ -286,7 +286,7 @@ export function usePushToTalk(
         }
       });
       if (!h.unheard && !failed) return;
-      putBack(key, text, images);
+      putBack(key, text, images, !!dictated);
       if (reply && !replyOn(key)) setReply(key, reply);
     }).finally(() => setWriting((n) => n - 1));
   }

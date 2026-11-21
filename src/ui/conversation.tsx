@@ -593,12 +593,12 @@ interface TalkField {
    * them; the conversation marks them on the question.
    */
   quote?: boolean;
-  /** Words alone go to the card's agent, or to the Coordinator that `listener` names; `replyTo`: the message they reply to. */
-  onWords: (text: string, images?: string[], replyTo?: number) => Promise<void>;
+  /** Words alone go to the card's agent, or to the Coordinator that `listener` names; `replyTo`: the message they reply to; `spoken`: dictated into the field. */
+  onWords: (text: string, images?: string[], replyTo?: number, spoken?: boolean) => Promise<void>;
   /** Picked options go to the agent with the words: `picks` holds them for each question, and with `quote` the text names them too. */
-  onPicked: (text: string, picks: string[][], images?: string[], replyTo?: number) => Promise<void>;
+  onPicked: (text: string, picks: string[][], images?: string[], replyTo?: number, spoken?: boolean) => Promise<void>;
   /** On a review card: the owner's decisions on its findings go to the agent with the words. */
-  onDecided?: (text: string, findings: Record<string, ChangeRoute>, images?: string[], replyTo?: number) => Promise<void>;
+  onDecided?: (text: string, findings: Record<string, ChangeRoute>, images?: string[], replyTo?: number, spoken?: boolean) => Promise<void>;
 }
 
 /**
@@ -610,8 +610,8 @@ export const wordsField = (placeholder: string, onTell: Tell, field: Field, act:
   placeholder,
   listener,
   quote: true,
-  onWords: async (words, images, replyTo) => onTell(words, images, field, replyTo),
-  onPicked: (text, _, images, replyTo) => act({ action, text, images, ...(replyTo ? { replyTo } : {}) }, { close: false, rejects: true }),
+  onWords: async (words, images, replyTo, spoken) => onTell(words, images, field, replyTo, spoken),
+  onPicked: (text, _, images, replyTo, spoken) => act({ action, text, images, ...(replyTo ? { replyTo } : {}), ...(spoken ? { spoken } : {}) }, { close: false, rejects: true }),
 });
 
 /**
@@ -633,14 +633,14 @@ export function Talk({ item, past, field }: { item: Item; past?: boolean; field?
   const unsent = useUnsentDecisions(item);
   const decided = review ? unsent : {};
   const deciding = Object.keys(decided).length > 0;
-  const send = async (words: string, images?: string[], to?: Reply['to']) => {
+  const send = async (words: string, images?: string[], to?: Reply['to'], spoken?: boolean) => {
     const replyTo = typeof to === 'number' ? to : undefined;
     if (deciding && field!.onDecided) {
-      await field!.onDecided(words.trim(), decided, images, replyTo);
+      await field!.onDecided(words.trim(), decided, images, replyTo, spoken);
       updateDraft(draft, { findings: undefined });
       return;
     }
-    await (picked ? field!.onPicked(field!.quote ? answerText(questions, picks.picks, words) : words.trim(), picks.picks, images, replyTo) : field!.onWords(words, images, replyTo));
+    await (picked ? field!.onPicked(field!.quote ? answerText(questions, picks.picks, words) : words.trim(), picks.picks, images, replyTo, spoken) : field!.onWords(words, images, replyTo, spoken));
     picks.clear();
   };
   return (

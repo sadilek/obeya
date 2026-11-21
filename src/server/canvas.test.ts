@@ -1703,6 +1703,24 @@ describe('where a spoken new card lands', () => {
   });
 });
 
+describe('the first line of a card a command made', () => {
+  beforeEach(produkt);
+
+  test('says "by voice" for spoken words (to Obeya, or dictated into a field), else that Obeya made it', async () => {
+    const first = (title: string) => {
+      const card = canvas.board.snapshot().items.find((i) => i.title === title)!;
+      return canvas.board.events(card.id).find((e) => e.kind === 'state')?.text;
+    };
+    const { voice } = canvas.board.t;
+    await canvas.run({ do: 'newCard', title: 'Spoken', body: '', start: false, spoken: true });
+    await canvas.run({ do: 'newCard', title: 'Typed', body: '', start: false });
+    await canvas.run({ do: 'newIdea', title: 'Spoken idea', body: 'x', spoken: true });
+    await canvas.run({ do: 'newIdea', title: 'Typed idea', body: 'x' });
+    expect([first('Spoken'), first('Typed'), first('Spoken idea'), first('Typed idea')]).toEqual([voice.createdSpoken, voice.created, voice.createdSpoken, voice.created]);
+    expect(voice.created).not.toBe(voice.createdSpoken);
+  });
+});
+
 describe('groups by voice', () => {
   beforeEach(produkt);
 

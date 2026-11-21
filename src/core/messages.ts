@@ -89,7 +89,10 @@ const de = {
     /** An outage keeps the Coordinator from reading the words: it reads them by itself when it tries again. */
     heldOutage: (when: string) => `Claude ist gerade nicht erreichbar, meist eine Störung bei Anthropic (status.claude.com). Ich lese das ${when} von selbst.`,
     undone: 'Zurückgenommen.',
-    created: 'Per Sprache angelegt.',
+    /** The first line of a card the owner's spoken words made, said to Obeya or dictated into a field. */
+    createdSpoken: 'Per Sprache angelegt.',
+    /** The first line of a card Obeya made from typed words, or from a step it took up without new ones. */
+    created: 'Von Obeya angelegt.',
     /** On the task Obeya merged others into: which, by their titles. */
     merged: (titles: string[]) => `Zusammengeführt mit ${titles.map((t) => `„${t}“`).join(', ')}.`,
   },
@@ -742,7 +745,8 @@ const en: Messages = {
     held: (when: string) => `The usage limit is reached. I will read this by myself ${when}.`,
     heldOutage: (when: string) => `Claude cannot be reached right now, usually an outage at Anthropic (status.claude.com). I will read this by myself ${when}.`,
     undone: 'Taken back.',
-    created: 'Created by voice.',
+    createdSpoken: 'Created by voice.',
+    created: 'Created by Obeya.',
     merged: (titles: string[]) => `Merged with ${titles.map((t) => `“${t}”`).join(', ')}.`,
   },
   failure: {

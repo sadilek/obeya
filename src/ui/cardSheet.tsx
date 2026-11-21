@@ -33,8 +33,8 @@ export type Act = (a: CardAction, done: ActDone) => Promise<void>;
 /** Any call for the open card, as `Act` goes: after its edits are saved, a failure shown on the card. */
 export type Run = (fn: () => Promise<unknown>, done: ActDone) => Promise<void>;
 
-/** Words typed into a field of the card: straight to its agent where one listens, else the Coordinator reads them like spoken ones; the panel does not wait. */
-export type Tell = (text: string, images: string[] | undefined, field: Field, replyTo?: number) => void | Promise<void>;
+/** Words typed (or, `spoken`, dictated) into a field of the card: straight to its agent where one listens, else the Coordinator reads them like spoken ones; the panel does not wait. */
+export type Tell = (text: string, images: string[] | undefined, field: Field, replyTo?: number, spoken?: boolean) => void | Promise<void>;
 
 /** The head of an open card: what kind it is (a plain task says nothing of its kind), and its title, a field to type it into where `onEdit`. */
 export function CardHead({ item, kind, onEdit }: { item: Item; kind: string; onEdit?: false | ((p: CardPatch) => void) }) {

@@ -161,7 +161,7 @@ describe('the Coordinator remembers', () => {
     await ran(k);
     expect(executed).toEqual([
       { do: 'approve', card: a.id },
-      { do: 'newCard', title: 'Archiv', body: 'Folge von Export', start: false },
+      { do: 'newCard', title: 'Archiv', body: 'Folge von Export', start: false, spoken: true },
     ]);
   });
 
@@ -185,7 +185,7 @@ describe('the Coordinator remembers', () => {
     next.resume();
     expect(next.holding()).toBe(true);
     await settle();
-    expect(ran).toEqual([{ do: 'newCard', title: 'Hinweis „unten“ korrigieren', body: 'Die Demo-Einstellungen stehen links.', start: true }]);
+    expect(ran).toEqual([{ do: 'newCard', title: 'Hinweis „unten“ korrigieren', body: 'Die Demo-Einstellungen stehen links.', start: true, spoken: true }]);
     expect(next.holding()).toBe(false);
     expect(later.sheet.heldCommands()).toEqual([]);
     // it runs once: a third start finds nothing
@@ -257,7 +257,7 @@ describe('the Coordinator remembers', () => {
     expect(session.spec.tools.find((t) => t.name === 'act')!.description).toContain('until when the owner names a time for the work');
     k.arm(heard.token!);
     await ran(k);
-    expect(executed).toEqual([{ do: 'newCard', title: 'Depots einrichten', body: 'Anfang Dezember die Depots einrichten.', start: true, until: new Date(local(40)).toISOString() }]);
+    expect(executed).toEqual([{ do: 'newCard', title: 'Depots einrichten', body: 'Anfang Dezember die Depots einrichten.', start: true, until: new Date(local(40)).toISOString(), spoken: true }]);
     // a day without an hour is 08:00 that day, local
     const day = local(40).slice(0, 10);
     const { heard: dated } = await say(k, 'und eine fürs Trinkgeld, auch Anfang Dezember', 'act', { actions: [{ do: 'new_card', title: 'Trinkgeld', body: 'Trinkgeld.', until: day }], confirm: '…' });
@@ -345,7 +345,7 @@ describe('the Coordinator remembers', () => {
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
     await ran(k);
-    expect(executed[1]).toEqual({ do: 'newCard', title: 'ambient-Ton stoppen', body: finding, start: false, from: a.id });
+    expect(executed[1]).toEqual({ do: 'newCard', title: 'ambient-Ton stoppen', body: finding, start: false, from: a.id, spoken: true });
   });
 
   test('an action that does not fit the card is refused in the turn, so the Coordinator can answer instead', async () => {
@@ -849,7 +849,7 @@ describe('what the agent of a card passes on from the owner\'s words', () => {
         const k = commander();
         // a follow-up, a rule, a stop, an approval: confirmed, and taken back within the window
         const commands: [string, string, Record<string, unknown>[], Command][] = [
-          ['mach eine Folgeaufgabe für Excel', 'A follow-up card for Excel', [{ do: 'new_card', card: tag(a), title: 'Excel-Export', body: 'Auch als Excel.' }], { do: 'newCard', title: 'Excel-Export', body: 'Auch als Excel.', start: true, from: a.id }],
+          ['mach eine Folgeaufgabe für Excel', 'A follow-up card for Excel', [{ do: 'new_card', card: tag(a), title: 'Excel-Export', body: 'Auch als Excel.' }], { do: 'newCard', title: 'Excel-Export', body: 'Auch als Excel.', start: true, from: a.id, ...(spoken ? { spoken } : {}) }],
           ['Merk dir: Exporte immer mit Kopfzeile', 'Remember: exports always with a header row', [{ do: 'remember', text: 'Exporte immer mit Kopfzeile.' }], { do: 'remember', text: 'Exporte immer mit Kopfzeile.', card: a.id }],
         ];
         // an agent in a pull request is not stopped
@@ -911,7 +911,7 @@ describe('what the owner says or types to the Coordinator about a card with an a
     return a;
   };
 
-  test('the Coordinator learns whether the words were spoken or typed, and in which field', async () => {
+  test('the Coordinator learns whether the words were spoken, typed or dictated, and in which field', async () => {
     const source = board.create({ title: 'Login', x: 0, y: 0 });
     const p = board.propose(source.id, { title: 'Export', task: 'CSV', reason: 'Fehlt.', idea: false, questions: [] });
     const k = commander();
@@ -923,6 +923,13 @@ describe('what the owner says or types to the Coordinator about a card with an a
     runtime.last.call('reply', { confirm: 'Gut.' });
     runtime.last.emit({ type: 'idle' });
     await heard;
+    // dictated into the field, then sent from there: speech recognition, perhaps edited by hand
+    const dictated = k.hear('lieber als PDF', { card: p.id }, [], { dictated: true, field: 'revise' });
+    await settle();
+    expect(runtime.last.inbox.at(-1)).toContain('The owner dictated into the field for what should change in the proposal (speech recognition, may contain errors; they may have edited it by hand) and sent: "lieber als PDF"');
+    runtime.last.call('reply', { confirm: 'Gut.' });
+    runtime.last.emit({ type: 'idle' });
+    await dictated;
   });
 
   test('a question about the work of an agent goes to that agent, not to a look-up of main', async () => {

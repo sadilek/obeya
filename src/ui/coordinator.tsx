@@ -35,8 +35,8 @@ interface Props {
   /** The canvas, whose sections stay open or closed as the owner left them. */
   canvas: string;
   /** A command typed in the sheet, maybe in reply to a message of it: read like a spoken one; the conversation shows it at once. */
-  /** `draft`: the field the words came from, which gets them back if Obeya refuses them. */
-  onTell: (text: string, images?: string[], replyTo?: Reply['to'], draft?: string) => void;
+  /** `draft`: the field the words came from, which gets them back if Obeya refuses them; `spoken`: they were dictated into it. */
+  onTell: (text: string, images?: string[], replyTo?: Reply['to'], draft?: string, spoken?: boolean) => void;
   items: Item[];
   preferences: Preference[];
   /** Values for repositories' settings the work retrospective proposes. */
@@ -130,7 +130,7 @@ export function CoordinatorTalk({
     <>
       <Conversation talk={talk} fresh={fresh} items={allItems ?? items} onOpen={onOpen} draft={draft} />
       {/* a command in writing, for when speaking is not possible; its screenshots go to the cards it creates or concerns */}
-      <Composer className="tell" draft={draft} placeholder={t.voice.typePlaceholder} obeya onSend={(text, images, replyTo) => onTell(text, images, replyTo, draft)} />
+      <Composer className="tell" draft={draft} placeholder={t.voice.typePlaceholder} obeya onSend={(text, images, replyTo, spoken) => onTell(text, images, replyTo, draft, spoken)} />
       <ReviewHint items={items} repos={repos} />
     </>
   );
@@ -194,9 +194,9 @@ export function ProjectTalk({ on, project, talk, items, onOpen }: { on: boolean;
           draft={draft}
           placeholder={t.plan.askPlaceholder}
           label={t.plan.askSend}
-          onSend={(text, images, replyTo) => {
+          onSend={(text, images, replyTo, spoken) => {
             setError('');
-            return api.act(project.id, { action: 'consult', text, ...(images ? { images } : {}), ...(replyTo && typeof replyTo !== 'number' ? { replyTo } : {}) }).catch((e) => {
+            return api.act(project.id, { action: 'consult', text, ...(images ? { images } : {}), ...(replyTo && typeof replyTo !== 'number' ? { replyTo } : {}), ...(spoken ? { spoken } : {}) }).catch((e) => {
               setError(failText(e));
               // refused: the words stay in the field for another try
               if (e instanceof ApiError && e.code) throw e;

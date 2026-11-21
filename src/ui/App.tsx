@@ -1588,7 +1588,7 @@ function Canvas({
                   flush={flushEdit}
                   onDelete={deleteOpen}
                   onDone={onDone}
-                  onTell={(text, images, field, replyTo) => tellTyped(text, images, { card: openItem.id }, field, replyTo)}
+                  onTell={(text, images, field, replyTo, spoken) => tellTyped(text, images, { card: openItem.id }, { field, replyTo, spoken })}
                 />
                 </CardLog>
                 </Cards.Provider>
@@ -1618,7 +1618,7 @@ function Canvas({
             }}
           />
         )}
-        <CoordinatorSheet on={kOn} canvas={snapshot.canvas.id} items={items} preferences={snapshot.preferences} settings={snapshot.settingProposals ?? []} repos={snapshot.canvas.repos} talk={snapshot.talk} reshare={snapshot.reshare} onOpen={(i) => void openFresh(i)} onTell={(text, images, replyTo, draft) => tellTyped(text, images, null, undefined, replyTo, draft)} onConfig={(repo, setting) => {
+        <CoordinatorSheet on={kOn} canvas={snapshot.canvas.id} items={items} preferences={snapshot.preferences} settings={snapshot.settingProposals ?? []} repos={snapshot.canvas.repos} talk={snapshot.talk} reshare={snapshot.reshare} onOpen={(i) => void openFresh(i)} onTell={(text, images, replyTo, draft, spoken) => tellTyped(text, images, null, { replyTo, draft, spoken })} onConfig={(repo, setting) => {
             showRepoClones({ canvas: snapshot.canvas.id, repo, field: 'settings', setting });
             setCOn(true);
           }} />

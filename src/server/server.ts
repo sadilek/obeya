@@ -1000,7 +1000,8 @@ function voiceRoutes(x: Routing) {
         // `field`: typed into that field of the open card rather than into the Coordinator's sheet
         // `replyTo`: typed in reply to that message of the open card's conversation, or with no card open of the sheet (`TalkRef`)
         // `spot`: typed about that place in the open card's demo video
-        const { text, images, field, replyTo, spot } = (await fields(req)) as { text: string; images?: string[]; field?: unknown; replyTo?: unknown; spot?: SpotInput };
+        // `spoken`: dictated into that field, maybe edited by hand since: spoken words, not typed ones
+        const { text, images, field, replyTo, spot, spoken } = (await fields(req)) as { text: string; images?: string[]; field?: unknown; replyTo?: unknown; spot?: SpotInput; spoken?: unknown };
         // a screenshot alone may speak for itself to the open card's agent
         const card = focusOf(req).card;
         const open = card ? c.board.item(card) : undefined;
@@ -1008,7 +1009,7 @@ function voiceRoutes(x: Routing) {
         if (typeof text !== 'string' || (!text.trim() && !(toAgent && images?.length))) throw new BadRequest('emptyText', 'text must be a non-empty string');
         // screenshots pasted into the typed command go to the cards it creates or concerns
         c.images.resolve(images);
-        return heard(c, text.trim(), focusOf(req, c), images ?? [], { typed: true, ...(isField(field) ? { field } : {}), ...(typeof replyTo === 'number' || isTalkRef(replyTo) ? { replyTo } : {}), ...(spot ? { spot } : {}) });
+        return heard(c, text.trim(), focusOf(req, c), images ?? [], { ...(spoken === true ? { dictated: true } : { typed: true }), ...(isField(field) ? { field } : {}), ...(typeof replyTo === 'number' || isTalkRef(replyTo) ? { replyTo } : {}), ...(spot ? { spot } : {}) });
       }),
     },
     '/api/c/:canvas/command/undo': {

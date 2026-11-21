@@ -2139,11 +2139,17 @@ export class CanvasRuntime {
    * A card the owner's command made: one for later waits until then, a time that passed in the undo
    * window starting it now; one to start goes to the Coordinator. Its id.
    */
-  private created(cardId: string, c: Pick<Extract<Command, { do: 'newCard' }>, 'until' | 'start'>): string {
-    this.board.log(cardId, 'state', 'owner', this.board.t.voice.created);
+  private created(cardId: string, c: Pick<Extract<Command, { do: 'newCard' }>, 'until' | 'start' | 'spoken'>): string {
+    this.madeBy(cardId, c);
     if (c.until && Date.parse(c.until) > Date.now()) this.snooze(cardId, c.until);
     else if (c.start || c.until) this.coordinator.request(cardId);
     return cardId;
+  }
+
+  /** The first line of a card the owner's command made: whether their words were spoken or typed. */
+  private madeBy(cardId: string, c: { spoken?: boolean }) {
+    const { voice } = this.board.t;
+    this.board.log(cardId, 'state', 'owner', c.spoken ? voice.createdSpoken : voice.created);
   }
 
   /** A voice (or typed) command, once its undo window has passed; returns the id(s) of any card(s) created or filed into. */
@@ -2162,14 +2168,14 @@ export class CanvasRuntime {
         });
         // in a repository Obeya makes for it (a clone of a project, perhaps): started there, as "Start agent" on its card with that repository picked
         if (c.newRepo) {
-          this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
+          this.madeBy(card.id, c);
           this.board.setNewRepo(card.id, { ...c.newRepo, by: 'owner' });
           this.act(card.id, { action: 'start' });
           return card.id;
         }
         // on a branch of the owner's: taken first (git and the forge are asked), started once it is
         if (c.branch) {
-          this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
+          this.madeBy(card.id, c);
           void this.onBranch(card.id, c.branch, () => (c.until && Date.parse(c.until) > Date.now() ? this.snooze(card.id, c.until) : c.start || c.until ? this.coordinator.request(card.id) : undefined));
           return card.id;
         }
@@ -2178,7 +2184,7 @@ export class CanvasRuntime {
       case 'newIdea': {
         if (c.canvas && c.canvas !== this.id) return this.elsewhere(c);
         const card = this.board.create({ idea: true, title: c.title, body: c.body, ...(c.repo ? { repo: c.repo } : {}), ...this.board.freeSpot(c.place ?? this.inView) });
-        this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
+        this.madeBy(card.id, c);
         // the agent opens the discussion with what the owner said
         this.explorers.discuss(card.id, c.body.trim() || c.title, true, this.images.resolve(c.images));
         return card.id;
@@ -2292,7 +2298,7 @@ export class CanvasRuntime {
       return on.id;
     }
     const card = this.board.create({ title: info.title.slice(0, TITLE_MAX), body: c.text || t.worker.goOnWith(number, url), repo: repo.ref.id, ...this.board.freeSpot(c.place ?? this.inView) });
-    this.board.log(card.id, 'state', 'owner', t.voice.created);
+    this.madeBy(card.id, c);
     await this.onBranch(card.id, branch, () => {
       this.coordinator.request(card.id);
       this.board.notify({ text: t.worker.adoptedPr(number, branch), cardId: card.id, open: true });
@@ -2355,7 +2361,7 @@ export class CanvasRuntime {
       ...(info.headRef ? { headRef: info.headRef } : {}),
     };
     this.board.work(card.id, { contribution: toJson(stored) });
-    this.board.log(card.id, 'state', 'owner', t.voice.created);
+    this.madeBy(card.id, c);
     this.watchPrs(repo);
     this.coordinator.request(card.id);
     // the card opens, so the owner sees its review begin

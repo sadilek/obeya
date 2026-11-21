@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { appended, cardDraft, pathWord, wordsOf, draftOf, draftsHome, dropDraft, giveBack, insert, insertFiles, insertPasted, keepDrafts, MIC_DRAFT, markupOf, moveFiles, moveImages, OBEYA_DRAFT, pastedIn, putBack, setMarkup, updateDraft, updateDraftAt, uploaded, withPasted, withoutPasted, withoutWords } from './draft';
+import { appended, cardDraft, dictate, pathWord, wordsOf, draftOf, draftsHome, dropDraft, giveBack, insert, insertFiles, insertPasted, keepDrafts, MIC_DRAFT, markupOf, moveFiles, moveImages, OBEYA_DRAFT, pastedIn, putBack, setMarkup, updateDraft, updateDraftAt, uploaded, withPasted, withoutPasted, withoutWords } from './draft';
 import { api } from './api';
 import { filesTo, textAsFile } from './shots';
 import { memoryStorage } from './testing';
@@ -52,6 +52,28 @@ test('the marks on a screenshot are kept beside its original by the marked image
   setMarkup('marked1', null);
   expect(markupOf('marked1')).toBeUndefined();
   expect(s.getItem('obeya-markups-shop')).toBeNull();
+});
+
+test('words dictated into a field mark its draft as spoken, also once edited by hand, through a reload, until the field is empty', () => {
+  const key = cardDraft('dictated');
+  updateDraft(key, { text: 'Bitte' });
+  expect(draftOf(key).dictated).toBeUndefined();
+  dictate(key, 'auch als Excel');
+  expect(draftOf(key)).toMatchObject({ text: 'Bitte auch als Excel', dictated: true });
+  // edited and extended by hand: still spoken
+  updateDraft(key, { text: 'Bitte auch als Excel und PDF.' });
+  expect(draftOf(key).dictated).toBe(true);
+  // written down with the text, so the next page has it too
+  expect(JSON.parse(s.getItem('obeya-drafts-shop')!)[key]).toEqual({ text: 'Bitte auch als Excel und PDF.', images: [], dictated: true });
+  // sent (or cleared by hand): what is typed next is typed
+  updateDraft(key, { text: '' });
+  expect(draftOf(key).dictated).toBeUndefined();
+  updateDraft(key, { text: 'getippt' });
+  expect(draftOf(key).dictated).toBeUndefined();
+  // spoken words Obeya refused come back as spoken
+  putBack(key, 'gesprochen', [], true);
+  expect(draftOf(key)).toMatchObject({ text: 'gesprochen getippt', dictated: true });
+  dropDraft(key);
 });
 
 test('words taken back go into an empty field with their screenshots; a field with newer words keeps those', () => {

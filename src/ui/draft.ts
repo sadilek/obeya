@@ -37,6 +37,12 @@ export interface Draft {
   pasted?: string[];
   /** The path of the file a paste too long for a message went into (`textAsFile`): while it stands in the words, the field says why. */
   pastedAsFile?: string;
+  /**
+   * Words were dictated into the field (`dictate`), also where the owner edited or extended them by
+   * hand since: the text goes out as spoken, read as speech recognition may have written it. Gone
+   * with the text.
+   */
+  dictated?: true;
 }
 
 export interface Picks {
@@ -47,14 +53,14 @@ export interface Picks {
 /** Which questions picks belong to: they count only while the same questions stand. */
 export const questionsKey = (questions: unknown[]) => JSON.stringify(questions);
 
-type Kept = Pick<Draft, 'text' | 'images' | 'picks' | 'reply' | 'files' | 'pasted' | 'findings' | 'pastedAsFile'>;
-const keptOf = ({ text, images, picks, reply, files, pasted, findings, pastedAsFile }: Draft): Kept | null => {
+type Kept = Pick<Draft, 'text' | 'images' | 'picks' | 'reply' | 'files' | 'pasted' | 'findings' | 'pastedAsFile' | 'dictated'>;
+const keptOf = ({ text, images, picks, reply, files, pasted, findings, pastedAsFile, dictated }: Draft): Kept | null => {
   const picked = picks?.picks.some((p) => p.length) ? picks : undefined;
   const decided = findings && Object.keys(findings).length ? findings : undefined;
   const standing = filesIn(text, files);
   const texts = filesIn(text, pasted);
   return text.trim() || images.length || picked || reply || decided
-    ? { text, images, ...(picked ? { picks: picked } : {}), ...(reply ? { reply } : {}), ...(standing.length ? { files: standing } : {}), ...(texts.length ? { pasted: texts } : {}), ...(decided ? { findings: decided } : {}), ...(pastedAsFile && text.includes(pastedAsFile) ? { pastedAsFile } : {}) }
+    ? { text, images, ...(picked ? { picks: picked } : {}), ...(reply ? { reply } : {}), ...(standing.length ? { files: standing } : {}), ...(texts.length ? { pasted: texts } : {}), ...(decided ? { findings: decided } : {}), ...(pastedAsFile && text.includes(pastedAsFile) ? { pastedAsFile } : {}), ...(dictated && text.trim() ? { dictated } : {}) }
     : null;
 };
 
@@ -154,9 +160,14 @@ export const draftOf = (key: string): Draft => drafts.get(key) ?? EMPTY;
 /** Whether the draft holds anything the owner entered and has not sent: what a reload would keep of it. */
 export const drafted = (key: string) => !!keptOf(draftOf(key));
 
+/** `d` changed by `change`: words dictated into it count only while it has words. */
+function changedDraft(d: Draft, change: Partial<Draft> | ((d: Draft) => Partial<Draft>)): Draft {
+  const { dictated, ...next } = { ...d, ...(typeof change === 'function' ? change(d) : change) };
+  return dictated && next.text.trim() ? { ...next, dictated } : next;
+}
+
 export function updateDraft(key: string, change: Partial<Draft> | ((d: Draft) => Partial<Draft>)) {
-  const d = draftOf(key);
-  drafts.set(key, { ...d, ...(typeof change === 'function' ? change(d) : change) });
+  drafts.set(key, changedDraft(draftOf(key), change));
   changed();
 }
 
@@ -175,7 +186,7 @@ export function updateDraftAt(home: DraftsHome, key: string, change: Partial<Dra
   if (!lasting(key)) return;
   const saved = readJson<Record<string, Kept>>(home.store, storeKey(home.canvas)) ?? {};
   const d = { ...EMPTY, ...saved[key] };
-  const k = keptOf({ ...d, ...(typeof change === 'function' ? change(d) : change) });
+  const k = keptOf(changedDraft(d, change));
   if (k) saved[key] = k;
   else delete saved[key];
   writeJson(home.store, storeKey(home.canvas), Object.keys(saved).length ? saved : null);
@@ -193,12 +204,14 @@ export function giveBack(key: string, text: string, images: string[] = []) {
 
 /**
  * Words Obeya did not take go back into the draft with their screenshots, before what the owner
- * wrote or added there meanwhile, so neither is lost.
+ * wrote or added there meanwhile, so neither is lost. `spoken`: they were spoken, and the draft goes
+ * out as spoken.
  */
-export function putBack(key: string, text: string, images: string[] = []) {
+export function putBack(key: string, text: string, images: string[] = [], spoken = false) {
   updateDraft(key, (d) => ({
     text: [text, d.text].filter((x) => x.trim()).join(/\n/.test(text) ? '\n\n' : ' '),
     images: [...images, ...d.images.filter((id) => !images.includes(id))],
+    ...(spoken ? { dictated: true as const } : {}),
   }));
 }
 
@@ -333,7 +346,7 @@ const spaced = (before: string, words: string, after: string) => `${before && !/
  * Words dictated into the draft, at the cursor: typed into the field as if by hand while it has the
  * focus (⌘Z takes them back), else where the cursor stood. A space parts them from the words beside them.
  * A field still on the page gets them as typed words, whether its text is the draft's or its own (a
- * task's text, a rule's).
+ * task's text, a rule's). The draft is `dictated` from then on.
  */
 export function dictate(key: string, words: string) {
   const el = fields.get(key);
@@ -348,6 +361,7 @@ export function dictate(key: string, words: string) {
   else if (el) {
     setText(el, piece, start, end);
   } else updateDraft(key, { text: before + piece + after });
+  updateDraft(key, { dictated: true });
 }
 
 /**

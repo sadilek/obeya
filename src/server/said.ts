@@ -69,7 +69,7 @@ export async function heard(c: CanvasRuntime, text: string | null, focus: Focus,
   // the owner sees only the confirmation; the transcript is for whoever reads the server's log
   console.log(`heard on ${c.id}: ${text === null ? '(not understood)' : text || '(nothing)'}`);
   // nothing heard or understood: screenshots shown with it stay in the browser for the next try
-  if (text === null || (!text && !(input.typed && images.length))) return unheard(c, text);
+  if (text === null || (!text && !((input.typed || input.dictated) && images.length))) return unheard(c, text);
   const card = focus.card ? c.board.item(focus.card) : undefined;
   if (card && listens(card, input)) {
     c.tell(card.id, text, images, !input.typed, typeof input.replyTo === 'number' ? input.replyTo : undefined, input.spot);

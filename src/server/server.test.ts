@@ -549,7 +549,7 @@ describe('voice', () => {
     expect(body.audio).toBeUndefined();
     expect(executed).toEqual([]);
     await until(() => executed.length);
-    expect(executed).toEqual([{ do: 'newCard', title: 'Export', body: 'CSV', start: true }]);
+    expect(executed).toEqual([{ do: 'newCard', title: 'Export', body: 'CSV', start: true, spoken: true }]);
   });
 
   test('a card a recording makes carries where the owner was on the canvas; a follow-up does not', async () => {
@@ -561,10 +561,22 @@ describe('voice', () => {
     await until(() => executed.length === 2);
     const place = { x: 400, y: 300, view: { x: 0, y: 0, w: 1200, h: 800 } };
     expect(executed).toEqual([
-      { do: 'newCard', title: 'Export', body: 'CSV', start: false, place },
-      { do: 'newIdea', title: 'Mieter', body: '', place },
+      { do: 'newCard', title: 'Export', body: 'CSV', start: false, place, spoken: true },
+      { do: 'newIdea', title: 'Mieter', body: '', place, spoken: true },
     ]);
   });
+
+  for (const dictated of [false, true])
+    test(`words ${dictated ? 'dictated into Obeya\'s field and sent are read as spoken, and the card they make says so' : 'typed into Obeya\'s field are read as written, and the card they make is not "by voice"'}`, async () => {
+      const res = post(api('/command'), JSON.stringify({ text: 'Neue Karte Export', ...(dictated ? { spoken: true } : {}) }));
+      const s = await briefed();
+      expect(s.inbox[0]).toContain(dictated ? 'The owner dictated (speech recognition, may contain errors; they may have edited it by hand) and sent: "Neue Karte Export"' : 'The owner typed (as written, no recognition errors): "Neue Karte Export"');
+      s.call('act', { actions: [{ do: 'new_card', title: 'Export', body: 'CSV', start: false }], confirm: 'Neue Karte „Export“.' });
+      s.emit({ type: 'idle' });
+      await res;
+      await until(() => executed.length);
+      expect(executed).toEqual([{ do: 'newCard', title: 'Export', body: 'CSV', start: false, ...(dictated ? { spoken: true } : {}) }]);
+    });
 
   test('a page that lost the answer learns whether its recording arrived, while Obeya still reads it', async () => {
     const arrived = async (id: string) => (await (await fetch(new URL(api(`/voice/arrived/${id}`), server.url))).json()) as { arrived: boolean };
@@ -699,7 +711,7 @@ describe('voice', () => {
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'say', author: 'coordinator', text: confirm });
   });
 
-  test("on a card an agent listens on, typed and spoken words go straight to it, without the Coordinator", async () => {
+  test("on a card an agent listens on, typed, spoken and dictated words go straight to it, without the Coordinator", async () => {
     const told: [string, string, string[], boolean][] = [];
     canvas.tell = (cardId, text, images, spoken) => void told.push([cardId, text, images, spoken]);
     const c = card();
@@ -709,9 +721,12 @@ describe('voice', () => {
     whisper = () => 'Mach den Knopf größer';
     const spoken = (await (await fetch(new URL(api(`/voice?card=${c.id}`), server.url), { method: 'POST', body: 'AUDIO' })).json()) as { quiet?: boolean };
     expect(spoken).toMatchObject({ quiet: true });
+    // dictated into the field and sent from there: spoken words
+    await post(api(`/command?card=${c.id}`), JSON.stringify({ text: 'und die Schrift auch', field: 'feedback', spoken: true }));
     expect(told).toEqual([
       [c.id, 'gib das frei', [], false],
       [c.id, 'Mach den Knopf größer', [], true],
+      [c.id, 'und die Schrift auch', [], true],
     ]);
     // an idea's exploration agent listens too; a planned card has nobody but the Coordinator
     const idea = board.create({ title: 'Export', x: 0, y: 0, idea: true });
@@ -723,7 +738,7 @@ describe('voice', () => {
     (await briefed()).call('reply', { confirm: 'Ok.' });
     interpretation().emit({ type: 'idle' });
     await res;
-    expect(told).toHaveLength(3);
+    expect(told).toHaveLength(4);
   });
 
   test('words typed or spoken in reply to a message of the card go to its agent with it', async () => {
@@ -881,7 +896,7 @@ describe('screenshots', () => {
     k.call('act', { actions: [{ do: 'new_card', title: 'Export', body: 'bricht um' }], confirm: 'Neue Karte „Export“.' });
     expect(await (await res).json()).not.toHaveProperty('unheard');
     await until(() => executed.length);
-    expect(executed).toEqual([{ do: 'newCard', title: 'Export', body: 'bricht um', start: true, images: [id] }]);
+    expect(executed).toEqual([{ do: 'newCard', title: 'Export', body: 'bricht um', start: true, images: [id], spoken: true }]);
     expect(board.snapshot().talk.at(-1)).toMatchObject({ said: 'Neue Karte Export', images: [id] });
 
     whisper = () => '';

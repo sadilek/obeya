@@ -388,8 +388,9 @@ export const api = {
   /** The owner started speaking, or with `ahead` may speak or type a command soon: Obeya gets ready to read it. */
   warmVoice: (ahead = false) => fetch(at(`/voice/warm${ahead ? '?ahead=1' : ''}`), { method: 'POST' }).catch(() => {}),
   /** The same, typed; `field`: the field of the open card it was typed into. */
-  command: (text: string, where: Where, { images, field, replyTo, spot, place }: { images?: string[]; field?: Field; replyTo?: number | TalkRef; spot?: SpotInput; place?: Place } = {}) =>
-    call<Heard>('POST', whereAt(where, `/command${query(where)}${place ? `${where ? '&' : '?'}place=${placeParam(place)}` : ''}`), { text, ...(images?.length ? { images } : {}), ...(field ? { field } : {}), ...(replyTo ? { replyTo } : {}), ...(spot ? { spot } : {}) }),
+  /** `spoken`: the words were dictated into the field they come from (`Draft.dictated`), so they count as spoken rather than typed. */
+  command: (text: string, where: Where, { images, field, replyTo, spot, place, spoken }: { images?: string[]; field?: Field; replyTo?: number | TalkRef; spot?: SpotInput; place?: Place; spoken?: boolean } = {}) =>
+    call<Heard>('POST', whereAt(where, `/command${query(where)}${place ? `${where ? '&' : '?'}place=${placeParam(place)}` : ''}`), { text, ...(images?.length ? { images } : {}), ...(field ? { field } : {}), ...(replyTo ? { replyTo } : {}), ...(spot ? { spot } : {}), ...(spoken ? { spoken: true } : {}) }),
   /** A typed request to the Coordinator of another canvas, about nothing in view there. */
   commandOn: (canvas: string, text: string) => call<Heard>('POST', canvasApi(canvas, '/command'), { text }),
   undo: (token: string) => call<{ undone: boolean }>('POST', at('/command/undo'), { token }),
