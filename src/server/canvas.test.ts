@@ -1786,6 +1786,14 @@ describe('merging and deleting planned tasks by voice', () => {
     expect(code({ do: 'merge', card: a.id, others: [other.id], title: 'X' })).toBe('otherRepos');
     expect(code({ do: 'merge', card: a.id, others: [worked.id], title: 'X' })).toBe('notUntouched');
     expect(code({ do: 'delete', card: worked.id })).toBe('notUntouched');
+    // one Obeya still checks may be deleted, not merged; brought back, it waits for the owner's start
+    const checked = canvas.board.create({ title: 'Checked', x: 1600, y: 0, repo: 'web' });
+    canvas.board.work(checked.id, { queue: JSON.stringify({ checking: true, since: '2026-11-21T10:00:00.000Z' }) });
+    expect(code({ do: 'merge', card: a.id, others: [checked.id], title: 'X' })).toBe('notUntouched');
+    await canvas.run({ do: 'delete', card: checked.id });
+    expect(canvas.board.item(checked.id)).toBeUndefined();
+    canvas.board.restore(checked.id);
+    expect(item(checked.id).queue).toBeUndefined();
     expect([item(a.id).title, item(other.id).title, item(worked.id).title]).toEqual(['A', 'Elsewhere', 'Stopped']);
     await canvas.run({ do: 'delete', card: b.id });
     expect(canvas.board.item(b.id)).toBeUndefined();

@@ -326,6 +326,78 @@ describe('Coordinator', () => {
     expect(item(c.id).state).toBe('working');
   });
 
+  test('a card taken out of the queue while Obeya checks it does not start once the check ends', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const b = card('B');
+    k.request(b.id);
+    await settle();
+    expect(item(b.id).queue).toMatchObject({ checking: true });
+    k.dequeue(b.id);
+    expect(item(b.id).queue).toBeUndefined();
+    await scope(['src/b.ts']);
+    expect(item(b.id).state).toBe('planned');
+    expect(item(b.id).queue).toBeUndefined();
+  });
+
+  test('a card deleted while Obeya checks it comes back out of the queue', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const c = card('C');
+    k.request(c.id);
+    await settle();
+    board.remove(c.id);
+    await scope(['src/c.ts']);
+    // brought back, it waits for the owner's start rather than for a check that ended
+    board.restore(c.id);
+    expect(item(c.id).state).toBe('planned');
+    expect(item(c.id).queue).toBeUndefined();
+    expect(item(a.id).state).toBe('working');
+  });
+
+  test('a check taken back while it runs does not decide on the start made after it', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const b = card('B');
+    k.request(b.id);
+    await settle();
+    k.dequeue(b.id);
+    board.patch(b.id, { body: 'Ganz anders.' });
+    k.request(b.id);
+    // the first check's estimate comes in: it would have held B behind A
+    await scope(['src/a.ts'], [tag(a)]);
+    expect(item(b.id).queue).toMatchObject({ checking: true });
+    expect(estimates().at(-1)!.inbox[0]).toContain('Ganz anders.');
+    await scope(['src/b.ts']);
+    expect(item(b.id).state).toBe('working');
+  });
+
+  test('a card freed with others and deleted while they are judged together leaves the others judged on their own', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const b = card('B');
+    const c = card('C');
+    k.request(b.id);
+    await scope(['src/a.ts'], [tag(a)]);
+    k.request(c.id);
+    await scope(['src/a.ts'], [tag(a)]);
+    await workers.stop(a.id);
+    await settle();
+    expect(item(c.id).queue).toMatchObject({ checking: true });
+    board.remove(b.id);
+    // the joint turn ends without a schedule
+    schedules().at(-1)!.emit({ type: 'idle' });
+    await settle();
+    expect(item(c.id).state).toBe('working');
+    board.restore(b.id);
+    expect(item(b.id).state).toBe('planned');
+    expect(item(b.id).queue).toBeUndefined();
+  });
+
   test('a card keeps its place in the queue while what it waits for changes', async () => {
     const a = card('A');
     k.request(a.id);
@@ -992,6 +1064,56 @@ describe('Coordinator starts all workstreams of a project', () => {
     await scope(['src/w3.ts']);
     expect(item(w3.id).state).toBe('working');
     expect(item(w4.id).queue).toMatchObject({ checking: true });
+  });
+
+  test('a workstream taken out of the queue during the joint turn still holds the one that builds on it', async () => {
+    const { p, w2, w3, w4 } = project();
+    k.request(p.id);
+    await settle();
+    k.dequeue(w4.id);
+    await schedule([
+      [tag(w4), ['src/w4.ts'], [], [], 'W4 ist unabhängig.'],
+      [tag(w2), ['src/w2.ts'], [tag(w4)], [], 'W2 baut auf W4 auf.'],
+      [tag(w3), ['src/w3.ts'], [], [], ''],
+    ]);
+    expect(item(w4.id).state).toBe('planned');
+    expect(item(w4.id).queue).toBeUndefined();
+    expect(item(w2.id)).toMatchObject({ state: 'planned', queue: { behind: [w4.id], buildsOn: [w4.id] } });
+    expect(item(w3.id).state).toBe('working');
+  });
+
+  test('a workstream taken out of the queue during a joint turn that fails stays out of it', async () => {
+    const { p, w2, w3, w4 } = project();
+    k.request(p.id);
+    await settle();
+    k.dequeue(w3.id);
+    schedules()[0]!.emit({ type: 'idle' });
+    await settle();
+    expect(item(w3.id).queue).toBeUndefined();
+    await scope(['src/w2.ts']);
+    await scope(['src/w4.ts']);
+    expect([w2, w4].map((w) => item(w.id).state)).toEqual(['working', 'working']);
+    expect(item(w3.id)).toMatchObject({ state: 'planned' });
+    expect(item(w3.id).queue).toBeUndefined();
+  });
+
+  test('a project’s start taken back and made again is judged afresh, not by the turn still running for the first', async () => {
+    const { p, w2, w3, w4 } = project();
+    k.request(p.id);
+    await settle();
+    k.dequeue(p.id);
+    docs = [{ ...docs[0]!, workstreams: [ws('W1', true), { ...ws('W2'), body: 'Ganz anders.' }, ws('W3'), ws('W4')] }];
+    board.docsChanged();
+    k.request(p.id);
+    // the first turn's schedule comes in: it would have started all three
+    await schedule([
+      [tag(w2), ['src/w2.ts'], [], [], ''],
+      [tag(w3), ['src/w3.ts'], [], [], ''],
+      [tag(w4), ['src/w4.ts'], [], [], ''],
+    ]);
+    expect([w2, w3, w4].map((w) => item(w.id).queue)).toEqual([0, 1, 2].map(() => expect.objectContaining({ checking: true, together: p.id })));
+    expect(schedules()).toHaveLength(2);
+    expect(schedules().at(-1)!.inbox[0]).toContain('Ganz anders.');
   });
 
   test('after a restart the joint turn runs again', async () => {
