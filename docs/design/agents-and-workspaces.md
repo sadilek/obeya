@@ -118,7 +118,10 @@ root has its CLAUDE.md appended to the instructions, as Codex reads CLAUDE.md as
 
 Every session runs agy on a Gemini directory of Obeya's own (`--gemini-dir`, `gemini/` in Obeya's
 home), so what Obeya needs agy to do never touches the owner's own Antigravity configuration: the
-login stays the owner's (agy keeps it in the system's keyring), and the owner's global rules
+login stays the owner's (agy keeps it in the system's keyring; where it reaches none, over SSH or on
+a Linux machine without one, in a file of its own Gemini directory, `antigravity-cli/antigravity-oauth-token`,
+which Obeya's directory links to, so agy writes the token it renews through the link into the
+owner's file, measured 2026-11-21), and the owner's global rules
 (`GEMINI.md`) and MCP servers are copied in at each start, their skills listed beside Obeya's.
 There: Obeya's hook (`config/hooks.json`); the skills of Obeya's plugin and the owner's
 (`config/skills.json`); and the grants of agy's terminal sandbox for every session running
@@ -792,7 +795,8 @@ Codex there runs on the host's own Codex login: none travels, since Codex keeps 
 whose refresh token it renews, and one login used on two machines would end the other's. When it
 lost it, the card's "Log in to Codex" renews it there (see Conversation on the card). Gemini there
 runs on the host's own agy login too: the one here lives in this machine's keyring, out of reach.
-Its login is agy's own over SSH (`agy acp --login` there, which prints a sign-in page and takes the
+Over SSH agy reaches no keyring and keeps the login as a file in `~/.gemini` there, which Obeya's
+Gemini directory there links to (see Gemini). Its login is agy's own over SSH (`agy acp --login` there, which prints a sign-in page and takes the
 code pasted back), in a terminal here that Obeya opens: from the card's "Reauthenticate" where a
 session lost it, or from the host's line in "Agents and models" before any card needs it.
 

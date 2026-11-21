@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -389,6 +389,25 @@ test("sessions starting at once each keep their sandbox grants: no start writes 
     g.release(a);
     await g.prepare(b, { read: [], write: ['/b'] }, []);
     expect(allow()).toEqual(['write_file(/b)']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test.skipIf(process.platform === 'win32')("the owner's login, where agy keeps it as a file, is read through a link, which agy writes the renewed token through", async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'obeya-gemini-dir-'));
+  try {
+    const g = new GeminiDir(join(dir, 'gemini'), join(dir, 'own'));
+    const linked = join(dir, 'gemini', 'antigravity-cli', 'antigravity-oauth-token');
+    // a login in the keyring: no file, no link
+    await g.prepare({}, { read: [], write: [] }, []);
+    expect(existsSync(linked)).toBe(false);
+    mkdirSync(join(dir, 'own', 'antigravity-cli'), { recursive: true });
+    writeFileSync(join(dir, 'own', 'antigravity-cli', 'antigravity-oauth-token'), '{"token":1}');
+    await g.prepare({}, { read: [], write: [] }, []);
+    expect(readlinkSync(linked)).toBe(join(dir, 'own', 'antigravity-cli', 'antigravity-oauth-token'));
+    writeFileSync(linked, '{"token":2}');
+    expect(readFileSync(join(dir, 'own', 'antigravity-cli', 'antigravity-oauth-token'), 'utf8')).toBe('{"token":2}');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

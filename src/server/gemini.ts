@@ -26,7 +26,7 @@
 // Gemini directory there (written over the connection), its hook and Obeya's tools reaching their
 // servers here through forwarded ports.
 
-import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readFile, readlink, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -441,6 +441,7 @@ export class GeminiDir {
     // the owner's own global rules and MCP servers, as agy reads them without Obeya
     await carry(join(this.own, 'GEMINI.md'), join(this.dir, 'GEMINI.md'));
     await carry(join(this.own, 'config', 'mcp_config.json'), join(config, 'mcp_config.json'));
+    await linkLogin(join(this.own, LOGIN_FILE), join(this.dir, LOGIN_FILE));
   }
 
   /** The session no longer runs: its grants go with the next start. */
@@ -508,12 +509,17 @@ class HostGeminiDir {
       put(`${config}/skills.json`, skillsFile([...this.skills])),
       carry('GEMINI.md', `${this.dir}/GEMINI.md`),
       carry('config/mcp_config.json', `${config}/mcp_config.json`),
+      // the host's own login, where agy keeps it as a file (no keyring over SSH), read through a link (see `linkLogin`)
+      `if [ -f "$HOME/.gemini/${LOGIN_THERE}" ] && [ "$(readlink ${sh(`${this.dir}/${LOGIN_THERE}`)})" != "$HOME/.gemini/${LOGIN_THERE}" ]; then mkdir -p ${sh(`${this.dir}/antigravity-cli`)} && ln -sfn "$HOME/.gemini/${LOGIN_THERE}" ${sh(`${this.dir}/${LOGIN_THERE}`)}; fi`,
     ].join(' && ');
     const r = await this.host.run(script);
     if (r.code === LOST) throw new HostError(`${this.host.name} does not answer`);
     if (r.code !== 0) throw new Error(`Obeya's Gemini directory on ${this.host.name} could not be written: ${failureText(r)}`);
   }
 }
+
+/** `LOGIN_FILE` on a host, which is no Windows machine. */
+const LOGIN_THERE = 'antigravity-cli/antigravity-oauth-token';
 
 /** Obeya's Gemini directory on each host, once a session there needed it. */
 const hostDirs = new WeakMap<SshHost, HostGeminiDir>();
@@ -586,6 +592,29 @@ async function survey(host: SshHost, cwd: string, o: { skills: string[]; untrust
     skills: lines('skills'),
     ...(notes ? { notes } : {}),
   };
+}
+
+/**
+ * Where agy keeps its login in its Gemini directory where the system has no keyring it reaches (a
+ * Linux machine without one, any machine over SSH): a file, which a session on another Gemini
+ * directory would not find.
+ */
+const LOGIN_FILE = join('antigravity-cli', 'antigravity-oauth-token');
+
+/**
+ * Obeya's Gemini directory reads the owner's login where agy keeps it as a file: a link to it, through
+ * which agy also writes the token it renews, so the two never part. Nothing where the owner's
+ * configuration has none (the login is in the keyring); a link that cannot be made leaves it so.
+ */
+async function linkLogin(own: string, obeya: string) {
+  try {
+    if (!(await exists(own))) return;
+    const st = await lstat(obeya).catch(() => null);
+    if (st?.isSymbolicLink() && (await readlink(obeya)) === own) return;
+    await mkdir(dirname(obeya), { recursive: true });
+    await rm(obeya, { force: true });
+    await symlink(own, obeya);
+  } catch {}
 }
 
 /** Writes `text` to `file` unless it holds it already. */

@@ -4,7 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SpawnOptions } from '@anthropic-ai/claude-agent-sdk';
@@ -539,13 +539,17 @@ describe('a Gemini session on a host', () => {
   const start = (first: string, o: { tools?: boolean; env?: Record<string, string> } = {}) => {
     const events: AgentEvent[] = [];
     const runtime = geminiRuntime({ dir: join(dir, 'home', 'gemini') });
-    const tools = o.tools ? [{ name: 'report', description: 'A status line.', schema: { status: z.string() }, run: (a: { status: string }) => `shown: ${a.status}` }] : [];
+    const tools = o.tools ? [{ name: 'report', description: 'A status line.', schema: { status: z.string() }, run: (a: Record<string, unknown>) => `shown: ${String(a.status)}` }] : [];
     const session = runtime.start({ cwd: onHost(name, join(dir, 'ws')), system: 'You are a test agent.', tools, plugins: [join(dir, 'plugin')], model: 'gemini-#-neon', env: { FAKE_AGY_LOG: requests, ...o.env }, onEvent: (e) => events.push(e) }, first);
     const idles = () => events.filter((e) => e.type === 'idle').length;
     return { session, events, idles };
   };
 
   overSsh("runs agy acp there on Obeya's Gemini directory there, its hook and Obeya's tools reaching Obeya here, and no Claude login", async () => {
+    // the host's own login, which agy keeps as a file there
+    const login = join(dir, 'net', 'home', '.gemini', 'antigravity-cli', 'antigravity-oauth-token');
+    mkdirSync(join(login, '..'), { recursive: true });
+    writeFileSync(login, '{}');
     const s = start('tool report {"status":"on the host"}', { tools: true });
     await until(() => s.idles() === 1, 15_000);
     expect(s.events).toContainEqual({ type: 'text', text: 'tool said: shown: on the host' });
@@ -559,6 +563,8 @@ describe('a Gemini session on a host', () => {
     expect(JSON.parse(readFileSync(join(there(), 'config', 'skills.json'), 'utf8'))).toEqual({ entries: [{ path: join(dir, 'net', 'home', '.obeya', 'remote', 'plugin', 'skills') }] });
     const grants = JSON.parse(readFileSync(join(there(), 'config', 'projects', 'default-cli-project.json'), 'utf8')).permissionGrants.permissionGrants.allow as string[];
     expect(grants).toContain(`write_file(${join(dir, 'net', 'home', 'demos')})`);
+    // read through a link, which agy writes the renewed token through
+    expect(readlinkSync(join(there(), 'antigravity-cli', 'antigravity-oauth-token'))).toBe(login);
     // the hook ran there and Obeya answered it: a long wait is refused there as here
     s.session.send('run sleep 45');
     await until(() => s.idles() === 2, 15_000);
