@@ -909,6 +909,10 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
 - **Encoding stays with libx264 on the processor** (2026-10-28). Rejected: NVIDIA's encoder, no
   faster (reading the JPEG frames takes most of the time) and, at the same quality, files twice the
   size.
+- **The video is limited range BT.709, tagged so** (2026-11-21), though its frames are full-range
+  JPEGs: encoded as they came (full range, tagged as such), a phone's player that ignored the tag
+  showed everything above 235 of 255 as white, and Obeya's light buttons (238) vanished on its white
+  cards (251), while a laptop and any screenshot showed them.
 - **The take runs above normal priority** (2026-10-30): on a busy machine (Windows, agents and
   builds on every core) the page still painted 60 frames a second, but the screencast delivered as
   few as 8: the copying, encoding and handing over of its frames waited for the CPU, and the video

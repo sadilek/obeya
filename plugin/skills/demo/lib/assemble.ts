@@ -153,8 +153,11 @@ export function assemble({ outDir, work, list, clips, marks, total, viewport, sh
     '-y', '-loglevel', 'error',
     '-f', 'concat', '-safe', '0', '-i', list,
     ...(clips ? ['-i', narration] : []),
-    // the clock strip, painted over from the pixels around it
-    '-vf', `fps=30,scale=${viewport.width * scale}:${viewport.height * scale},delogo=x=${scale}:y=${(CLOCK.top - 2) * scale}:w=${(CLOCK.bits * CLOCK.cell + 2) * scale}:h=${(CLOCK.cell + 4) * scale},format=yuv420p`,
+    // The frames are JPEGs, full range; the video gets the limited range and BT.709 every player
+    // assumes, tagged so: a phone's player that ignores the full-range tag turns everything brighter
+    // than 235 of 255 white, the light buttons on a white card with it. Then the clock strip, painted
+    // over from the pixels around it.
+    '-vf', `fps=30,scale=${viewport.width * scale}:${viewport.height * scale}:out_range=tv:out_color_matrix=bt709,format=yuv420p,setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709,delogo=x=${scale}:y=${(CLOCK.top - 2) * scale}:w=${(CLOCK.bits * CLOCK.cell + 2) * scale}:h=${(CLOCK.cell + 4) * scale}`,
     // Screen content: CRF 30 keeps text sharp at about 2.5 MB per minute; a public video (`sharp`)
     // gets CRF 18, where no compression shows on the page's flat colours and fine type.
     '-c:v', 'libx264', '-preset', 'slow', '-crf', sharp ? '18' : '30', '-tune', 'stillimage',
