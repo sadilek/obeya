@@ -46,7 +46,8 @@ database still has cards under it, unless that canvas's home is another reposito
 under the new id has cards already. A canvas's id names its folders in Obeya's home, so a name (or a
 set id) that gives none of its own, one in another script than Latin, punctuation alone, `.` or `..`,
 counts as no name for the id: the canvas keeps the name shown and takes its id as one without a name
-would, from its first repository (`canvas` where that gives none either). Which canvas a repository is on is this machine's alone.
+would, from its first repository (`canvas` where that gives none either). One that already has cards
+under such an id keeps it, so its cards stay; deleting it never removes its folders. Which canvas a repository is on is this machine's alone.
 
 A repository's id on its canvas (what its cards, its plan-doc references `<repo>:<path>` and the
 canvas's home go by) is given once, when the repository first runs there: its name (the name in its
@@ -447,8 +448,9 @@ as it is (a folder without git keeps whatever the agents changed in it); "Delete
 destructive style beside "Cancel", and, where the draft holds other changes, that they stay in it.
 The counts come from the server when the panel opens and every few seconds while it is open:
 unlanded work is what git finds, not guessed from the cards' states: in the workspaces they hold, on
-a card's branch in the repository that has commits main lacks, and work a card set aside in a clone
-(archived, or its clone given to another card). "Delete"
+a card's branch in the repository that has commits main lacks, and work a card set aside on its
+branch in a clone Obeya made for the canvas (archived, or its clone given to another card). Saves and
+deletes of the configuration run one after the other, so what one finds left out is what it writes. "Delete"
 takes effect at once: the canvas leaves the configuration's file, stops and is gone from every list;
 the draft's other changes stay, waiting for Save. A page showing it (another tab, the phone) goes to
 the first canvas; where that is the page the dialog deleted it from, the dialog opens again there
@@ -458,8 +460,8 @@ While an agent of the canvas is at work, starting (its workspace being made read
 landing or being approved, or an idea's or a Question card's agent replying, the panel has no Delete:
 it names those cards as links (with their status lines), and a question being looked up in Obeya's
 sheet with "Obeya is looking this up", and says to stop them or wait, with "Pause its 2 running
-agents", the canvas's pause (see Pausing a canvas's agents in Communication); it shows Delete once
-they are done. Cards waiting for the owner, in a pull request, queued, paused or snoozed
+agents" for the cards, the canvas's pause (see Pausing a canvas's agents in Communication; a look-up
+is waited for); it shows Delete once they are done. Cards waiting for the owner, in a pull request, queued, paused or snoozed
 hold nothing: they go with the canvas. The delete is a request of its own and the server decides,
 not the page: it looks for agents at work at that moment and refuses with their names where one
 started since the panel counted, and nothing lies between that look and the canvas stopping, so no

@@ -43,7 +43,7 @@ export async function removeCanvasRemains(r: CanvasRemains): Promise<{ removed: 
   const named = [...r.keep, ...r.repos.flatMap((repo) => [repo.path, ...repo.listed])].map((p) => resolve(p));
   const keep = [...new Set([...named, ...(await Promise.all(named.map((p) => realpath(p).catch(() => p))))])];
   // an id that is no folder of its own (empty, `.`, `..`) would name every canvas's folder, or Obeya's home: nothing goes
-  const trash = usableId(r.canvas) ? (await Promise.all(CANVAS_DIRS.map((d) => moveAside(join(r.home, d, r.canvas), keep)))).flat() : [];
+  const trash = usableId(r.canvas) ? (await Promise.all(CANVAS_DIRS.map((d) => moveAside(join(r.home, d, r.canvas), keep, resolve(r.home))))).flat() : [];
   if (!usableId(r.canvas)) console.error(`Obeya: the canvas id "${r.canvas}" names no folder of its own; its folders stay`);
   for (const repo of r.repos) {
     if (!repo.git || !(await there(repo.path))) continue;
@@ -60,19 +60,21 @@ export async function removeCanvasRemains(r: CanvasRemains): Promise<{ removed: 
  * id starts without it; returns where it went. Where a path in `keep` (a repository, a clone the
  * owner listed) lies inside it, only what is beside that path moves, level by level.
  */
-async function moveAside(dir: string, keep: string[]): Promise<string[]> {
+async function moveAside(dir: string, keep: string[], home: string): Promise<string[]> {
   const at = await lstat(dir).catch(() => null);
   if (!at) return [];
   // by its name here, and where it really lies (a folder of Obeya's home reached through a link)
   const real = await realpath(dir).catch(() => dir);
   const under = (k: string, d: string) => k === d || k.startsWith(d + sep);
   const inside = keep.filter((k) => under(k, dir) || under(k, real));
-  if (inside.some((k) => k === dir || k === real)) return [];
+  // a folder in Obeya's home that is kept (listed as a canvas's folder, say) is kept whole: nothing in it goes;
+  // a repository Obeya's home lies in (one at the user's home folder) holds nothing of that
+  if (keep.some((k) => under(k, home) && (under(dir, k) || under(real, k)))) return [];
   if (inside.length) {
     // a link is never followed: what it leads to is not Obeya's
     if (!at.isDirectory()) return [];
     const names = await readdir(dir).catch(() => [] as string[]);
-    return (await Promise.all(names.map((name) => moveAside(join(dir, name), inside)))).flat();
+    return (await Promise.all(names.map((name) => moveAside(join(dir, name), keep, home)))).flat();
   }
   const to = `${dir}.deleted-${Date.now()}`;
   try {

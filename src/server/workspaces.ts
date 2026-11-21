@@ -2338,10 +2338,10 @@ export class Workspaces implements CardWorkspaces {
   /**
    * The canvas is being deleted: what ends the apps and other processes that run from the
    * workspaces Obeya made on this machine, so that their folders can go, read now, while they are
-   * still registered. Clones the owner listed are left as they are, also one in Obeya's own directory.
+   * still registered. Clones the owner listed (`listed`) are left as they are, also one in Obeya's own directory.
    */
-  quietOwn(): () => Promise<void> {
-    const own = this.list().filter((w) => hostName(w.path) === null && dirname(w.path) === this.o.dir && (!this.cloned(w.path) || this.made(w.path)));
+  quietOwn(listed: string[] = []): () => Promise<void> {
+    const own = this.list().filter((w) => hostName(w.path) === null && dirname(w.path) === this.o.dir && !listed.includes(w.path) && (!this.cloned(w.path) || this.made(w.path)));
     return async () => void (await Promise.all(own.map((w) => this.quiet(w.path).catch(() => {}))));
   }
 

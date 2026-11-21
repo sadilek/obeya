@@ -10,7 +10,7 @@ import { Answers, answersDir, answerTag, questionTask } from './answers';
 import type { CanvasRemains } from './canvas-delete';
 import { type DefaultRead, keepCanvasId, keepRepoIds, listedClones, machineSettings, namesClones, originUrl, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, upstreamOf, visibilityKey } from './canvas-config';
 import type { Voicing } from './walkthrough';
-import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
+import { demoDirectory, expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { demoFile } from './demo-files';
 import { openWithSystem } from './machine';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
@@ -2399,7 +2399,23 @@ export class CanvasRuntime {
 
   /** The repositories it runs and the clones they list: what deleting another canvas never touches. */
   ownPaths(): string[] {
-    return this.repos.flatMap((r) => [r.info.path, ...(r.config.workspaces ?? [])].map((p) => resolve(p)));
+    return this.repos.flatMap((r) => [r.info.path, ...(r.config.workspaces ?? [])].map((p) => resolve(expandHome(p))));
+  }
+
+  /**
+   * Whether the clone at `kept` holds work on `branch` that `main` lacks and goes with the canvas: a
+   * clone Obeya made in its own folder for it, here; one the owner listed, or on another machine, stays.
+   */
+  private async keptWork(kept: string, branch: string, main: string): Promise<boolean> {
+    const own = resolve(this.deps.home, 'workspaces', this.id);
+    if (/^ssh:\/\//.test(kept) || !resolve(kept).startsWith(own + sep)) return false;
+    if (this.repos.some((r) => (r.config.workspaces ?? []).some((w) => resolve(expandHome(w)) === resolve(kept)))) return false;
+    for (const base of [`origin/${main}`, main]) {
+      const ahead = await gitTry(kept, 'rev-list', '--count', '--cherry-pick', '--right-only', `${base}...${branch}`);
+      if (ahead !== null) return ahead !== '0';
+    }
+    // git could not tell: what the owner is told goes is rather too much than too little
+    return true;
   }
 
   /** What deleting the canvas takes with it, counted now (`CanvasDeletion`), but for what the configuration says of it. */
@@ -2416,8 +2432,9 @@ export class CanvasRuntime {
         const repo = this.repo(r.repo ?? this.repos[0]?.ref.id);
         if (!repo || repo.workspaces.mode === 'folder') return false;
         if (await repo.workspaces.hasWork(r.id).catch(() => true)) return true;
-        // work set aside in a clone (archived, or the clone given to another card) stays on its branch there, which goes with the canvas
-        if (r.kept_in) return true;
+        // work set aside in a clone (archived, or the clone given to another card) stays on its branch there:
+        // lost where that clone is one Obeya made for the canvas on this machine, which goes with it
+        if (r.kept_in) return r.branch ? this.keptWork(r.kept_in, r.branch, repo.info.branch) : false;
         // a branch without a workspace (its worktree gone) with commits main does not have
         if (!r.branch || r.adopted || !branches.get(repo.ref.id)?.has(r.branch)) return false;
         const ahead = await gitTry(repo.info.path, 'rev-list', '--count', '--cherry-pick', '--right-only', `${repo.info.branch}...${r.branch}`);
@@ -2450,9 +2467,9 @@ export class CanvasRuntime {
       repos: this.repos.map((r) => ({
         path: r.info.path,
         git: !r.info.folder,
-        listed: (r.config.workspaces ?? []).map((w) => resolve(w)),
+        listed: (r.config.workspaces ?? []).map((w) => resolve(expandHome(w))),
         branches: [...new Set(cards.filter((c) => c.branch && !c.adopted && (c.repo ?? this.repos[0]!.ref.id) === r.ref.id).map((c) => c.branch!))],
-        quiet: r.workspaces instanceof Workspaces ? r.workspaces.quietOwn() : () => Promise.resolve(),
+        quiet: r.workspaces instanceof Workspaces ? r.workspaces.quietOwn((r.config.workspaces ?? []).map((w) => resolve(expandHome(w)))) : () => Promise.resolve(),
       })),
     };
     this.retiring = null;

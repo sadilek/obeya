@@ -6,6 +6,7 @@ import { ConfigError } from './canvas-config';
 import { BadRequest } from './board';
 import { type CanvasRemains, removeCanvasRemains } from './canvas-delete';
 import { Listeners } from '../core/watched';
+import { expandHome } from '../../plugin/skills/demo/lib/settings.ts';
 
 /**
  * Starts the canvases; one that does not start is left out, with why in Obeya's log and in
@@ -177,7 +178,7 @@ export class Canvases extends Listeners {
     // whatever the configuration lists stays, on any canvas, wherever it lies: as it ran, and as just saved
     const keep = [
       ...this.list.flatMap((c) => c.ownPaths()),
-      ...[...(this.saved?.values() ?? []), ...written].flatMap((c) => c.repos.flatMap((r) => [r.path, ...(r.workspaces ?? [])])).map((p) => resolve(p)),
+      ...[...(this.saved?.values() ?? []), ...written].flatMap((c) => c.repos.flatMap((r) => [r.path, ...(r.workspaces ?? [])])).map((p) => resolve(expandHome(p))),
     ];
     const remains: CanvasRemains[] = [];
     for (const id of ids) {

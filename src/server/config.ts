@@ -657,7 +657,26 @@ export class Config {
    * out that it does not name (renamed without its id, or added since the command was recorded)
    * keeps the whole save from happening.
    */
-  async save(input: unknown, o: { deletes?: string[] } = {}): Promise<ConfigSaved> {
+  save(input: unknown, o: { deletes?: string[] } = {}): Promise<ConfigSaved> {
+    return this.oneAtATime(() => this.saveNow(input, o));
+  }
+
+  /**
+   * Saves and deletes one after the other: what one reads of the saved configuration (the canvases a
+   * save leaves out) is still the configuration when it writes, and when the canvases take it over.
+   */
+  private oneAtATime<T>(step: () => Promise<T>): Promise<T> {
+    const run = this.writing.then(step, step);
+    this.writing = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
+  }
+
+  private writing: Promise<void> = Promise.resolve();
+
+  private async saveNow(input: unknown, o: { deletes?: string[] }): Promise<ConfigSaved> {
     const { canvases, resolved, problems: all } = await this.check(input);
     const problems = all.filter(blocksSaving);
     if (problems.length) throw new BadRequest('config', problems.map((p) => p.detail).join('; '));
@@ -689,7 +708,11 @@ export class Config {
    * from the configuration, the running canvases and the database, and its folders are out of the
    * way of a canvas added again under its id.
    */
-  async deleteCanvas(id: string): Promise<{}> {
+  deleteCanvas(id: string): Promise<{}> {
+    return this.oneAtATime(() => this.deleteNow(id));
+  }
+
+  private async deleteNow(id: string): Promise<{}> {
     if (!this.o.deleteCanvases) throw new BadRequest('config', 'this Obeya does not delete canvases while it runs');
     const read = this.current();
     const { canvases, resolved } = await this.checkSaved();

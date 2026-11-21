@@ -225,8 +225,17 @@ test('a canvas whose name names no folder of its own gets its id from its reposi
 test('work a card set aside in a clone, or left on its branch without a workspace, counts as lost', async () => {
   await open([{ name: 'Shop', repos: [{ path: shop, settings: { land: 'pr' } }] }, both()[1]!]);
   const c = set.get('shop')!;
+  // its clone, one Obeya made for the canvas, holds its branch with a commit main lacks
   const parked = c.board.create({ title: 'Parked', x: 0, y: 0 });
-  store.update(parked.id, { kept_in: join(home, 'workspaces', 'shop', 'repo', '1') });
+  const clone = gitClone(shop, join(home, 'workspaces', 'shop', 'repo', '1'));
+  git(clone, 'checkout', '-q', '-b', 'obeya/parked');
+  commit(clone, 'parked.ts');
+  store.update(parked.id, { kept_in: clone, branch: 'obeya/parked' });
+  // one set aside without work of its own: nothing is lost
+  const clean = c.board.create({ title: 'Clean', x: 0, y: 0 });
+  const other = gitClone(shop, join(home, 'workspaces', 'shop', 'repo', '2'));
+  git(other, 'checkout', '-q', '-b', 'obeya/clean');
+  store.update(clean.id, { kept_in: other, branch: 'obeya/clean' });
   // a branch with a commit main does not have, its worktree gone
   const branched = c.board.create({ title: 'Branched', x: 0, y: 0 });
   git(shop, 'branch', 'obeya/branched');
@@ -265,8 +274,30 @@ test('a delete while another save changed the configuration meanwhile is refused
   await open(both());
   await config.checkSaved();
   const deleting = refusal(() => config.deleteCanvas('shop'));
-  // saved by hand (or another tab) between the dialog's read and the delete
+  // saved by hand (or another tab) between the dialog's read and the delete, while it checks what is saved
+  await new Promise((r) => setTimeout(r, 0));
   writeFileSync(file(), `${JSON.stringify([...both(), { name: 'Wiki', repos: [{ path: blog }] }], null, 1)}\n`);
   expect(await deleting).toBe('config');
   expect(set.get('shop')).toBeDefined();
+});
+
+test('a canvas served under an id that names no folder before keeps it, with its cards, and deleting it leaves every folder alone', async () => {
+  store.ensureCanvas('', '商店');
+  store.insert([{ canvas_id: '', kind: 'task', title: 'From before', x: 0, y: 0 }]);
+  await open([{ name: '商店', repos: [{ path: shop, settings: { land: 'pr' } }] }, both()[1]!]);
+  expect(set.all().map((c) => c.id).sort()).toEqual(['', 'blog']);
+  mkdirSync(join(home, 'workspaces', 'blog'), { recursive: true });
+  writeFileSync(join(home, 'workspaces', 'blog', 'x'), 'x');
+  await config.save([both()[1]!], { deletes: [''] });
+  expect(set.all().map((c) => c.id)).toEqual(['blog']);
+  expect(readFileSync(join(home, 'workspaces', 'blog', 'x'), 'utf8')).toBe('x');
+});
+
+test('saves and deletes run one after the other: a delete waits for the save before it, and keeps what that save added', async () => {
+  await open(both());
+  const wiki = gitRepo(join(dir, 'wiki'));
+  const adding = config.save([...both(), { name: 'Wiki', repos: [{ path: wiki, settings: { land: 'pr' } }] }]);
+  const deleting = config.deleteCanvas('shop');
+  await Promise.all([adding, deleting]);
+  expect(saved().map((c) => c.name)).toEqual(['Blog', 'Wiki']);
 });

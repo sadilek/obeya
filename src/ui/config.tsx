@@ -371,6 +371,8 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   };
   const saveCanvases = async () => {
     let applies = false;
+    // the rows as saved, by their keys: one moved meanwhile still gets the id of its own canvas
+    const keys = rows.map((r) => r.key);
     const ok = await act(async () => {
       const { restarting, applied } = await api.saveConfig(draft);
       // what is saved now is the draft as last checked; settings applied at once change what the
@@ -381,8 +383,13 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
       // a canvas new in the draft takes the id it was saved under, by its place in the list: never by its
       // text, which saving may have tidied (a path's spaces trimmed, say), so it never shows twice
       const pins = checked;
-      if (pins && pins.resolved.length === draft.length)
-        setRows((rows) => (rows.length === pins.resolved.length ? rows.map((r, i) => (r.origin ? r : { ...r, origin: pins.resolved[i]?.id ?? null })) : rows));
+      if (pins && pins.resolved.length === keys.length)
+        setRows((rows) =>
+          rows.map((r) => {
+            const i = keys.indexOf(r.key);
+            return r.origin || i < 0 ? r : { ...r, origin: pins.resolved[i]?.id ?? null };
+          }),
+        );
       setView({ ...(fresh ?? view!), canvases: draft, restarting });
       checkSaved();
       setStatus(restarting ? c.saved : applied ? (restartsAgents(view!.canvases, draft) ? c.savedRestarts : c.savedApplied) : c.savedOnly);
@@ -2561,6 +2568,7 @@ function DeletePanel({ id, name, repos, othersChanged, onDelete, onCancel }: { i
         {actions()}
       </div>
     );
+  const cards = facts.running.filter((x) => !x.lookUp).length;
   if (facts.running.length)
     return (
       <div className="cfg-delete busy" role="region" aria-label={d.ask(name)}>
@@ -2578,9 +2586,10 @@ function DeletePanel({ id, name, repos, othersChanged, onDelete, onCancel }: { i
         <p className="hint">{pausing ? d.pausing : d.atWorkHint}</p>
         {status && <p className="hint err">{status}</p>}
         {actions(
-          !pausing && (
+          // a look-up in the sheet has no pause: it is waited for
+          !pausing && cards > 0 && (
             <button className="btn" disabled={busy} onClick={() => void act(() => api.pauseAgents(id)).then((ok) => ok && setPausing(true))}>
-              {d.pause(facts.running.length)}
+              {d.pause(cards)}
             </button>
           ),
         )}

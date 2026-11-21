@@ -178,7 +178,8 @@ export function resolveCanvas(
   // so is one whose name or id gives no id that names a folder of its own (`usableId`: a name in another
   // script than Latin, punctuation alone)
   const given = config.id ? slug(config.id) : config.name ? slug(config.name) : '';
-  const namedAfter = usableId(given) ? undefined : reads[0]!.info.path;
+  // one served under such an id before keeps it, and its cards with it: only its folders are never deleted
+  const namedAfter = usableId(given) || ((config.id || config.name) && store.hasCards(given)) ? undefined : reads[0]!.info.path;
   const id = namedAfter ? unnamedId(store, reads[0]!.info) : given;
   const kept = keptRepoIds(store, id);
   const refsOf = () => uniqueRefs(repos.map((x) => x.read.info), repos.map((x) => x.adapter), kept, () => store.cardRepos(id).concat(store.setting(id, 'home_repo') ?? []));
