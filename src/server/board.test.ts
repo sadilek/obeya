@@ -701,6 +701,18 @@ describe('archive', () => {
     expect(board.archiveDone()).toEqual([]);
   });
 
+  test('a finished card marked to check by hand stays on the canvas until the mark is off', () => {
+    const a = done('A');
+    const b = done('B');
+    board.patch(a.id, { check: 'the old webhooks are gone' });
+    expect(board.snapshot().items.find((i) => i.id === a.id)?.check).toBe('the old webhooks are gone');
+    expect(board.archiveDone()).toEqual([b.id]);
+    expect(() => board.archive([a.id])).toThrow(expect.objectContaining({ code: 'marked' }));
+    board.patch(a.id, { check: null });
+    expect(board.snapshot().items.find((i) => i.id === a.id)?.check).toBeUndefined();
+    expect(board.archiveDone()).toEqual([a.id]);
+  });
+
   test('the button counts exactly what archiving everything finished takes', () => {
     const a = done('A');
     // one whose agent still finishes after the landing, and a Question card, done when the owner says so

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { ANY, archiveRefusal, lineOf, openPerGroup, started, unreadPerProject, withSupplemented } from './card';
+import { ANY, archivedWithDone, archiveRefusal, lineOf, openPerGroup, started, unreadPerProject, withSupplemented } from './card';
 import { MESSAGES } from './messages';
 import type { Item, Talk } from './types';
 
@@ -62,6 +62,13 @@ describe('archiveRefusal', () => {
     expect(archiveRefusal(card({ state: 'live', finishing: true }))).toBe('notDone');
     expect(archiveRefusal(card({ state: 'working' }))).toBe('notDone');
     expect(archiveRefusal(card({ state: 'live', source: 'plan', parent: 'p' }))).toBe('planCard');
+  });
+
+  test('a card marked to check by hand stays on the canvas until the mark is off, with or without a note', () => {
+    expect(archiveRefusal(card({ state: 'live', check: '' }))).toBe('marked');
+    expect(archiveRefusal(card({ state: 'done', check: 'DNS on the server' }))).toBe('marked');
+    expect(archivedWithDone(card({ state: 'live', check: '' }))).toBe(false);
+    expect(archivedWithDone(card({ state: 'live' }))).toBe(true);
   });
 
   test('a project goes once its work is done', () => {

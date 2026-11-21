@@ -187,14 +187,15 @@ export const DeleteButton = ({ onDelete }: { onDelete: () => void }) => (
  */
 export function ArchiveButton({ item, run, className = 'btn', label = t.archive.archive, hint }: { item: Item; run: Run; className?: string; label?: string; hint?: string }) {
   const title = plain(item.title);
-  // a stopped task whose workspace holds work stays on the canvas; the button says why
-  const held = archiveRefusal(item) === 'holdsWork';
+  // a stopped task whose workspace holds work stays on the canvas, as does one marked to check; the button says why
+  const refusal = archiveRefusal(item);
+  const held = refusal === 'holdsWork' || refusal === 'marked';
   return item.archivedAt ? (
     <button className="btn" onClick={() => run(() => api.unarchive(item.id), { close: true, ack: t.archive.unarchived(title) })}>
       {t.archive.unarchive}
     </button>
   ) : (
-    <button className={className} disabled={held} title={held ? t.archive.holdsWork : hint} onClick={() => run(() => api.archive(item.id), { close: true, ack: t.archive.archived(title), undo: () => api.unarchive(item.id) })}>
+    <button className={className} disabled={held} title={refusal === 'marked' ? t.check.archiveHeld : held ? t.archive.holdsWork : hint} onClick={() => run(() => api.archive(item.id), { close: true, ack: t.archive.archived(title), undo: () => api.unarchive(item.id) })}>
       {label}
     </button>
   );

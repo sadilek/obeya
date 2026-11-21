@@ -364,6 +364,12 @@ export interface Item {
   collapsed?: true;
   /** The group the card belongs to (a `Group` id); a workstream's is its project's. */
   group?: string;
+  /**
+   * A task of the owner's they marked to check something by hand (after its landing, say), with
+   * their note on what (empty without one): it stands out on the canvas and stays out of the
+   * archive until they take the mark off. Its agent knows nothing of it.
+   */
+  check?: string;
 }
 
 /**
@@ -1442,6 +1448,8 @@ export interface CardPatch {
   newRepo?: Pick<NewRepo, 'path' | 'canvas' | 'from'> | null;
   /** In a fork (`RepoRef.upstream`), until the approval: whether the work goes to the original repository as a pull request too (`Item.upstream`). */
   upstream?: boolean;
+  /** A task of the owner's: marked to check by hand, with their note (`Item.check`), or the mark taken off (null). */
+  check?: string | null;
 }
 
 /** Owner actions on a card's work, posted to `/api/c/:canvas/cards/:id/act`. */
@@ -1727,6 +1735,8 @@ export type ErrorCode =
   | 'notDone'
   /** A stopped card whose workspace holds work stays on the canvas. */
   | 'holdsWork'
+  /** A card the owner marked to check by hand stays on the canvas until they take the mark off. */
+  | 'marked'
   | 'notArchived'
   | 'notIdea'
   /** Merging or deleting by the Coordinator: the card is no planned task nobody has worked on (any more). */

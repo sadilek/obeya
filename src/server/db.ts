@@ -153,6 +153,8 @@ export interface CardRow {
   deps: Json<StoredDeps> | null;
   /** 1 while the owner has a project folded to its head: its workstreams are not shown on the canvas. */
   collapsed: number;
+  /** The owner's note on what to check by hand on the card (`Item.check`), empty without one; null while it is not marked. */
+  check_note: string | null;
   /**
    * The clone (`ssh://<host>/…` on a host) that holds the newest state of the card's branch since
    * the owner took its workspace from it, its uncommitted work in a commit of Obeya's on top; gone
@@ -639,6 +641,8 @@ export const MIGRATIONS = [
     prints TEXT NOT NULL,
     at TEXT NOT NULL
   );`,
+  // a task the owner marked to check by hand, with their note (`CardRow.check_note`)
+  'ALTER TABLE cards ADD COLUMN check_note TEXT;',
 ];
 
 /**
