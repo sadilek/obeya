@@ -1799,6 +1799,12 @@ export type ErrorCode =
   | 'land'
   /** A configuration with problems; they come with it. */
   | 'config'
+  /** A canvas is not deleted while one of its agents is at work (or it is still starting); which ones comes with it. */
+  | 'canvasAtWork'
+  /** The only canvas is not deleted: Obeya needs one. */
+  | 'lastCanvas'
+  /** Saving the configuration does not remove a canvas: its bin deletes it, on its own. */
+  | 'canvasLeft'
   /** A voice's sample could not be made; why comes with it. */
   | 'voiceSample'
   /** A voice is being installed already. */

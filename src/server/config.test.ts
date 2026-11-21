@@ -282,7 +282,8 @@ describe("Obeya's configuration", () => {
     expect(restarts).toBe(1);
     expect(c.view().restarting).toBe(true);
     // saved again before the restart: the file has the latest, and the restart is already on its way
-    (await c.save([{ repos: [{ path: api }] }]));
+    (await c.save([{ repos: [{ path: web }] }]));
+    expect(readConfigFile(file)).toEqual([{ repos: [{ path: web }] }]);
     expect(restarts).toBe(1);
   });
 
@@ -829,8 +830,8 @@ describe('the configuration over HTTP', () => {
   });
 
   test('a configuration command of the Coordinator saves it after the undo window', async () => {
-    await canvas.run({ do: 'configure', canvases: [{ name: 'Neu', repos: [{ path: web }] }] });
-    expect(readConfigFile(file)).toEqual([{ name: 'Neu', repos: [{ path: web }] }]);
+    await canvas.run({ do: 'configure', canvases: [{ repos: [{ path: web }, { path: api }] }] });
+    expect(readConfigFile(file)).toEqual([{ repos: [{ path: web }, { path: api }] }]);
     expect(restarts).toBe(1);
   });
 });

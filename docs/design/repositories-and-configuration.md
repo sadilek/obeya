@@ -369,8 +369,14 @@ leaving what was open behind it as it was). Its close button stays at the top ri
 the section scrolls, so a click meant to close never lands on what scrolled under it. What removes
 an entry (a canvas, a repository, a machine) is a waste bin, not a cross that passes for a close
 button, and shows only while the pointer or the focus is on its entry (a canvas: its title line; a repository: its path),
-always where nothing hovers (touch). An unsaved draft survives per tab, also a reload or
-restart. Its sections, listed on the left and shown one at a time (the last one chosen per tab):
+always where nothing hovers (touch); a canvas's bin opens a panel that deletes it (see Deleting a
+canvas), not a change of the draft. An unsaved draft survives per tab, also a reload or restart.
+Closing the dialog (its close button, Esc, a press on the margin) while the canvases' or the demo
+settings' draft is not saved asks first: "Unsaved changes", naming the canvases changed (or "the
+order of the canvases") and Demos, with "Discard changes", "Stay" and "Save". "Save" saves and
+closes, but where saving shows problems the dialog stays open on them; "Discard changes" resets the
+drafts and closes; "Stay", Esc or a press beside it returns. A step that leaves the dialog for
+something else (Obeya's conversation, connecting a phone) keeps the draft without asking. Its sections, listed on the left and shown one at a time (the last one chosen per tab):
 Canvases, a heading with each canvas indented under it as a section of its own and "+ Canvas"
 last (see Canvases), Agents and models (also the usage limits in the bar and the costs), Voice input, Demos,
 Other devices (see Other devices) and General (languages, light or dark, the server); below them "Check setup" and "Report a wish or
@@ -397,7 +403,59 @@ several canvases ↑ and ↓ that move it one place, as in the queue), its name,
 as tabs (the home repository first, each counting its problems), with "+ Repository" beside them;
 one repository shows at a time. A move is a change of the draft like any other. All canvases are
 saved together with "Save" at the bottom of every canvas's page, which says so while several
-have changes. Renaming a canvas keeps its id and cards.
+have changes. Renaming a canvas keeps its id and cards. Save covers edits only: it removes no canvas
+the configuration has saved (the server refuses one left out), and a draft that lacks one (kept from
+before, when the bin took a canvas out of the draft) gets it back at its place; a canvas deleted
+meanwhile (in another tab, by the Coordinator) leaves the draft. A canvas added in the dialog and not
+saved yet has no panel: its bin just takes it out of the draft, as does the bin of a saved canvas
+whose entry does not resolve (its folder gone, say), which Save then drops from the file, its cards
+left in the database.
+
+#### Deleting a canvas
+
+The bin on a saved canvas's title line opens a panel right under it, apart from the draft: "Delete
+Shop now?", that its cards go with their conversations and workspaces (how many, how many of them
+in the archive), how many hold work that never landed ("it is lost") and how many have a pull
+request still open ("it stays open, but Obeya no longer follows it"), and that the repository stays
+as it is (a folder without git keeps whatever the agents changed in it); "Delete Shop" in the
+destructive style beside "Cancel", and, where the draft holds other changes, that they stay in it.
+The counts come from the server when the panel opens and every few seconds while it is open:
+unlanded work is what git finds in the cards' workspaces, not guessed from their states. "Delete"
+takes effect at once: the canvas leaves the configuration's file, stops and is gone from every list;
+the draft's other changes stay, waiting for Save. A page showing it (another tab, the phone) goes to
+the first canvas; where that is the page the dialog deleted it from, the dialog opens again there
+with the draft and "Shop deleted.".
+
+While an agent of the canvas is at work, starting (its workspace being made ready), in a turn,
+landing or being approved, or an idea's or a Question card's agent replying, the panel has no Delete:
+it names those cards as links (with their status lines) and says to stop them or wait, with "Pause
+its 2 running agents", the canvas's pause (see Pausing a canvas's agents in Communication); it shows
+Delete once they are done. Cards waiting for the owner, in a pull request, queued, paused or snoozed
+hold nothing: they go with the canvas. The delete is a request of its own and the server decides,
+not the page: it looks for agents at work at that moment and refuses with their names where one
+started since the panel counted, and nothing lies between that look and the canvas stopping, so no
+agent starts in between. The only canvas is not deleted: Obeya needs one.
+
+What goes: every row the canvas has in the database (its cards, archived and deleted ones too, with
+their logs, decisions, friction and costs; groups; the Coordinator's sheet, threads and memory;
+proposals of settings; commands in their undo window; its settings), and the canvas itself, so that
+anything of it still under way writes nothing back; cards of other canvases that came from one of
+its cards keep no reference to it. Its folders in Obeya's home (`workspaces/`, `read/`, `images/`,
+`files/`, `answers/` and `undo/`, each under the canvas's id) move aside at once and are removed in
+the background, after the apps and processes running from its workspaces ended: the clones and
+worktrees Obeya made for it, read trees, screenshots, files, looked-up answers and a folder's undo
+snapshots. Git forgets its worktrees, and the cards' local branches go from the repository (a branch
+of the owner's that a card took over stays). Never touched: the repository or folder itself, clones
+the owner listed, clones on other machines, branches pushed to a remote, open pull requests and
+shared demo pages; nor anything a canvas of the configuration lists, wherever it lies, and a link in
+those folders is not followed. A repository that had left the canvas before keeps the branches its
+cards made there. Its cards' numbers are not given again (see Card numbers in The canvas). A canvas
+added again under the same name starts empty.
+
+The Coordinator's `configure` follows the same rules: a canvas left out of the list is deleted, as
+with the bin, and refused while one of its agents is at work, both when the Coordinator calls it
+(so it tells the owner) and when it runs after the undo window, which passes before anything is
+deleted. A command that deleted its own canvas ends the commands said with it.
 
 A repository's page is its path, its problems, then its settings in groups under a small heading
 each, always shown: where its agents work ("Agents work in": worktrees or clones, with its
@@ -505,7 +563,9 @@ repository's agents once they paused, as any change to the repository's entry do
 
 A saved configuration, and a new version of a repository's `.obeya/settings.json`, apply while Obeya
 runs, without a restart or reload. A new canvas starts at once (the setup assistant's with its welcome
-card), a changed one takes the change, a moved one moves in every list at once, a removed one stops once its agents paused, its cards kept. A
+card), a changed one takes the change, a moved one moves in every list at once, a deleted one stops
+at once and goes with its cards (see Deleting a canvas); one no longer in a file edited by hand stops
+once its agents paused, its cards kept in the database. A
 new name, a new repository and settings that leave the agents where they work apply at once.
 
 What a repository's agents are set up by (its clones, existing workspaces, slots, other machines,
@@ -716,6 +776,20 @@ its status lines in German).
   idea's agent or to Obeya), and the picker then shows the target. Rejected: the picker always
   visible; a button of its own.
 - **A broken canvas or repository leaves the rest running** (2026-10-09).
+- **Removing a canvas deletes it, at once, apart from the draft** (sadilek/obeya#82; the maintainer's
+  design 2026-11-11, the way to show it chosen by the owner 2026-11-19): the bin used to take a canvas
+  out of the draft, Save then stopped it once its agents paused, and its cards stayed in the database
+  for its return, unseen, with its agents' workspaces; nothing asked first. Now a removal is a real
+  delete (added back, the canvas starts empty), blocked while one of its agents is at work, with no
+  confirmation dialog and no undo: the panel under the title line is the deliberate step, and the
+  delete is its own request, so it never rides along with routine edits under Save, several canvases
+  are simply several deletions, and whether an agent runs is checked at the click, not at a later
+  Save. Rejected, prototyped side by side: an "On Save" list above Save naming what saving will
+  delete (O1), a "Deleted on Save" group in the list of canvases (O2), and a counter of changes beside
+  Save (O3): each kept the delete in the draft, so a routine Save carried it along, Save needed a
+  label of its own ("Save and delete"), and an agent that started between the bin and Save turned
+  the whole save away. Leaving the dialog with a draft not saved asks (Save, Discard changes, Stay),
+  since the draft only survived silently before.
 - **The configuration shows before its check, whose git calls run in parallel off the server's
   thread** (2026-10-15): run one after another (109 calls for three canvases), they froze the server,
   every page load included, for seconds; now 41 calls take about 60 ms.

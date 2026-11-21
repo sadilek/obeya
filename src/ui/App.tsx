@@ -24,7 +24,7 @@ import { ArchivePill } from './archive';
 import { useBarFit } from './barFit';
 import { UsagePill } from './usage';
 import { CostsPill } from './costs';
-import { ConfigDialog, Problem, showCanvasesSection, showDemosSection, showDevicesSection, showRepoClones } from './config';
+import { ConfigDialog, Problem, reopensConfig, showCanvasesSection, showDemosSection, showDevicesSection, showRepoClones } from './config';
 import { PhoneDialog } from './access';
 import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
@@ -342,7 +342,8 @@ function Canvas({
   const [foundId, setFoundId] = useState<string | null>(null);
   // where the search's list stands while open: a card behind it is out of sight
   const [searchCover, setSearchCover] = useState<DOMRect | undefined>(undefined);
-  const [cOn, setCOn, cOnRef] = useLive(false);
+  // open again on the canvas the page went to after the dialog deleted the one it showed
+  const [cOn, setCOn, cOnRef] = useLive(reopensConfig);
   // the navigation pinned as a sidebar on the left (src/ui/nav.tsx)
   const [pinned, setPinned, pinnedRef] = useLive(loadPinned);
   const pin = (on: boolean) => {
@@ -373,7 +374,9 @@ function Canvas({
   const toggleArchive = () => setDrop(dropRef.current === 'archive' ? null : 'archive');
   const toggleSearch = () => setDrop(dropRef.current === 'search' ? null : 'search');
   // the configuration is a dialog over the page: what is open behind it stays as it was
-  const toggleConfig = () => setCOn(!cOnRef.current);
+  // closing it asks first where a draft is not saved (`ConfigDialog`)
+  const closeConfig = useRef(() => setCOn(false));
+  const toggleConfig = () => (cOnRef.current ? closeConfig.current() : setCOn(true));
   // asking Obeya about the configuration: its conversation in place of the dialog, ready to type into
   const talkFromConfig = () => {
     setCOn(false);
@@ -1228,7 +1231,7 @@ function Canvas({
     if (cOnRef.current) {
       if (e.key === 'Escape' && !document.querySelector('.setup')) {
         e.preventDefault();
-        setCOn(false);
+        closeConfig.current();
       }
       return;
     }
@@ -1600,6 +1603,7 @@ function Canvas({
           on={cOn}
           page={snapshot.canvas.id}
           onClose={() => setCOn(false)}
+          closeRef={closeConfig}
           onSetup={() => setSetupOn(true)}
           onTalk={talkFromConfig}
           onProblems={setConfigProblems}

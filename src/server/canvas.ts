@@ -7,6 +7,7 @@ import { mkdirSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { defaultsFor } from '../adapters';
 import { Answers, answersDir, answerTag, questionTask } from './answers';
+import type { CanvasRemains } from './canvas-delete';
 import { type DefaultRead, keepCanvasId, keepRepoIds, listedClones, machineSettings, namesClones, originUrl, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, upstreamOf, visibilityKey } from './canvas-config';
 import type { Voicing } from './walkthrough';
 import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
@@ -16,9 +17,9 @@ import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
 import type { Awaited, CardAction, CardPatch, Item, PendingRestart, RepoRef, ProposedSetting, Skill, SpotInput } from '../core/types';
-import { agentListens, awaited, awaitsContributorNext, untouched, finished, nameless, needsYou, pausable, halted, snoozable, laterTime, plannedToStart } from '../core/card';
+import { agentListens, awaited, awaitsContributorNext, untouched, finished, nameless, needsYou, pausable, pausableNow, halted, snoozable, laterTime, plannedToStart } from '../core/card';
 import { AGENT_DEFAULTS, agentDefault, type AgentRole, type AgentSetting, type Harness, otherHarness, replacement } from '../core/agents';
-import { type CanvasConfig, layerSettings, type RepoConfig, repoShape, type RepoSettings, type SettingsShared, SHARED_FIELDS, type DemoSite } from '../core/config';
+import { type CanvasConfig, type CanvasDeletion, layerSettings, type RepoConfig, repoShape, type RepoSettings, type SettingsShared, SHARED_FIELDS, type DemoSite } from '../core/config';
 import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, TITLE_MAX, replyNote } from './board';
 import { pathOfRef, repoOfRef } from './plan-ref';
@@ -2199,7 +2200,8 @@ export class CanvasRuntime {
         if ((c.do === 'start' || c.do === 'force') && c.images?.length) this.ideas.addTaskImages(c.card, c.images);
         return this.act(c.card, { action: c.do });
       case 'configure':
-        return this.deps.config?.save(c.canvases);
+        // a canvas left out is deleted, as with its bin in the dialog
+        return this.deps.config?.save(c.canvases, { deletes: true });
       case 'remember':
         return this.remember(c.text, c);
       case 'workRetro':
@@ -2339,6 +2341,71 @@ export class CanvasRuntime {
   /** The cards whose worker is in the middle of a turn, which a restart would cut off. */
   busy(): string[] {
     return this.repos.flatMap((r) => r.workers.busyCards());
+  }
+
+  /**
+   * The cards whose agent is at work now, which keep the canvas from being deleted (design:
+   * Deleting a canvas): starting (its workspace being made ready), in a turn, landing or being
+   * approved; an idea's or a Question card's agent replying. A card waiting for the owner, in a
+   * pull request, queued, paused or snoozed is not among them, even with a background task of its
+   * worker's still running.
+   */
+  atWork(): Item[] {
+    const busy = new Set(this.busy());
+    // a turn that ended and only waits for background work holds nothing where the card waits for the owner
+    return this.board.items().filter((i) => (busy.has(i.id) && (i.inTurn || !needsYou(i))) || pausableNow(i) || !!i.proposal?.revising);
+  }
+
+  /** The repositories it runs and the clones they list: what deleting another canvas never touches. */
+  ownPaths(): string[] {
+    return this.repos.flatMap((r) => [r.info.path, ...(r.config.workspaces ?? [])].map((p) => resolve(p)));
+  }
+
+  /** What deleting the canvas takes with it, counted now (`CanvasDeletion`), but for what the configuration says of it. */
+  async deletion(): Promise<Omit<CanvasDeletion, 'id' | 'name' | 'last'>> {
+    const rows = this.deps.store.everyCard(this.id).filter((r) => !r.deleted_at);
+    const items = this.board.items();
+    // what git finds in the workspaces they hold, not what their states suggest
+    const holds = await Promise.all(
+      rows.map(async (r) => {
+        const repo = this.repo(r.repo ?? this.repos[0]?.ref.id);
+        if (!repo || repo.workspaces.mode === 'folder') return false;
+        return repo.workspaces.hasWork(r.id).catch(() => true);
+      }),
+    );
+    return {
+      cards: rows.length,
+      archived: rows.filter((r) => r.archived_at).length,
+      unlanded: holds.filter(Boolean).length,
+      prs: items.filter((i) => !finished(i.state) && [i.pr, ...(i.morePrs ?? [])].some((p) => p && !p.merged && !p.closed)).length,
+      running: this.atWork().map((i) => ({ id: i.id, title: i.title, ...(i.short ? { short: i.short } : {}), ...(i.statusLine ? { statusLine: i.statusLine } : {}) })),
+      folder: this.repos.some((r) => r.workspaces.mode === 'folder'),
+    };
+  }
+
+  /**
+   * The canvas is being deleted: it stops at once, its agents with it, and nothing of it runs or
+   * starts again. Returns what is left of it on disk, for `removeCanvasRemains` once its rows are gone.
+   */
+  stopForDeletion(keep: string[]): CanvasRemains {
+    const cards = this.deps.store.everyCard(this.id);
+    const remains: CanvasRemains = {
+      canvas: this.id,
+      home: this.deps.home,
+      keep,
+      repos: this.repos.map((r) => ({
+        path: r.info.path,
+        git: !r.info.folder,
+        listed: (r.config.workspaces ?? []).map((w) => resolve(w)),
+        branches: [...new Set(cards.filter((c) => c.branch && !c.adopted && (c.repo ?? this.repos[0]!.ref.id) === r.ref.id).map((c) => c.branch!))],
+        quiet: r.workspaces instanceof Workspaces ? r.workspaces.quietOwn() : () => Promise.resolve(),
+      })),
+    };
+    this.retiring = null;
+    this.stopped = true;
+    this.shutdown();
+    console.log(`Obeya: the canvas ${this.id} is deleted; it stopped`);
+    return remains;
   }
 
   /** The owner came back to a page of this canvas: its open pull requests are looked at now, and its demo sites. */

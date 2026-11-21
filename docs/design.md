@@ -76,8 +76,8 @@ touches, and keep those current in the same change.
   the personal site, several machines on one site.
 - [Repositories and configuration](design/repositories-and-configuration.md) — canvases and
   repositories, main branch, read tree, plan docs (and how Obeya reads them), repository settings
-  (`.obeya/settings.json`, problems, trusting commands, writing them), the Configuration dialog,
-  live configuration, language.
+  (`.obeya/settings.json`, problems, trusting commands, writing them), the Configuration dialog
+  (deleting a canvas, asking before closing with changes not saved), live configuration, language.
 - [Running Obeya](design/running-obeya.md) — the server (who may talk to it, other devices, the
   phone view, notifications on the phone, stalls), setup assistant, setting up git in a folder,
   self-update (waiting for workers and the owner, pulling from the upstream), stopping.

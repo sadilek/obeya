@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { readShared, REPO_ADAPTER_DIR, REPO_SETTINGS_FILE } from '../adapters';
 import { settingsShape, withoutGone as goneSettings } from '../adapters/schema';
 import type { ProposedSetting } from '../core/types';
-import { blocksSaving, type CanvasConfig, type DemoSite, type ConfigChecked, type ConfigProblem, type ConfigSaved, type ConfigView, type RepoSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type SettingsShared, type SharedSettings, type ResolvedCanvas, layerSettings, type RepoTrust, type RepoValues, commandLines } from '../core/config';
+import { blocksSaving, type CanvasConfig, type CanvasDeletion, type DemoSite, type ConfigChecked, type ConfigProblem, type ConfigSaved, type ConfigView, type RepoSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type SettingsShared, type SharedSettings, type ResolvedCanvas, layerSettings, type RepoTrust, type RepoValues, commandLines } from '../core/config';
 import { expandHome } from '../../plugin/skills/demo/lib/settings.ts';
 import { BadRequest } from './board';
 import { type StartFailure } from './canvas';
@@ -217,6 +217,15 @@ export interface ConfigOptions {
   apply?: (canvases: CanvasConfig[], ids: (string | null)[]) => void | Promise<void>;
   /** The canvases, and repositories of those that run, that do not run as the configuration has them (`Canvases.failures`). */
   failures?: () => StartFailure[];
+  /**
+   * Deletes canvases with their cards (`Canvases.delete`), refused while one of their agents is at
+   * work: `saved` writes the configuration without them, right after that check.
+   */
+  deleteCanvases?: (ids: string[], saved: () => void) => Promise<{ removed: Promise<void> }>;
+  /** The titles of the running canvas's cards whose agent is at work now (`CanvasRuntime.atWork`). */
+  atWork?: (id: string) => string[];
+  /** What deleting a running canvas takes with it, counted now (`CanvasRuntime.deletion`); none for one that does not run. */
+  deletion?: (id: string) => Promise<Omit<CanvasDeletion, 'id' | 'name' | 'last'>> | undefined;
   /** Repositories' settings for everyone were committed: the running canvases read them again. */
   onSettings?: () => void;
   /** Where "Take over into the repository for everyone" opens its pull request. */
@@ -642,15 +651,24 @@ export class Config {
   /**
    * Saves a configuration that works, and the running canvases take it over (design: Live
    * configuration). Where they came from the command line, Obeya starts again with it where
-   * something restarts it.
+   * something restarts it. It removes no canvas that was saved before (`canvasLeft`): the dialog
+   * deletes one on its own (`deleteCanvas`), and only the Coordinator's `configure` (`deletes`)
+   * deletes those it leaves out, with their cards, as that does.
    */
-  async save(input: unknown): Promise<ConfigSaved> {
+  async save(input: unknown, o: { deletes?: boolean } = {}): Promise<ConfigSaved> {
     const { canvases, resolved, problems: all } = await this.check(input);
     const problems = all.filter(blocksSaving);
     if (problems.length) throw new BadRequest('config', problems.map((p) => p.detail).join('; '));
-    mkdirSync(dirname(this.o.file), { recursive: true });
-    writeFileSync(this.o.file, `${JSON.stringify(canvases, null, 2)}\n`);
-    this.read = undefined;
+    const left = await this.leftOut(resolved);
+    if (left.length && !o.deletes)
+      throw new BadRequest('canvasLeft', `saving removes no canvas: ${left.map((l) => l.name).join(', ')} missing from what was sent; a canvas is deleted with the bin beside its name`);
+    if (left.length) {
+      if (!this.o.deleteCanvases) throw new BadRequest('config', 'this Obeya does not delete canvases while it runs');
+      await this.o.deleteCanvases(
+        left.map((l) => l.id),
+        () => this.write(canvases),
+      );
+    } else this.write(canvases);
     if (this.o.source === 'file' && !this.restarting && this.o.apply) {
       console.log(`Obeya: configuration saved to ${this.o.file}; it applies at once`);
       // settles once the canvases took it over, git read without the server waiting
@@ -658,10 +676,76 @@ export class Config {
       return { restarting: false, applied: true };
     }
     console.log(`Obeya: configuration saved to ${this.o.file}`);
+    this.restartForFile();
+    return { restarting: this.restarting };
+  }
+
+  /**
+   * Deletes the canvas `id` with its cards (design: Deleting a canvas), apart from any draft:
+   * refused while one of its agents is at work, and for the only canvas. Settles once it is gone
+   * from the configuration, the running canvases and the database, and its folders are out of the
+   * way of a canvas added again under its id.
+   */
+  async deleteCanvas(id: string): Promise<{}> {
+    if (!this.o.deleteCanvases) throw new BadRequest('config', 'this Obeya does not delete canvases while it runs');
+    const read = this.current();
+    const { canvases, resolved } = await this.checkSaved();
+    const i = resolved.findIndex((r) => r?.id === id);
+    if (i < 0) throw new BadRequest('invalid', `no canvas ${id} in the configuration`);
+    if (canvases.length === 1) throw new BadRequest('lastCanvas', 'Obeya needs at least one canvas');
+    await this.o.deleteCanvases([id], () => {
+      // saved meanwhile (the dialog of another tab, the Coordinator): what was read is no longer the configuration
+      if (this.current() !== read) throw new BadRequest('config', 'the configuration changed meanwhile; try again');
+      this.write(canvases.filter((_, j) => j !== i));
+    });
+    console.log(`Obeya: the canvas ${id} is deleted, and saved without it to ${this.o.file}`);
+    if (this.o.source !== 'file') this.restartForFile();
+    return {};
+  }
+
+  /**
+   * The canvases saved now that a configuration resolved as `resolved` leaves out, which saving it
+   * with `deletes` deletes; with the titles of their cards whose agents are at work, which keep
+   * them from it. Known only where every canvas of the new configuration resolves: none
+   * otherwise. A saved canvas that does not resolve (its folder gone) has no id to go by: one left
+   * out leaves the file alone, its cards kept in the database.
+   */
+  async leftOut(resolved: (ResolvedCanvas | null)[]): Promise<{ id: string; name: string; atWork: string[] }[]> {
+    if (!resolved.every(Boolean)) return [];
+    const before = await this.checkSaved();
+    return before.resolved.flatMap((r) => (!r || resolved.some((x) => x?.id === r.id) ? [] : [{ id: r.id, name: r.name, atWork: this.o.atWork?.(r.id) ?? [] }]));
+  }
+
+  /** What deleting the canvas `id` would take with it, counted now (`CanvasDeletion`). */
+  async deletion(id: string): Promise<CanvasDeletion> {
+    const { canvases, resolved } = await this.checkSaved();
+    const r = resolved.find((x) => x?.id === id);
+    if (!r) throw new BadRequest('invalid', `no canvas ${id} in the configuration`);
+    // a canvas that does not run has nothing at work, and only its cards to count
+    const rows = this.o.store.everyCard(id).filter((c) => !c.deleted_at);
+    const counted = (await this.o.deletion?.(id)) ?? {
+      cards: rows.length,
+      archived: rows.filter((c) => c.archived_at).length,
+      unlanded: 0,
+      prs: 0,
+      running: [],
+      folder: r.repos.some((x) => x.folder),
+    };
+    return { id, name: r.name, last: canvases.length === 1, ...counted };
+  }
+
+  /** Writes the configuration to its file. */
+  private write(canvases: CanvasConfig[]) {
+    mkdirSync(dirname(this.o.file), { recursive: true });
+    writeFileSync(this.o.file, `${JSON.stringify(canvases, null, 2)}\n`);
+    this.read = undefined;
+  }
+
+  /** Canvases from the command line: Obeya starts again with the saved file, where something restarts it. */
+  private restartForFile() {
     if (this.o.restart && !this.restarting) {
       this.restarting = true;
       this.o.restart();
     }
-    return { restarting: this.restarting };
   }
 }

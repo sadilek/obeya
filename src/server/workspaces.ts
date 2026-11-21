@@ -2305,6 +2305,16 @@ export class Workspaces implements CardWorkspaces {
    * holds the files it has open: one left running would keep the removal from finishing, and run on
    * with nothing to find it by. Best effort: the folder goes either way.
    */
+  /**
+   * The canvas is being deleted: what ends the apps and other processes that run from the
+   * workspaces Obeya made on this machine, so that their folders can go, read now, while they are
+   * still registered. Clones the owner listed are left as they are.
+   */
+  quietOwn(): () => Promise<void> {
+    const own = this.list().filter((w) => hostName(w.path) === null && dirname(w.path) === this.o.dir);
+    return async () => void (await Promise.all(own.map((w) => this.quiet(w.path).catch(() => {}))));
+  }
+
   private async quiet(path: string) {
     if (this.o.stop) {
       const stopped = await runAppCommand(path, this.o.stop);
