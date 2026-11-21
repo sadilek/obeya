@@ -287,7 +287,11 @@ export interface Item {
   finishing?: boolean;
   /** While `finishing`: nothing just landed, the owner asked about the finished card and its agent answers. */
   followUp?: boolean;
-  /** While `followUp`: its agent needs a full clone to answer and waits, without a workspace, for the next free one. */
+  /**
+   * Its agent waits, without a workspace, for the next free clone: while `followUp`, it needs a full
+   * clone to answer; on a card waiting for the owner or in its pull request, its workspace went and
+   * something came for its agent (the owner's words, news of the pull request) that it hears there.
+   */
   waitsForClone?: true;
   /**
    * Its worker is in a turn right now, its background work included (a render, a watcher): what it

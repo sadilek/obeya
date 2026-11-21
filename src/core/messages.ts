@@ -265,8 +265,8 @@ const de = {
     /** A workstream no worker was on (stopped) is no longer in the plan doc on the default branch: its workspace goes back to the pool. */
     goneFreed: 'Nicht mehr im Plan-Doc auf dem Hauptbranch: Workspace freigegeben.',
     /** The card's workspace left the pool, its folder moved or deleted by hand; a card at work is planned again. */
-    workspaceGone: (path: string, planned: boolean) =>
-      `Den Workspace ${path} gibt es nicht mehr: freigegeben${planned ? ', die Karte ist wieder geplant' : ''}. Der nächste Start nimmt einen anderen.`,
+    workspaceGone: (path: string, then: 'planned' | 'start' | 'agent') =>
+      `Den Workspace ${path} gibt es nicht mehr: freigegeben${then === 'planned' ? ', die Karte ist wieder geplant' : ''}. ${then === 'agent' ? 'Ihr Agent nimmt einen neuen auf ihrem Branch, sobald etwas für ihn kommt.' : 'Der nächste Start nimmt einen anderen.'}`,
     prClosed: 'Pull Request ohne Merge geschlossen.',
     /** Taking back the owner's approval (design: Taking back an approval). */
     revoking: 'Nimmt die Freigabe zurück …',
@@ -391,6 +391,9 @@ const de = {
     waitsForWorkspace: 'Wartet auf Workspace',
     waitsForClone: 'Die Nachfrage wartet auf den nächsten freien Klon und geht dann von selbst weiter.',
     cloneFree: 'Ein Klon ist frei: Der Agent antwortet dort weiter.',
+    /** A card waiting for the owner or in its pull request had no workspace any more when something came for its agent. */
+    workspaceRegained: (path: string) => `Die Karte hatte keinen Workspace mehr: Ihr Agent arbeitet in einem neuen auf ihrem Branch weiter, ${path}.`,
+    awaitsClone: 'Die Karte hat keinen Workspace mehr, und kein Klon ist frei: Ihr Agent nimmt den nächsten freien und geht dann von selbst weiter.',
     preparingWorkspace: 'Bereitet den Workspace vor …',
     workspaceFailed: (detail: string) => `Der Workspace ließ sich nicht vorbereiten: ${detail}`,
   },
@@ -886,8 +889,8 @@ const en: Messages = {
     mergedTicked: 'Ticked off in the plan doc on the default branch: the pull request counts as merged. Live.',
     tickedFreed: 'Ticked off in the plan doc: workspace freed.',
     goneFreed: 'No longer in the plan doc on the default branch: workspace freed.',
-    workspaceGone: (path: string, planned: boolean) =>
-      `The workspace ${path} no longer exists: freed${planned ? ', the card is planned again' : ''}. The next start takes another.`,
+    workspaceGone: (path: string, then: 'planned' | 'start' | 'agent') =>
+      `The workspace ${path} no longer exists: freed${then === 'planned' ? ', the card is planned again' : ''}. ${then === 'agent' ? 'Its agent takes a fresh one on its branch as soon as something comes for it.' : 'The next start takes another.'}`,
     prClosed: 'Pull request closed without a merge.',
     revoking: 'Taking back the approval …',
     revokedApproval: 'Approval taken back: the next handover waits for you again instead of landing by itself.',
@@ -992,6 +995,8 @@ const en: Messages = {
     waitsForWorkspace: 'Waiting for a workspace',
     waitsForClone: 'The follow-up waits for the next free clone and then goes on by itself.',
     cloneFree: 'A clone is free: the agent goes on answering there.',
+    workspaceRegained: (path: string) => `The card had no workspace any more: its agent goes on in a fresh one on its branch, ${path}.`,
+    awaitsClone: 'The card has no workspace any more, and no clone is free: its agent takes the next free one and then goes on by itself.',
     preparingWorkspace: 'Preparing the workspace …',
     workspaceFailed: (detail: string) => `The workspace could not be prepared: ${detail}`,
   },

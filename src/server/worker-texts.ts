@@ -178,6 +178,10 @@ export const FOLLOW_UP_FOLDER =
 export const FOLLOW_UP =
   "Answer with reply (ask, for a decision that is the owner's). Commits you make here do not land: a change to the code the owner's words call for becomes a card of its own (propose_card). Workspace and session end once you end a turn with nothing left to wait for.";
 
+/** What a worker hears that goes on in a fresh workspace, at `path` on its `branch`, after the one it had went (`Workers.regain`). */
+export const regainedNote = (path: string, branch: string) =>
+  `Your workspace is gone (its folder was removed, or another card works in that clone now), so you go on in a fresh workspace at ${path} on your branch ${branch}, with the commits it holds; anything uncommitted there did not come along, and an app you ran there no longer runs.`;
+
 export const IN_WORKTREE =
   "No clone of the repository was free, so this is a temporary worktree, where the repository's app and tooling may not run. If answering needs a full clone, call need_clone and end your turn: Obeya resumes you in the next free clone.";
 

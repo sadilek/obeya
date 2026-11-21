@@ -675,6 +675,12 @@ export interface LeaseOptions {
    * forward to it, never reset.
    */
   adopt?: () => Promise<string | null>;
+  /**
+   * The branch holds the card's work already (a card that waits for the owner and lost its
+   * workspace): a clone that lacks it, and has no `from` to take it from, takes `origin`'s copy, else
+   * the checkout's; never a new branch off the main branch, which would lose that work.
+   */
+  keep?: boolean;
 }
 
 /**
@@ -1065,7 +1071,7 @@ export class Workspaces implements CardWorkspaces {
       this.releasing.delete(cardId);
       return { path: own, ready: this.preparing.get(cardId) ?? null };
     }
-    if (this.o.mode === 'clones') return this.leaseClone(cardId, branch, !!o.overSlots, o.from ?? null, o.start, o.adopt);
+    if (this.o.mode === 'clones') return this.leaseClone(cardId, branch, !!o.overSlots, o.from ?? null, o.start, o.adopt, !!o.keep);
     if (!o.overSlots && !this.room(null)) throw new WorkspaceError(SHORT_TEXT.slots, SHORT_CODE.slots);
     return this.leaseWorktree(cardId, branch, o.start, o.adopt);
   }
@@ -2212,7 +2218,7 @@ export class Workspaces implements CardWorkspaces {
    * card's branch. One that is not clean now gives way to the next `place` finds, the lease moving
    * there; where none is left, `ready` fails with the shortage.
    */
-  private leaseClone(cardId: string, branch: string, overSlots: boolean, from: string | null, start?: () => Promise<string | null>, adopt?: () => Promise<string | null>): Lease {
+  private leaseClone(cardId: string, branch: string, overSlots: boolean, from: string | null, start?: () => Promise<string | null>, adopt?: () => Promise<string | null>, keep = false): Lease {
     const looking = new Set(this.looking.keys());
     const found = this.place(overSlots, from);
     if ('short' in found) throw new WorkspaceError(SHORT_TEXT[found.short], SHORT_CODE[found.short]);
@@ -2254,7 +2260,11 @@ export class Workspaces implements CardWorkspaces {
         const adopted = adopt ? await this.startIn(path, adopt) : null;
         // the owner's branch never becomes a branch of the main branch's: a clone that cannot have it (on another machine, a branch only in the checkout) fails
         if (adopt && !adopted && !exists) throw new WorkspaceError(`the branch ${branch} is not on origin, and this clone cannot fetch it from the checkout`);
-        if (exists) {
+        // a branch that holds the card's work and is not in this clone: `origin`'s copy, else the checkout's
+        const held = keep && !exists ? await this.heldCopy(path, branch) : null;
+        if (keep && !exists && !held) throw new WorkspaceError(`the branch ${branch} is in no clone, not on origin and not in the checkout`);
+        if (held) await gitAsync(path, 'checkout', '--quiet', '-b', branch, held);
+        else if (exists) {
           await gitAsync(path, 'checkout', '--quiet', branch);
           // a copy left in this clone that is behind the owner's branch goes forward to it; one with commits of its own stays
           if (adopted && !kept && (await gitAsync(path, 'rev-parse', 'HEAD')) !== adopted && (await isAncestor(path, 'HEAD', adopted, false))) await gitAsync(path, 'merge', '--quiet', '--ff-only', adopted);
@@ -2395,6 +2405,13 @@ export class Workspaces implements CardWorkspaces {
     const there = `origin/${base}`;
     if ((await gitTry(ws, 'rev-parse', '--verify', '--quiet', `refs/remotes/${there}^{commit}`)) != null) return there;
     return (await this.startIn(ws, () => gitTry(this.o.repoPath, 'rev-parse', '--verify', '--quiet', `refs/heads/${base}^{commit}`))) ?? there;
+  }
+
+  /** Where a clone that lacks the card's branch finds the work it holds (`LeaseOptions.keep`): `origin`'s copy, else the checkout's, fetched from there. */
+  private async heldCopy(ws: string, branch: string): Promise<string | null> {
+    const there = `refs/remotes/origin/${branch}`;
+    if ((await gitTry(ws, 'rev-parse', '--verify', '--quiet', `${there}^{commit}`)) != null) return there;
+    return this.startIn(ws, () => gitTry(this.o.repoPath, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`));
   }
 
   private async startIn(ws: string, start?: () => Promise<string | null>): Promise<string | null> {

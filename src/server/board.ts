@@ -19,7 +19,7 @@ import { type CardAgent, AGENT_EFFORTS, type AgentEffort, type Harness, HARNESSE
 import type { CardRow, DecisionRow, Friction, FrictionNote, GroupRow, NewEvent, NewRow, RowUpdate, Store } from './db';
 import { History } from './history';
 import { Sheet } from './sheet';
-import { atWork, begun, finishing, stateOf, tickedAhead, toItems, workDone, type Worked } from './items';
+import { atWork, begun, finishing, goesOnElsewhere, stateOf, tickedAhead, toItems, workDone, type Worked } from './items';
 import type { Rewritten } from './workspaces';
 import { docOfRef, keyOfRef, repoOfRef, workstreamRef } from './plan-ref';
 import { PageNotice } from './shared-pages';
@@ -1313,7 +1313,9 @@ export class Board {
     if (!row || row.workspace !== path) return this.changed();
     const working = row.state === 'working';
     this.work(cardId, { workspace: null, app: null, parked: null, ...(working ? { state: 'planned', paused: null, pausing: null, snoozed: null } : {}) });
-    if (!row.deleted_at) this.log(cardId, 'state', 'obeya', this.t.worker.workspaceGone(path, working));
+    // one waiting for the owner or in its pull request keeps its state: its agent goes on elsewhere once something comes for it
+    const then = working ? 'planned' : goesOnElsewhere(this.store.card(cardId)!) ? 'agent' : 'start';
+    if (!row.deleted_at) this.log(cardId, 'state', 'obeya', this.t.worker.workspaceGone(path, then));
   }
 
   /** A card's landed work is done, its worker gone: a card whose plan doc is a project now gives way to it. */

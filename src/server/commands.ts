@@ -1681,7 +1681,7 @@ function cardLine(i: Item, c: LineContext): string {
 function stateOf(i: Item, items: Item[]): string {
   if (i.queue) return queued(i.queue, items);
   if (i.need)
-    return `${i.state}: ${i.need}${answering(i) ? ", its agent works on the owner's answer to the question in its demo report" : i.answered ? ', its agent answered what the owner wrote on its handover' : ''}${i.approvesAfterReply ? '; the owner approved it already, which Obeya carries out once its agent has replied, unless it asks something' : ''}`;
+    return `${i.state}: ${i.need}${answering(i) ? ", its agent works on the owner's answer to the question in its demo report" : i.answered ? ', its agent answered what the owner wrote on its handover' : ''}${i.waitsForClone ? REGAINS : ''}${i.approvesAfterReply ? '; the owner approved it already, which Obeya carries out once its agent has replied, unless it asks something' : ''}`;
   if (i.idea && i.idea.status !== 'open') return `idea: ${i.idea.status}`;
   if (i.idea?.thinking) return `idea, its agent is working on its reply${i.idea.buildAfterReply ? '; built once the reply is there, unless it asks questions' : ''}`;
   if (i.kind === 'question') return `question card: a thread of answers you looked up, moved onto a card; its agent ${i.thread?.thinking ? 'is reading' : 'answers what the owner asks on it (note)'}`;
@@ -1690,8 +1690,11 @@ function stateOf(i: Item, items: Item[]): string {
       ? `${i.state}, its agent answers the owner's follow-up${i.waitsForClone ? '; it needs a full clone for that and waits for the next free one, then goes on by itself' : ''}`
       : `${i.state}, its agent finishes what remains${i.state === 'done' ? ' (nothing to land: the work changed no code)' : ' after the landing'}`;
   if (askable(i)) return `${i.state}, its agent's session has ended; a note resumes it to answer`;
-  return i.state;
+  return `${i.state}${i.waitsForClone ? REGAINS : ''}`;
 }
+
+/** A card waiting for the owner or in its pull request whose workspace went, as its line for the Coordinator says it (`Item.waitsForClone`). */
+const REGAINS = '; its workspace is gone, and its agent waits for the next free clone to go on with what came for it there';
 
 /** Whether a card's agent is snoozed, paused or at work outside its state, as its line for the Coordinator says right after the state. */
 function pauseOf(i: Item): string {

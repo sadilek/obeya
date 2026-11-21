@@ -8,7 +8,6 @@ import { needsYou } from '../core/card';
 import { BadRequest } from './board';
 import { DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN } from './demo';
 import { Images } from './images';
-import { fromJson } from './row';
 import { artifact, until } from './testing';
 import { board, dir, eachTest, handedOver, manual, rebuild, runtime, setup, state, workers } from './workers-fixture';
 
@@ -380,17 +379,6 @@ describe('handing over with a demo', () => {
     const first = runtime.last.inbox[0]!;
     for (const said of ['Bitte auch als CSV.', 'A check of your pull request failed: test.', 'Und mit Kopfzeile.']) expect(first).toContain(said);
     expect(board.events(c.id).filter((e) => e.unread)).toEqual([]);
-  });
-
-  test('without idle workers, a note to a card in its pull request that has lost its workspace fails rather than wait for a worker that never comes', () => {
-    const c = manual();
-    board.work(c.id, { state: 'inPr', branch: 'obeya/zaehlerstaende' });
-    const n = runtime.sessions.length;
-    expect(() => workers.message(c.id, 'Bitte auch als CSV.')).toThrow('no workspace');
-    expect(() => workers.prEvent(c.id, 'Check rot.', 'A check of your pull request failed: test.')).toThrow('no workspace');
-    expect(runtime.sessions.length).toBe(n);
-    expect(board.events(c.id).some((e) => e.unread)).toBe(false);
-    expect(fromJson(board.row(c.id).unheard) ?? []).toEqual([]);
   });
 
   test('a handover that keeps the demo leaves its answered question with the handover it came with', async () => {

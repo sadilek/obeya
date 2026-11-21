@@ -12,7 +12,7 @@ import { AGENT_EFFORTS, agentName, type AgentSetting, type CardAgent, cardAgentO
 import { findTranscript } from './transcript';
 import type { CardLanding } from '../core/config';
 import { BadRequest, type Board, notPaused, pauseRefused, replyNote } from './board';
-import { fromJson, type ApproveAfter, type AskedPermission, type Json, type HeldComment, type LandedState, type PageHeard, type PausedState, type PrState, type Resolving, type Shipped, type Unheard, toJson } from './row';
+import { fromJson, type ApproveAfter, type Detail, type AskedPermission, type Json, type HeldComment, type LandedState, type PageHeard, type PausedState, type PrState, type Resolving, type Shipped, type Unheard, toJson } from './row';
 import { decisionLog } from './advisor';
 import { OBEYA_PLUGIN, placeIn } from './demo';
 import { imageNote } from './images';
@@ -30,6 +30,7 @@ import type { CardRow, RowUpdate } from './db';
 import { clip, messageOf } from '../core/text';
 import { within } from '../core/late';
 import { holdsNotes } from '../core/queue';
+import { awaitsClone, goesOnElsewhere } from './items';
 import { CardApps } from './card-app';
 import { CardTimers } from './card-timers';
 import { ReviewCards } from './review-cards';
@@ -40,7 +41,7 @@ import { WorkerTools } from './worker-tools';
 import { folderOf, sharesOf, type WorkerOptions } from './worker-options';
 import { describeTool, permissionWhat, SPOKEN } from './agent-lines';
 import { mergeBranch, mergeConflictHelp, takeoverNote } from './worker-texts';
-import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, UNPUSHED_LINK, FOLLOW_UP, FOLLOW_UP_FOLDER, ASK_FOR_LINK, failureText, hostResumed, IN_WORKTREE, LINK_DEMO, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTART_OFF, RESTARTED, RESUMED, restartNotice, restartWaits, ROUND_DEMO, RUNS_YOUR_CHANGE, sentence, SESSION_ENDED, spotNote, stillDue, wokeNote } from './worker-texts';
+import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, regainedNote, UNPUSHED_LINK, FOLLOW_UP, FOLLOW_UP_FOLDER, ASK_FOR_LINK, failureText, hostResumed, IN_WORKTREE, LINK_DEMO, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTART_OFF, RESTARTED, RESUMED, restartNotice, restartWaits, ROUND_DEMO, RUNS_YOUR_CHANGE, sentence, SESSION_ENDED, spotNote, stillDue, wokeNote } from './worker-texts';
 
 export type { WorkerOptions } from './worker-options';
 
@@ -71,7 +72,7 @@ function landedAt(row: CardRow): { base: string; commit: string } | undefined {
 }
 
 /** What the card's row becomes when it is planned again, its worker stopped (`Workers.stop`, also where its repository does not run). */
-export const PLANNED_AGAIN = { state: 'planned', need: null, detail: null, pr: null, approved_at: null, approve_after: null, paused: null, pausing: null, snoozed: null, app: null } satisfies RowUpdate;
+export const PLANNED_AGAIN = { state: 'planned', need: null, detail: null, pr: null, approved_at: null, approve_after: null, paused: null, pausing: null, snoozed: null, app: null, awaits_clone: null } satisfies RowUpdate;
 
 /** What the card's row becomes once landed work's worker is done (`Workers.finish`, also where its repository does not run). */
 export const finishedRow = (row: CardRow): RowUpdate => ({
@@ -401,7 +402,7 @@ export class Workers {
     const contribution = fromJson(row.contribution);
     const pr = contribution ? toJson<PrState>({ url: contribution.url, number: contribution.number, seen: [], reported: [] }) : null;
     // a fresh session knows of no app that was stopped
-    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr, approved_at: null, approve_after: null, parked: null, paused: null, pausing: null, snoozed: null, app: null });
+    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr, approved_at: null, approve_after: null, parked: null, paused: null, pausing: null, snoozed: null, app: null, awaits_clone: null });
     const t = this.o.board.t.worker;
     this.o.board.log(card.id, 'state', 'obeya', this.folder ? t.startedInFolder : contribution ? t.reviewStarted(contribution.number, contribution.author) : t.started(branch));
     const launch = (headProblem?: string | null) =>
@@ -652,6 +653,7 @@ export class Workers {
    * slots, and its worker goes on there. Returns whether it did; the Coordinator asks again as the board changes.
    */
   takeClone(cardId: string): boolean {
+    if (awaitsClone(this.o.board.row(cardId))) return this.regain(cardId);
     if (!this.waitsForClone(cardId)) return false;
     const row = this.o.board.row(cardId);
     let lease: Lease;
@@ -2475,7 +2477,8 @@ export class Workers {
 
   /**
    * A deleted card is restored: it takes back the workspace it had, where it can, on its own branch;
-   * else its next start takes another, with its branch from that clone where it is still there.
+   * else its session, still open in its pull request, ends, and its next start (or what comes next for
+   * its worker, `regain`) takes another, with its branch from that clone where it is still there.
    */
   restored(cardId: string) {
     const row = this.o.board.row(cardId);
@@ -2484,8 +2487,13 @@ export class Workers {
     this.kept.delete(path);
     const retaken = row.branch ? this.o.workspaces.retake(cardId, path, row.branch) : null;
     if (!retaken) {
-      // another card works in that clone now: the card's branch stays there, for its next start to take from it
+      // another card works in that clone now: the card's branch stays there, for its next start to take from it,
+      // or for the fresh workspace its session goes on in once something comes for it (`regain`), not in that clone
       const taken = this.o.workspaces.mode === 'clones' && this.o.workspaces.list().some((w) => w.path === path && w.card_id);
+      if (this.live.has(cardId)) {
+        this.end(cardId);
+        this.bump(cardId);
+      }
       return void this.o.board.work(cardId, { workspace: null, app: null, parked: null, ...(taken ? { kept_in: path } : {}) });
     }
     this.o.board.changed();
@@ -2859,9 +2867,11 @@ export class Workers {
       });
       return;
     }
-    // its worker starts once its workspace is ready and hears them then, or, should git fail, the next start's does
+    // its worker starts once its workspace is ready and hears them then, or, should git fail, the next start's does;
+    // one whose workspace went takes a fresh one first
     if ((said.length && this.takesLater(cardId)) || this.startsLater(cardId)) {
       this.tellLater(cardId, text, { said, images });
+      this.regain(cardId);
       return;
     }
     this.o.board.readNow(cardId, said);
@@ -2900,12 +2910,73 @@ export class Workers {
 
   /**
    * Whether what comes for the card waits for a worker that starts later, as no session can take it
-   * in now: git still makes its workspace ready, or, with idle workers, the card has none (one a
-   * scratch Obeya staged at work), where no session can start. Elsewhere a card without a workspace
-   * has no worker coming for it, and delivering to it fails rather than wait for one.
+   * in now: git still makes its workspace ready; or the card has none and no session: with idle
+   * workers (one a scratch Obeya staged at work) no session can start, else its worker goes on in a
+   * fresh workspace (`regain`), where the card's state lets it.
    */
   private startsLater(cardId: string): boolean {
-    return this.preparingFor(cardId) || (!!this.o.idleWorkers && !this.live.has(cardId) && !this.o.board.row(cardId).workspace);
+    if (this.preparingFor(cardId)) return true;
+    if (this.live.has(cardId)) return false;
+    const row = this.o.board.row(cardId);
+    return !row.workspace && (!!this.o.idleWorkers || goesOnElsewhere(row));
+  }
+
+  /**
+   * Something came for the worker of a card that has no workspace any more and no session (its
+   * folder gone, or a restored card's clone taken by another card), and waits for it (`unheard`):
+   * the card takes a fresh workspace on its branch, on any machine whatever its slots, as the owner's
+   * question to a finished card does, and the worker's session goes on there and hears it. Where no
+   * clone is free, the card waits for the next (`awaits_clone`; the Coordinator asks `takeClone` as
+   * the board changes). Returns whether the card took one or needs none any more.
+   */
+  private regain(cardId: string): boolean {
+    if (this.o.idleWorkers || this.live.has(cardId) || this.preparing.has(cardId)) return true;
+    const row = this.o.board.row(cardId);
+    if (!goesOnElsewhere(row)) return true;
+    let lease: Lease;
+    try {
+      lease = this.o.workspaces.lease(cardId, row.branch!, { overSlots: true, from: row.kept_in, keep: true });
+    } catch (e) {
+      if (e instanceof WorkspaceError && shortageOf(e.code)) {
+        if (!row.awaits_clone) {
+          this.o.board.work(cardId, { awaits_clone: 1, status_line: this.o.board.t.worker.waitsForWorkspace });
+          this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.awaitsClone);
+        }
+        return false;
+      }
+      // what came waits on; the next that comes tries again
+      this.o.board.work(cardId, { awaits_clone: null, status_line: null, detail: this.notAnswering(cardId) });
+      this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.worker.workspaceFailed(messageOf(e)));
+      return true;
+    }
+    this.bump(cardId);
+    this.o.board.work(cardId, { workspace: lease.path, awaits_clone: null, status_line: null, app: null, parked: null });
+    this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.workspaceRegained(lease.path));
+    void this.whenReady(
+      cardId,
+      lease.ready,
+      () => {
+        if (row.kept_in) this.o.board.work(cardId, { kept_in: null });
+        const now = this.o.board.row(cardId);
+        const text = regainedNote(now.workspace!, row.branch!);
+        if (now.session_id) return this.launch(cardId, text, now.session_id);
+        // a card that never reported a session: a new one needs the card first
+        const card = this.card(cardId);
+        this.launch(cardId, `${this.brief.briefing(card, row.branch!, true)}\n\n${text}`, undefined, this.brief.taskImages(card));
+      },
+      // without a workspace again, what came waits on for the next try; nothing works on the owner's words meanwhile
+      () => this.o.board.work(cardId, { workspace: null, detail: this.notAnswering(cardId) }),
+    );
+    return true;
+  }
+
+  /** The card's handover as stored, no longer at work on the owner's words (`takingIn`). */
+  private notAnswering(cardId: string): Json<Detail> | null {
+    const detail = this.o.board.row(cardId).detail;
+    const parsed = fromJson(detail);
+    if (!parsed?.answering) return detail;
+    const { answering: _, ...rest } = parsed;
+    return toJson(rest);
   }
 
   /** What waits for the worker, without what starts with `prefix` (news an event since has made stale). */

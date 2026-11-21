@@ -165,6 +165,12 @@ export interface CardRow {
    */
   kept_in: string | null;
   /**
+   * 1 while the card, waiting for the owner or in its pull request, has no workspace any more (its
+   * folder gone, or a restored card's clone taken by another card) and no clone is free for its
+   * worker to go on in with what came for it (`unheard`): it takes the next free one; null otherwise.
+   */
+  awaits_clone: number | null;
+  /**
    * A repository to create for the card before work begins; once Obeya made it, with `made`, so its
    * worker hears that the repository is new.
    */
@@ -648,6 +654,8 @@ export const MIGRATIONS = [
   'ALTER TABLE cards ADD COLUMN approve_after TEXT;',
   // cards the Coordinator's command created, for its reply to link to them (`Talk.created`, `CardEvent.created`)
   'ALTER TABLE talk ADD COLUMN created TEXT; ALTER TABLE events ADD COLUMN created TEXT;',
+  // a card without a workspace whose worker waits for the next free clone to go on in (`CardRow.awaits_clone`)
+  'ALTER TABLE cards ADD COLUMN awaits_clone INTEGER;',
 ];
 
 /**

@@ -436,7 +436,9 @@ there:" with what (a branch or tag by name with how many commits, uncommitted ch
 the path, and a later start looks again; raising the number takes it back as it is. Clones the owner listed, and folders on a host no longer configured, are never touched. A
 workspace on this machine whose folder is gone (moved or deleted by hand) and that the configuration
 no longer names leaves at once, clone or worktree, held or not: its card names no workspace any
-more, one at work is planned again, its log says so, and its next start takes another. Only a
+more, one at work is planned again, its log says so, and its next start takes another; one that
+waits for the owner or is in its pull request keeps its state and takes another once something comes
+for its agent (below). Only a
 card's own worktree, where the repository makes them, stays the card's.
 
 A card gives its workspace back once it will not work there again, checked at every board change and
@@ -448,7 +450,8 @@ brought back with the undo takes its clone back if still free, and git puts it b
 own branch, since another card may have worked there meanwhile. Where git cannot (that card left
 uncommitted changes there, say), or the clone is taken, the card holds none and its next start
 takes a clone as after a taken workspace (below), with its branch from that one where it still
-holds it; it never works on another card's branch.
+holds it; it never works on another card's branch. A card in its pull request (deleting one does not
+stop it) whose clone is taken ends its session there, and its agent goes on elsewhere as below.
 
 #### Taking a card's workspace
 
@@ -506,6 +509,27 @@ worker is told the app stack may not run there; if it needs it, it calls `need_c
 owner with `reply` and ends its turn, and the card waits for the next clean free clone ("Waiting for a
 workspace"), ahead of queued cards, where its session resumes by itself; what the owner says
 meanwhile waits for it.
+
+#### A card waiting without a workspace
+
+A card that waits for the owner (handed over, asking) or is in its pull request can be left without
+workspace or session without being planned again: its folder was deleted by hand, or it was restored
+after another card took its clone. Whatever then comes for its agent (the owner's words, news of its
+pull request such as review comments or a failed check) waits for it, the owner's words marked as
+not read yet, and the card takes a fresh workspace on its branch at once, as a finished card's
+question does: a clean free clone on any machine, whatever its slots. Its session resumes there
+(a new one with the card's task where it never had one), told that its workspace went and that only
+what was committed came along, and hears all that waited, also what came while git made the
+workspace ready. A clone that lacks the branch takes it from the clone that still holds it, else
+`origin`'s copy, else the configured checkout's; never a new branch off the default branch, which
+would pass for the card's work without it. Where none has it, the conversation says so, and what
+came waits for the next try.
+
+Where no clone is clean and free, the card waits for the next ("Waiting for a workspace", and the
+log says the agent goes on by itself), ahead of queued cards, as a follow-up that needs a full clone
+does; it takes no temporary worktree, which its landing could not work from. Meanwhile nothing on
+the card says an agent works on the owner's words: a handed-over card shows "Agent works on your
+message" only once its session runs. Stopping the card ends the wait.
 
 #### The pool in the bar
 
@@ -1028,6 +1052,11 @@ their own logins and curl for their hooks), and what the repository's work needs
 - **A finished card's question takes a temporary worktree when no clone is free** (2026-10-15).
   Rejected: failing; queuing it (clones are often held for days by cards in review); the read tree
   (other agents read there at the same time).
+- **A waiting card that lost its workspace takes a fresh clone for what comes for its agent**
+  (2026-11-21): a note or pull request news to it reaches the agent, resumed there. Rejected:
+  failing (the owner's note was refused, and pull request news was lost); a temporary worktree where
+  no clone is free (its work lands from its workspace later, and a worktree outside the pool cannot
+  carry that), so it waits for the next clone instead.
 - **A folder may stay without git** (2026-10-20): a cloud-drive archive (8.1 GB, 4,615 files, mostly
   PDFs) cannot take a `.git` without sync conflicts and copies of every scan. Cards work in place, in
   parallel with the Coordinator's overlap check on files; changes are told apart by ctime; undo is

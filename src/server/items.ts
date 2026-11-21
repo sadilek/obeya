@@ -188,7 +188,8 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
   const demo = r.demo ? shownDemo(fromJson(r.demo)) : undefined;
   const earlier = demo ? earlierDemos(r) : [];
   const handed = r.need === 'review' || r.need === 'demo';
-  const answering = detail.answering && handed;
+  // a worker waiting for a clone is not at work on the owner's words yet
+  const answering = detail.answering && handed && !awaitsClone(r);
   const scope = fromJson(r.scope)?.files;
   const pr = fromJson(r.pr) ?? undefined;
   const contribution = fromJson(r.contribution);
@@ -232,6 +233,7 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
     ...(r.workspace ? { workspace: r.workspace.replace(/^ssh:\/\/([^/]+)/, '$1:') } : {}),
     ...(r.kept_in ? { keptIn: r.kept_in.replace(/^ssh:\/\/([^/]+)/, '$1:') } : {}),
     ...(landed && (r.workspace || landed.needsClone) ? { finishing: true, ...(landed.followUp && !landed.resolve ? { followUp: true } : {}), ...(landed.needsClone && !r.workspace ? { waitsForClone: true } : {}) } : {}),
+    ...(awaitsClone(r) ? { waitsForClone: true } : {}),
     ...(detail.noChange && handed ? { noChange: true } : {}),
     ...(detail.followsPrs?.length && handed ? { followsPrs: detail.followsPrs } : {}),
     ...(detail.lands && handed ? { lands: detail.lands } : {}),
@@ -304,6 +306,16 @@ export const worked = (r: CardRow) => !!(r.session_id || r.branch || r.shipped |
 
 /** A card's state as its row holds it; a plan card's, which its plan doc gives, reads as planned. */
 export const stateOf = (r: Pick<CardRow, 'state'>): CardState => r.state ?? 'planned';
+
+/**
+ * Whether the card's worker goes on in a fresh workspace on its branch should something come for it
+ * while it has none and no session (its folder gone, or a restored card's clone taken by another
+ * card): at work, waiting for the owner, or in its pull request, its work not landed.
+ */
+export const goesOnElsewhere = (r: CardRow) => !r.workspace && !!r.branch && !r.landed && !r.deleted_at && (r.state === 'working' || r.state === 'waiting' || r.state === 'inPr');
+
+/** Whether such a card's worker waits for the next free clone to go on in (`CardRow.awaits_clone`). */
+export const awaitsClone = (r: CardRow) => !!r.awaits_clone && goesOnElsewhere(r);
 
 /** Whether work on the card has begun: it is no idea and planned no more, or it has a workspace. */
 export const begun = (r: CardRow) => (r.state !== 'idea' && stateOf(r) !== 'planned') || !!r.workspace;
