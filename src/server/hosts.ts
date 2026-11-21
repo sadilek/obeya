@@ -48,7 +48,7 @@ type Output = { code: number; stdout: string; stderr: string };
 export const LOST = 255;
 
 /** Directories that come first on the host's PATH: where the official installers put Claude Code and Bun. */
-const PATH_PREFIX = '$HOME/.local/bin:$HOME/.bun/bin';
+export const PATH_PREFIX = '$HOME/.local/bin:$HOME/.bun/bin';
 
 /**
  * Says the host's home and the PATH a new terminal there has, a line each: the login shell there

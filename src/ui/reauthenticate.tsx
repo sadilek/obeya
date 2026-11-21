@@ -6,7 +6,7 @@ import { t } from './strings';
 
 /** Whether this browser runs on the machine Obeya runs on, asked once per page. */
 let local: Promise<boolean> | undefined;
-const onThisMachine = () => (local ??= api.access().then((v) => v.local, () => true));
+export const onThisMachine = () => (local ??= api.access().then((v) => v.local, () => true));
 
 /**
  * The same terminal login as Setup, offered where an agent's expired login interrupted a chat: Claude

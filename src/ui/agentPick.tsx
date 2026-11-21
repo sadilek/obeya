@@ -10,6 +10,9 @@ import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, byFa
 import { useMenuClose, usePlaced } from './menu';
 import { api, failText } from './api';
 import { usePoll } from './act';
+import { useAsked } from './asked';
+import { phoneView } from './phone';
+import { onThisMachine } from './reauthenticate';
 import { t } from './strings';
 
 /** The harnesses and the workers' group as last heard, shown at once by the next card while it asks again. */
@@ -378,6 +381,8 @@ export function HarnessUpdate({ harness, view, onView }: { harness: Harness; vie
  * then asked again until the host's next look finds it logged in, and the line goes.
  */
 function HostLogin({ harness, host, onView }: { harness: Harness; host: string; onView: (view: AgentsView) => void }) {
+  // the terminal opens on the machine Obeya runs on: another device gets the line without the button
+  const here = useAsked(!phoneView() && onThisMachine, !phoneView());
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [opened, setOpened] = useState(false);
@@ -403,9 +408,11 @@ function HostLogin({ harness, host, onView }: { harness: Harness; host: string; 
         {u.notLoggedIn(name, host)}
         {status && <span className="harness-update-status" role="status">{status}</span>}
       </span>
-      <button className="btn" disabled={busy} title={u.logInHint(name, host)} onClick={() => void login()}>
-        {u.logIn}
-      </button>
+      {here && (
+        <button className="btn" disabled={busy} title={u.logInHint(name, host)} onClick={() => void login()}>
+          {u.logIn}
+        </button>
+      )}
     </div>
   );
 }

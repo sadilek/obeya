@@ -318,7 +318,8 @@ export class Harnesses extends Listeners {
           at.loggedIn = found?.loggedIn;
           at.install.found(found?.version, found?.channel);
         };
-        const newest = host.harness === 'claude' ? this.o.claudeNewest : this.o.codexNewest;
+        // agy updates itself: npm has no newest version of it to offer
+        const newest = host.harness === 'claude' ? this.o.claudeNewest : host.harness === 'codex' ? this.o.codexNewest : undefined;
         const install = new Install({
           harness: host.harness,
           host: host.name,

@@ -26,7 +26,7 @@
 // Gemini directory there (written over the connection), its hook and Obeya's tools reaching their
 // servers here through forwarded ports.
 
-import { copyFile, lstat, mkdir, readFile, readlink, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readFile, readlink, realpath, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -532,10 +532,13 @@ class HostGeminiDir {
 
   private async write() {
     const config = `${this.dir}/config`;
-    const put = (file: string, text: string) => `printf %s ${sh(text)} > ${sh(file)}`;
+    // each file written whole and moved into place, so a session reading it meanwhile sees the old or the new one
+    const put = (file: string, text: string) => `printf %s ${sh(text)} > ${sh(`${file}.obeya`)} && mv ${sh(`${file}.obeya`)} ${sh(file)}`;
     // as agy reads them there without Obeya
-    const carry = (from: string, to: string) => `if [ -f "$HOME/.gemini/${from}" ]; then cp "$HOME/.gemini/${from}" ${sh(to)}; else rm -f ${sh(to)}; fi`;
+    const carry = (from: string, to: string) => `if [ -f "$HOME/.gemini/${from}" ]; then cp "$HOME/.gemini/${from}" ${sh(`${to}.obeya`)} && mv ${sh(`${to}.obeya`)} ${sh(to)}; else rm -f ${sh(to)}; fi`;
     const script = [
+      // for the owner alone: the MCP servers' configuration may hold their keys
+      'umask 077',
       `mkdir -p ${sh(`${config}/projects`)}`,
       put(`${config}/hooks.json`, `${JSON.stringify(hooksFile(false), null, 2)}\n`),
       put(`${config}/projects/default-cli-project.json`, grantsFile([...this.grants.values()])),
@@ -655,7 +658,10 @@ async function linkLogin(own: string, obeya: string) {
 /** Writes `text` to `file` unless it holds it already. */
 async function writeIfChanged(file: string, text: string) {
   if ((await readFile(file, 'utf8').catch(() => null)) === text) return;
-  await writeFile(file, text);
+  // whole, and moved into place: a session reading it meanwhile sees the old or the new file
+  await writeFile(`${file}.obeya`, text);
+  // Windows refuses replacing a file another process holds open: then in place
+  await rename(`${file}.obeya`, file).catch(() => writeFile(file, text));
 }
 
 /** A file of the owner's configuration copied to Obeya's directory, or removed there where the owner has none. */
@@ -997,7 +1003,7 @@ class GeminiSession implements AgentSession {
     if (this.effort) await acp.request('session/set_config_option', { sessionId: this.id, configId: 'thought_level', value: thoughtLevel(this.effort) });
     // the mode is the session's own, and a resumed one is back at the default: set at every start
     await acp.request('session/set_mode', { sessionId: this.id, modeId: spec.readOnly ? 'default' : 'auto' });
-    if (this.closed) return;
+    if (this.closed) return acp.close();
     this.open = true;
     this.emit({ type: 'session', id: `${GEMINI_SESSION}${this.id}`, model: this.model, ...(this.effort ? { effort: this.effort } : {}) });
     this.pump();
@@ -1060,6 +1066,8 @@ class GeminiSession implements AgentSession {
 
   /** A prompt that failed: the turn's error once it ends, a quota's with when it resets. */
   private async failed(message: string) {
+    // the connection to the host dropped: the session ends as lost, and its turn with it
+    if (this.lost) return;
     let limit: { resetsAt?: number } | undefined;
     if (quotaExhausted(message) && !this.closed) {
       // the quota of the login the session runs on: the host's own there

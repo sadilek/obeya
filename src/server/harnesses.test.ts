@@ -223,7 +223,7 @@ test("a host's Gemini is listed with its version, says where it is not logged in
   let loggedIn = false;
   let looks = 0;
   const geminiHost: HostHarness = { name: 'box', harness: 'gemini', reachable: () => true, look: async () => (looks++, { version: '1.5.14', loggedIn }) };
-  const h = new Harnesses({ cwd: '/tmp', claude: async () => ({ version: '2.1.338', loggedIn: true }), codex: async () => null, gemini: async () => ({ version: '1.5.14', loggedIn: true }), geminiModels: async () => [], hosts: () => [geminiHost] });
+  const h = new Harnesses({ cwd: '/tmp', claude: async () => ({ version: '2.1.338', loggedIn: true }), codex: async () => null, gemini: async () => ({ version: '1.5.14', loggedIn: true }), geminiModels: async () => [], codexNewest: async () => '99.0.0', hosts: () => [geminiHost] });
   await h.refresh();
   const geminiOf = async () => (await h.view())[2]!.hosts ?? [];
   for (let i = 0; i < 50 && !(await geminiOf()).length; i++) await Bun.sleep(1);

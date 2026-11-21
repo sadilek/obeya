@@ -27,7 +27,7 @@ import { isEmptyRepo } from './branches';
 import type { CanvasRuntime } from './canvas';
 import type { Config } from './config';
 import { previewGitSetup, setUpGit, withoutCommit, withoutGit } from './git-setup';
-import { onHost, remote, saveClaudeToken, type SshHost } from './hosts';
+import { HOST_DIR, LOST, onHost, PATH_PREFIX, remote, saveClaudeToken, sh, type SshHost } from './hosts';
 import { parseRemote, repoInfo } from './repo';
 import { COMPILED } from './resources';
 import { claudeExecutable, machineClaude, runClaudeHere } from './claude';
@@ -35,6 +35,7 @@ import { codexExecutable, CodexLogins, type CodexLoginState, runCodex, spawnOpti
 import { findCodex, findGemini, type HarnessFound, type Harnesses } from './harnesses';
 import { geminiExecutable } from './gemini';
 import { extendPath, freshPath, which } from './path';
+import { failureText } from './spawn';
 import { ownerLanguage } from './settings';
 import type { VoiceSetup } from './voice-setup';
 
@@ -220,12 +221,18 @@ export function codexManager(real: string): string[] | null {
 
 /** A command as a shell shows it, its program quoted when its path has spaces. */
 /**
- * Gemini's login on a host, as a terminal here runs it there: the installer's agy where it is, else
- * the one on the PATH. Without `$`, which the terminal's shell here would expand.
+ * Gemini's login on a host: a script in Obeya's directory there (`HOST_DIR`, a path from the home,
+ * where ssh starts), written before a terminal here runs it, so the command the terminal's shell
+ * reads names a file alone, nothing a shell here or there would read differently. agy is found where
+ * its installer puts it too, as for every command there.
  */
-const GEMINI_LOGIN_THERE = 'test -x ~/.local/bin/agy && exec ~/.local/bin/agy acp --login || exec agy acp --login';
+const GEMINI_LOGIN_THERE = { path: `${HOST_DIR}/gemini-login`, script: `#!/bin/sh\nPATH="${PATH_PREFIX}:$PATH"; export PATH\nexec agy acp --login\n` };
 
-const shown = (argv: string[]) => argv.map((a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)).join(' ');
+/** A command line as a terminal's shell reads it: each word quoted where it needs it (cmd's double quotes on Windows, a POSIX shell's single quotes elsewhere). */
+function shown(argv: string[], platform: string = process.platform): string {
+  if (platform === 'win32') return argv.map((a) => (/[\s"&|<>^]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)).join(' ');
+  return argv.map((a) => (/^[\w@%+=:,./~-]+$/.test(a) ? a : sh(a))).join(' ');
+}
 
 /** Starts a program that goes on by itself, Obeya waiting for nothing of it; false where it does not start. */
 function detached(cmd: string, args: string[], o: { env?: Env; windowsVerbatimArguments?: boolean } = {}): Promise<boolean> {
@@ -255,7 +262,7 @@ export function openWithSystem(path: string, file = false, show = false): Promis
 
 /** Opens a terminal that runs `argv`; false where Obeya finds none to open (Linux without one it knows). */
 export async function openTerminal(argv: string[], platform: string = process.platform, env: Env = process.env): Promise<boolean> {
-  const line = shown(argv);
+  const line = shown(argv, platform);
   if (platform === 'darwin') {
     const script = line.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     return (await output('osascript', ['-e', 'tell application "Terminal"', '-e', 'activate', '-e', `do script "${script}"`, '-e', 'end tell'], env)) !== null;
@@ -558,15 +565,18 @@ export class MachineSetup {
     const { section, id, token, host } = (input ?? {}) as { section?: MachineSectionId; id?: MachineItem['id']; token?: boolean; host?: unknown };
     if (host !== undefined && host !== null) {
       if (id !== 'geminiLogin' || token) throw new BadRequest('invalid', `${id} is not logged in on a host from here`);
-      const argv = this.host(host).terminal(GEMINI_LOGIN_THERE);
-      return { opened: await openTerminal(argv, this.platform, this.env), command: shown(argv) };
+      const there = this.host(host);
+      const w = await there.run(`mkdir -p ${sh(HOST_DIR)} && cat > ${sh(GEMINI_LOGIN_THERE.path)} && chmod 700 ${sh(GEMINI_LOGIN_THERE.path)}`, { input: GEMINI_LOGIN_THERE.script, timeout: 30_000 });
+      if (w.code !== 0) throw new BadRequest('invalid', `${there.name}: ${w.code === LOST ? 'does not answer' : failureText(w)}`);
+      const argv = there.terminal(GEMINI_LOGIN_THERE.path);
+      return { opened: await openTerminal(argv, this.platform, this.env), command: shown(argv, this.platform) };
     }
     const { item, found } = await this.item(section!, id!);
     const login = found.logins[item.id];
     if (!login || (item.act !== 'login' && item.id !== 'claudeLogin' && item.id !== 'geminiLogin')) throw new BadRequest('invalid', `${id} needs no login`);
     if (token && item.id !== 'claudeLogin') throw new BadRequest('invalid', `${id} takes no token`);
     const argv = token ? [login[0]!, 'setup-token'] : login;
-    return { opened: await openTerminal(argv, this.platform, this.env), command: shown(argv) };
+    return { opened: await openTerminal(argv, this.platform, this.env), command: shown(argv, this.platform) };
   }
 
   /**
