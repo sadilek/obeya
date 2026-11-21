@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
-import { appended, cardDraft, pathWord, wordsOf, draftOf, draftsHome, dropDraft, giveBack, insert, insertFiles, insertPasted, keepDrafts, MIC_DRAFT, markupOf, moveFiles, moveImages, OBEYA_DRAFT, pastedIn, setMarkup, updateDraft, updateDraftAt, withoutPasted, withoutWords } from './draft';
+import { appended, cardDraft, pathWord, wordsOf, draftOf, draftsHome, dropDraft, giveBack, insert, insertFiles, insertPasted, keepDrafts, MIC_DRAFT, markupOf, moveFiles, moveImages, OBEYA_DRAFT, pastedIn, setMarkup, updateDraft, updateDraftAt, withPasted, withoutPasted, withoutWords } from './draft';
 import { api } from './api';
-import { filesTo } from './shots';
+import { filesTo, textAsFile } from './shots';
 import { memoryStorage } from './testing';
 
 
@@ -223,4 +223,41 @@ test("a dropped file's path that is found after a switch of canvas goes into the
     dropDraft(OBEYA_DRAFT);
     s.removeItem('obeya-drafts-web');
   }
+});
+
+test('a text too long for a message goes in as a file; where the upload fails, as text, so nothing pasted is lost', async () => {
+  const was = api.uploadFile;
+  let fails = false;
+  api.uploadFile = async (f) => {
+    if (fails) throw new Error('offline');
+    return `/home/me/.obeya/files/shop/0b8f3c1e-5d2a-4e7b-9c1d-2f3a4b5c6d7e/${f.name}`;
+  };
+  const key = cardDraft('long');
+  try {
+    // pasted: its path goes in, noted as a paste's for the field to say why
+    updateDraft(key, { text: 'the log:' });
+    expect(await textAsFile(key, 'x'.repeat(30_000), { otherwise: () => insert(key, 'never') })).toBe(true);
+    const path = '/home/me/.obeya/files/shop/0b8f3c1e-5d2a-4e7b-9c1d-2f3a4b5c6d7e/pasted-text.txt';
+    expect(draftOf(key)).toMatchObject({ text: `the log: ${path}`, pastedAsFile: path, uploading: 0 });
+    // the upload fails: the text goes in as text after all, beside the refusal
+    fails = true;
+    updateDraft(key, { text: 'the log:', pastedAsFile: undefined });
+    expect(await textAsFile(key, 'y'.repeat(30_000), { otherwise: () => insert(key, 'y'.repeat(30_000)) })).toBe(false);
+    expect(draftOf(key).text).toBe(`the log: ${'y'.repeat(30_000)}`);
+    expect(draftOf(key).error).not.toBe('');
+    // moved into a file: its path takes the text's place, and no line about a paste
+    fails = false;
+    const text = draftOf(key).text;
+    expect(await textAsFile(key, text, { name: 'message.txt', replaces: text })).toBe(true);
+    expect(draftOf(key)).toMatchObject({ text: path.replace('pasted-text', 'message'), pastedAsFile: undefined });
+  } finally {
+    api.uploadFile = was;
+    dropDraft(key);
+  }
+});
+
+test('text pasted outside a field counts with what the field holds already', () => {
+  updateDraft(OBEYA_DRAFT, { text: 'a'.repeat(15_000) });
+  expect(withPasted(OBEYA_DRAFT, ` ${'b'.repeat(10_000)} `).length).toBe(25_002);
+  dropDraft(OBEYA_DRAFT);
 });

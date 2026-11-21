@@ -14,7 +14,7 @@ import { SiteSetup } from './site-setup';
 import { isField } from './commands';
 import type { Config } from './config';
 import type { DemoSettingsDialog } from './demo-settings';
-import { serveAnswerFile, serveCardFile, serveDemoFile, serveMockFrame } from './serve-files';
+import { serveAnswerFile, serveCardFile, serveDemoFile, serveMockFrame, servePdf } from './serve-files';
 import { type NarrationHost, parseClipRequest, parseHearRequest } from './narration';
 import type { Restarter } from './self-update';
 import type { Transcriber } from './voice';
@@ -748,11 +748,12 @@ function fileRoutes(x: Routing) {
         return new Response(Bun.file(image.file), { headers: { 'content-type': image.type, 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox' } });
       }),
     },
-    // a file Obeya keeps for a message (`/files`), opened from the conversation: shown, never run
+    // a file Obeya keeps for a message (`/files`), opened from the conversation: shown, never run; a PDF in the browser's viewer
     '/api/c/:canvas/files/stored/:id/:name': {
-      GET: on((c, req) => {
-        const file = c.files.stored(req.params.id!, req.params.name!);
+      GET: on(async (c, req) => {
+        const file = await c.files.stored(req.params.id!, req.params.name!);
         if (!file) return notFound();
+        if (/\.pdf$/i.test(file)) return servePdf(Bun.file(file), req.params.name!);
         return new Response(Bun.file(file), { headers: { 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox' } });
       }),
     },

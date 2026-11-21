@@ -41,7 +41,7 @@ import { closeWish, keepWish, openWish, useWish, WishDialog } from './wish';
 import { PlanDirNote, planDirBoxes, useHiddenEmptyNotes } from './planDirs';
 import { pastedShots, pastedText } from './pasteHint';
 import { filesTo, imageFiles, textAsFile } from './shots';
-import { cardDraft, drafted, fieldOn, focusedDraft, insertPasted, keepDrafts, fieldOrMic, OBEYA_DRAFT, takesImages } from './draft';
+import { cardDraft, drafted, fieldOn, focusedDraft, insertPasted, keepDrafts, fieldOrMic, OBEYA_DRAFT, takesImages, withPasted } from './draft';
 import { HoldToTalk, PushToTalk, SPACE_SHOWS_MS, TAP_MS, ToldList, usePushToTalk, useTold } from './voice';
 import { videoOf } from './spot';
 import { CardView, shownState, Edges, Minimap, TalkIcon } from './parts';
@@ -932,9 +932,9 @@ function Canvas({
       const text = e.clipboardData?.getData('text/plain').trim() ?? '';
       if (!text) return;
       e.preventDefault();
-      // too long for a message: it goes in as a file, by its path
-      if (text.length > MAX_MESSAGE_CHARS) return void textAsFile(key, text);
       pastedText();
+      // what would make the field's text too long for a message goes in as a file, by its path; as text where the upload fails
+      if (withPasted(key, text).trim().length > MAX_MESSAGE_CHARS) return void textAsFile(key, text, { otherwise: () => insertPasted(key, [text]) });
       insertPasted(key, [text]);
     };
     addEventListener('keyup', up, true);

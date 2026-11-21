@@ -609,7 +609,7 @@ export const wordsField = (placeholder: string, onTell: Tell, field: Field, act:
   listener,
   quote: true,
   onWords: async (words, images, replyTo) => onTell(words, images, field, replyTo),
-  onPicked: (text, _, images, replyTo) => act({ action, text, images, ...(replyTo ? { replyTo } : {}) }, { close: false }),
+  onPicked: (text, _, images, replyTo) => act({ action, text, images, ...(replyTo ? { replyTo } : {}) }, { close: false, rejects: true }),
 });
 
 /**

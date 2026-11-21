@@ -35,6 +35,8 @@ export interface Draft {
   files?: string[];
   /** Texts pasted outside a text field among the words (`insertPasted`): beside the microphone they show apart from the paths, and they move with them (`moveFiles`). */
   pasted?: string[];
+  /** The path of the file a paste too long for a message went into (`textAsFile`): while it stands in the words, the field says why. */
+  pastedAsFile?: string;
 }
 
 export interface Picks {
@@ -378,6 +380,9 @@ export function insertPasted(key: string, texts: string[]) {
   if (el) setText(el, after.slice(before.length), before.length, before.length);
   updateDraft(key, (d) => ({ ...(el ? {} : { text: after }), pasted: [...(d.pasted ?? []), ...texts] }));
 }
+
+/** The draft's text as `insertPasted` would leave it with `text` pasted outside a field. */
+export const withPasted = (key: string, text: string) => paragraphAfter(fields.get(key)?.value ?? draftOf(key).text, text.trim());
 
 /** The texts pasted outside a field that still stand in the draft's words, each once. */
 export const pastedIn = ({ text, pasted }: Pick<Draft, 'text' | 'pasted'>) => filesIn(text, pasted);

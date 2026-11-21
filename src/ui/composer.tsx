@@ -11,7 +11,7 @@
 import { type MouseEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { api } from './api';
 import { DictateButton, dictating, dictationLine, useSpaceToTalk } from './dictation';
-import { dropDraft, typeInto, updateDraft, useDraft, useDraftField } from './draft';
+import { dropDraft, insert, typeInto, updateDraft, useDraft, useDraftField } from './draft';
 import { setHeight, textHeight, useFitHeight } from './fitHeight';
 import { Quote } from './message';
 import { type Reply, replyOn, setReply, useReply } from './reply';
@@ -155,11 +155,8 @@ export function Composer({
   // longer than a message may be: it does not send, and the line under the field offers to move it into a file
   const length = text.trim().length;
   const tooLong = length > MAX_MESSAGE_CHARS;
-  // a paste too long for a message just went in as a file: the line under the field says why its path stands there
-  const [pastedAsFile, setPastedAsFile] = useState(false);
-  useEffect(() => {
-    if (!text.trim()) setPastedAsFile(false);
-  }, [text]);
+  // a paste too long for a message went in as a file: while its path stands in the words, the line under the field says why
+  const pastedAsFile = !!d.pastedAsFile && text.includes(d.pastedAsFile);
   const ready = (!!text.trim() || images.length > 0 || allowEmpty) && !tooLong && !busy && !shots.uploading && !shots.marking.length;
   const send = async () => {
     if (!ready) return;
@@ -208,7 +205,7 @@ export function Composer({
             // text that would make the message too long goes in as a file, by its path
             if (pasted && el.value.length - (el.selectionEnd - el.selectionStart) + pasted.length > MAX_MESSAGE_CHARS) {
               e.preventDefault();
-              void textAsFile(key, pasted).then((ok) => ok && setPastedAsFile(true));
+              void textAsFile(key, pasted, { otherwise: () => insert(key, pasted) });
               return;
             }
             shots.onPaste(e);

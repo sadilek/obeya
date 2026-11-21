@@ -941,6 +941,12 @@ describe('other files', () => {
     expect(shown.headers.get('content-security-policy')).toBe('sandbox');
     expect((await globalThis.fetch(new URL(api(`/files/stored/${id}/pasted-text.txt`), server.url))).status).toBe(401);
     for (const route of [`/files/stored/${id}/other.txt`, `/files/stored/not-an-id/pasted-text.txt`, `/files/stored/${id}/..%2F..%2Fobeya.db`]) expect((await open(route)).status).toBe(404);
+    // a PDF goes to the browser's viewer, which shows none under a CSP sandbox
+    const pdf = (await (await upload(new TextEncoder().encode('%PDF-1.4'), 'report.pdf')).json()) as { path: string };
+    const viewer = await open(`/files/stored/${basename(dirname(pdf.path))}/report.pdf`);
+    expect(viewer.headers.get('content-type')).toBe('application/pdf');
+    expect(viewer.headers.get('content-security-policy')).not.toContain('sandbox');
+    expect(viewer.headers.get('x-content-type-options')).toBe('nosniff');
   });
 });
 

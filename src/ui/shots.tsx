@@ -103,20 +103,29 @@ const fileTo = (key: string, files: File[], put?: (path: string) => void) =>
 /**
  * A text too long for a message (`MAX_MESSAGE_CHARS`) as a file Obeya keeps, named `name`: its path
  * goes into the draft's text as a dropped file's does (`fileTo`), in place of `replaces` where the
- * text still holds it. Whether it arrived; until then the field shows it uploading and does not send.
+ * text still holds it; a pasted one (no `replaces`) is noted as such, for the field to say why its
+ * path stands there. Where the upload fails, `otherwise` puts the text in as text, so nothing pasted
+ * is lost (the field then offers to move it into a file). Whether it arrived; until then the field
+ * shows it uploading and does not send.
  */
-export const textAsFile = async (key: string, text: string, { name = 'pasted-text.txt', replaces }: { name?: string; replaces?: string } = {}) =>
-  (await eachFile(key, [new File([text], name, { type: 'text/plain' })], async (f, home) => {
-    const word = pathWord(await api.uploadFile(f));
-    let swapped = false;
-    if (replaces)
-      updateDraftAt(home, key, (d) => {
-        if (!d.text.includes(replaces)) return {};
-        swapped = true;
-        return { text: d.text.replace(replaces, () => word), files: [...(d.files ?? []), word] };
-      });
-    if (!swapped) insertFilesAt(home, key, [word]);
-  })) > 0;
+export const textAsFile = async (key: string, text: string, { name = 'pasted-text.txt', replaces, otherwise }: { name?: string; replaces?: string; otherwise?: () => void } = {}) => {
+  const arrived =
+    (await eachFile(key, [new File([text], name, { type: 'text/plain' })], async (f, home) => {
+      const word = pathWord(await api.uploadFile(f));
+      let swapped = false;
+      if (replaces)
+        updateDraftAt(home, key, (d) => {
+          if (!d.text.includes(replaces)) return {};
+          swapped = true;
+          return { text: d.text.replace(replaces, () => word), files: [...(d.files ?? []), word] };
+        });
+      if (swapped) return;
+      insertFilesAt(home, key, [word]);
+      updateDraftAt(home, key, { pastedAsFile: word });
+    })) > 0;
+  if (!arrived) otherwise?.();
+  return arrived;
+};
 
 /**
  * Pasted or dropped files for a draft: the screenshots as screenshots (`added` hears each), the

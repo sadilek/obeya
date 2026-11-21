@@ -164,9 +164,7 @@ const attachment = (name: string) => `attachment; filename*=UTF-8''${encodeURICo
 /**
  * A file a card's work made or changed (`Workers.file`), as its left column loads it: sandboxed as an
  * HTML artifact's files are, a page telling its frame its height. A PDF comes as a PDF for the
- * browser's viewer, which shows none in a sandboxed frame or under a CSP sandbox: without the
- * sandbox, with a policy that allows it nothing beyond, and `nosniff`, which keeps a file named
- * `.pdf` from being read as anything else.
+ * browser's viewer (`servePdf`).
  * `get`: the file by its path, once the key in the address is checked.
  */
 export async function serveCardFile(asked: string, download: boolean, req: Request, get: (path: string) => Promise<FileAt | null>): Promise<Response> {
@@ -175,22 +173,28 @@ export async function serveCardFile(asked: string, download: boolean, req: Reque
   const file = await get(path);
   if (!file) return notFound();
   const name = basename(path);
-  if (/\.pdf$/i.test(name)) {
-    const body = 'path' in file ? Bun.file(file.path) : file.data;
-    // the viewer runs a PDF's scripts, and sent nothing on its own when tried (form submission, links, getURL, launchURL);
-    // in case a later one does, the policies of a worker's page say no further, which leave the viewer as it is
-    const headers: Record<string, string> = {
-      'content-type': 'application/pdf',
-      'x-content-type-options': 'nosniff',
-      'content-security-policy': "default-src 'none'; form-action 'none'; frame-ancestors 'self'",
-      'connection-allowlist': OWN_CONNECTIONS,
-      'x-dns-prefetch-control': 'off',
-      'cache-control': 'no-cache',
-      ...(download ? { 'content-disposition': attachment(name) } : {}),
-    };
-    return new Response(body, { headers });
-  }
+  if (/\.pdf$/i.test(name)) return servePdf('path' in file ? Bun.file(file.path) : file.data, name, download);
   return sandboxed(file, name, req, /\.html?$/i.test(name), download);
+}
+
+/**
+ * A PDF for the browser's viewer, which shows none in a sandboxed frame or under a CSP sandbox:
+ * without the sandbox, with a policy that allows it nothing beyond, and `nosniff`, which keeps a
+ * file named `.pdf` from being read as anything else.
+ */
+export function servePdf(body: BodyInit, name: string, download = false): Response {
+  // the viewer runs a PDF's scripts, and sent nothing on its own when tried (form submission, links, getURL, launchURL);
+  // in case a later one does, the policies of a worker's page say no further, which leave the viewer as it is
+  const headers: Record<string, string> = {
+    'content-type': 'application/pdf',
+    'x-content-type-options': 'nosniff',
+    'content-security-policy': "default-src 'none'; form-action 'none'; frame-ancestors 'self'",
+    'connection-allowlist': OWN_CONNECTIONS,
+    'x-dns-prefetch-control': 'off',
+    'cache-control': 'no-cache',
+    ...(download ? { 'content-disposition': attachment(name) } : {}),
+  };
+  return new Response(body, { headers });
 }
 
 /** Points the frame at the page's own address, the part after `#` included, which never reaches the server. */

@@ -85,6 +85,8 @@ export function Detail(p: Props) {
     } catch (e) {
       if (!(e instanceof ApiError)) console.error(e);
       setError(failText(e));
+      // refused: the agent did not get the words; anything else may have come after they arrived
+      if (!done.close && done.rejects && e instanceof ApiError && e.code) throw e;
     }
   };
   // an approval that posts the text for the PR takes the owner's edit of it as it stands, saved or not
@@ -1038,8 +1040,8 @@ function TaskTalk({
               placeholder: { note: item.snoozed && !item.snoozed.waiting && !item.snoozed.start ? t.snooze.compose : item.paused || item.pausing ? t.pause.compose : askable(item) || item.followUp ? t.compose.followUp : agentWorks(item) ? t.compose.working : holdsNotes(item) ? t.compose.queued : t.compose.idle, answer: t.compose.question, feedback: t.compose.review, demo: t.compose.demo }[field],
               listener,
               onWords: async (text, images, replyTo) => onTell(text, images, field, replyTo),
-              onPicked: (text, [picks = []], images, replyTo) => act({ action: 'answer', text, picks, images, ...(replyTo ? { replyTo } : {}) }, { close: false }),
-              onDecided: (text, findings, images, replyTo) => act({ action: 'message', text, findings, ...(images ? { images } : {}), ...(replyTo ? { replyTo } : {}) }, { close: false }),
+              onPicked: (text, [picks = []], images, replyTo) => act({ action: 'answer', text, picks, images, ...(replyTo ? { replyTo } : {}) }, { close: false, rejects: true }),
+              onDecided: (text, findings, images, replyTo) => act({ action: 'message', text, findings, ...(images ? { images } : {}), ...(replyTo ? { replyTo } : {}) }, { close: false, rejects: true }),
             }
           : undefined
       }
