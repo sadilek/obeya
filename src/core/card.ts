@@ -89,6 +89,9 @@ export const buildableOn = (i: Item) => i.state === 'planned' && !i.branch && !i
 export const untouched = (i: Item) =>
   i.kind === 'task' && i.source === 'manual' && i.state === 'planned' && !i.branch && !i.workspace && (!i.queue || 'behind' in i.queue) && !i.prototypeOf && !i.becomesProject;
 
+/** A task `untouched` but for the Coordinator still checking it, which may be deleted too: the check is dropped. */
+export const deletable = (i: Item) => untouched(i) || (!!i.queue && 'checking' in i.queue && untouched({ ...i, queue: undefined }));
+
 /**
  * A task of the owner's that can still be planned as a project, as an idea can: planned, nobody has
  * worked on it, the Coordinator does not hold it, and it is no prototype nor decided as a project already.

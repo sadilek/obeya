@@ -11,7 +11,7 @@ import { Branch, type CardChange, useCardDiff } from './diff';
 import type { CardDiff } from '../core/diff';
 import { ResultFiles } from './files';
 import { DiscardChanges, FolderBox, FolderLine } from './folder';
-import { landedRef } from './parts';
+import { landedRef, StopMark } from './parts';
 import { holdsNotes } from '../core/queue';
 import { forcedText, QueueList, scrollerOf, useQueueMove, useQueueSort, waitText, type Behind } from './queue';
 import { Body, plain } from './markdown';
@@ -419,7 +419,7 @@ function TaskView(v: View) {
       <RepoDownBox item={item} />
       <MoveToBox item={item} act={act} />
 
-      {!waits && <QueueBox item={item} all={all} act={act} onClones={v.onClones} onDelete={v.onDelete} />}
+      {!waits && <QueueBox item={item} all={all} act={act} onClones={v.onClones} />}
 
       {item.prototypeOf && (
         <p className="hint">
@@ -459,7 +459,7 @@ function TaskView(v: View) {
         <Split
           main={
             <>
-              <QueueBox item={item} all={all} act={act} onClones={v.onClones} onDelete={v.onDelete} />
+              <QueueBox item={item} all={all} act={act} onClones={v.onClones} />
               {text({ fresh: true, grow: true })}
             </>
           }
@@ -554,20 +554,26 @@ function Where({ item, parent, worked, inFolder, change, onReadPlan }: { item: I
 }
 
 /**
- * What a card in the queue waits for, with the buttons that start it anyway, take it out of the
- * queue or delete it; also while Obeya still checks it, so a card started by mistake goes at once.
+ * What a card in the queue waits for, with the buttons that start it anyway or take it out of the
+ * queue. While Obeya still checks it, a stop beside the text takes the start back: a rare step, so
+ * it stays in the background, but always in view, since the box shows too seldom to learn it on hover.
  */
-function QueueBox({ item, all, act, onClones, onDelete }: { item: Item; all: Item[]; act: Act; onClones?: ((repo: string, field: 'clones' | 'slots') => void) | undefined; onDelete: () => void }) {
+function QueueBox({ item, all, act, onClones }: { item: Item; all: Item[]; act: Act; onClones?: ((repo: string, field: 'clones' | 'slots') => void) | undefined }) {
   const q = item.queue;
   if (item.state !== 'planned' || !q) return null;
-  // as in the card's row of buttons once it is out of the queue: the owner's task nobody worked on, or one stopped
-  const deletable = item.source === 'manual' && !item.prototypeOf && (!isWorked(item) || stopped(item));
+  if ('checking' in q)
+    return (
+      <div className="question queue checking">
+        <div className="q-text">{t.queue.checkingLong}</div>
+        <button className="turn-pause" title={t.queue.cancelCheckHint} aria-label={t.queue.cancelCheck} onClick={() => act({ action: 'dequeue' }, { close: false })}>
+          <StopMark />
+        </button>
+      </div>
+    );
   return (
     <div className="question queue">
       <div className="q-text">
-        {'checking' in q ? (
-          t.queue.checkingLong
-        ) : 'paused' in q ? (
+        {'paused' in q ? (
           t.queue.pausedLong
         ) : 'workspace' in q ? (
           <>
@@ -593,9 +599,8 @@ function QueueBox({ item, all, act, onClones, onDelete }: { item: Item; all: Ite
           </StartOn>
         )}
         <button className="btn" onClick={() => act({ action: 'dequeue' }, { close: false })}>
-          {'checking' in q ? t.queue.cancelCheck : t.queue.dequeue}
+          {t.queue.dequeue}
         </button>
-        {deletable && <DeleteButton onDelete={onDelete} />}
       </div>
     </div>
   );

@@ -216,8 +216,8 @@ review findings that linked them, and cards waiting for them in the queue, then 
 that stays; started ones waiting in the queue make it wait for what any of them waited for, in the
 place of the first queued. A planned task the owner no longer wants is deleted. Both hold only for
 planned tasks nobody has worked on yet (no branch, no workspace, queued only while waiting behind
-other cards; not a proposal, an idea, a workstream of a plan doc or a prototype), merging
-only within one repository; for anything else Obeya refuses with the reason. Like every command they
+other cards, and for deleting also while the Coordinator still checks it; not a proposal, an idea,
+a workstream of a plan doc or a prototype), merging only within one repository; for anything else Obeya refuses with the reason. Like every command they
 run after the undo window.
 
 "Review PR #5" (or a pull request's link, „schau dir den PR an“) makes a review card for a

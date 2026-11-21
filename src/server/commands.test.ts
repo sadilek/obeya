@@ -1183,10 +1183,15 @@ describe('merging and deleting planned tasks by voice', () => {
     expect(act([{ do: 'merge', cards: [tag(a), tag(started)], title: 'X' }])).toContain(`${tag(started)} "Started" is working`);
     expect(act([{ do: 'delete', card: tag(stopped) }])).toContain(`${tag(stopped)} "Stopped" was worked on already`);
     expect(act([{ do: 'delete', cards: [tag(b), tag(c)] }])).toContain('one delete action for each');
+    // one Obeya still checks may be deleted, not merged
+    const checked = board.create({ title: 'Checked', x: 2000, y: 0 });
+    board.work(checked.id, { queue: JSON.stringify({ checking: true, since: '2026-11-21T10:00:00.000Z' }) });
+    expect(act([{ do: 'merge', cards: [tag(a), tag(checked)], title: 'X' }])).toContain(`${tag(checked)} "Checked" is with Obeya to start`);
     s.call('act', {
       actions: [
         { do: 'merge', cards: [tag(a), tag(b)], title: ' Sign in again:  when and where ' },
         { do: 'delete', card: tag(c) },
+        { do: 'delete', card: tag(checked) },
       ],
       confirm: 'Zusammengeführt und gelöscht.',
     });
@@ -1196,6 +1201,7 @@ describe('merging and deleting planned tasks by voice', () => {
     expect(executed).toEqual([
       { do: 'merge', card: a.id, others: [b.id], title: 'Sign in again: when and where' },
       { do: 'delete', card: c.id },
+      { do: 'delete', card: checked.id },
     ]);
   });
 });

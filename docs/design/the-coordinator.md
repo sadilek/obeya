@@ -19,11 +19,16 @@ that happens anyway goes back to its worker on landing. The estimated files stay
 them (they read as a guess beside the files the card actually changed, and the owner has nothing to
 do with them; 2026-11-02).
 
-While the Coordinator checks a card (an agent turn, often a minute or more), the card offers "Don’t
-start after all" (back to planned, as "Take out of the queue" does for a waiting one) and, for the
-owner's own task, "Delete": a card started by mistake goes at once, without waiting for the
-judgement, which is then dropped (2026-11-19). A card deleted from the queue is out of it: brought
-back (the undo), it is planned and waits for the owner's start. A waiting card offers "Delete" too.
+While the Coordinator checks a card (an agent turn, often a minute or more), a stop beside the
+check's text takes the start back ("Don’t start after all"; back to planned, as "Take out of the
+queue" does for a waiting one), without waiting for the judgement. It is a rare step, so it stays
+muted, but always in view rather than on hover: the check shows too seldom for the owner to learn a
+button that only appears there. Deleting such a card is no button of the check's; the owner asks
+Obeya for it (2026-11-21). What was read for a check taken back is dropped for that card: a start of
+it made after it (the card edited meanwhile, say) is judged afresh. The cards judged together with
+it keep their judgement, and one that builds on a workstream taken back still waits for it until it
+has landed, as in the queue. A card deleted while in the queue is out of it:
+brought back (the undo), it is planned and waits for the owner's start.
 
 A branch's change is measured from where it left the nearest branch that is not a card's
 (`obeya/…`): the main branch, or a long-lived branch the card was built on; from the main branch if
