@@ -2754,7 +2754,7 @@ export async function unlanded(path: string, o: { origins?: string[]; main?: str
     const same = mine.filter(([object, peeled, ref]) => theirs.get(ref) === object || (theirs.get(`${ref}^{}`) ?? theirs.get(ref)) === (peeled || object));
     return (shared = same.map(([object, peeled]) => `^${peeled || object}\n`).join(''));
   };
-  for (const ref of refs) {
+  for (const ref of await holdingOwnCommits(path, refs)) {
     let n = await run('rev-list', '--count', ref, '--not', '--remotes=origin');
     if (n === null) return null;
     if (n === '0') continue;
@@ -2774,6 +2774,27 @@ export async function unlanded(path: string, o: { origins?: string[]; main?: str
   }
   return lost;
 }
+
+/**
+ * Of a clone's `refs`, those that may hold commits no branch of `origin` has, asked in two git calls
+ * for all of them: one per ref took seconds for a clone with a project's hundreds of tags, and over
+ * SSH a round trip each. A ref whose commit is on a branch of `origin` holds none and is left out; one
+ * that names no commit (a tag of a tree), or all of them where either call fails, stay to be asked one
+ * by one.
+ */
+async function holdingOwnCommits(path: string, refs: string[]): Promise<string[]> {
+  if (!refs.length) return refs;
+  const peeled = await gitRun(path, ['cat-file', '--batch-check=%(objectname)'], { stdin: refs.map((r) => `${r}^{commit}\n`).join('') }).catch(() => null);
+  const commits = peeled?.code === 0 ? peeled.stdout.split('\n').slice(0, refs.length) : [];
+  if (commits.length !== refs.length) return refs;
+  const known = [...new Set(commits.filter((c) => OBJECT_ID.test(c)))];
+  if (!known.length) return refs;
+  const outside = await gitRun(path, ['rev-list', '--stdin', '--not', '--remotes=origin'], { stdin: known.map((c) => `${c}\n`).join('') }).catch(() => null);
+  if (outside?.code !== 0) return refs;
+  const own = new Set(outside.stdout.split('\n').filter(Boolean));
+  return refs.filter((_, i) => !OBJECT_ID.test(commits[i]!) || own.has(commits[i]!));
+}
+const OBJECT_ID = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 
 /**
  * Whether the changes of `ref` since it left `main` are on `main` already, as a squashed or rebased
