@@ -13,7 +13,7 @@ import { cardNumbersIn, cardTag } from '../core/card-number';
 import type { Language } from '../core/locale';
 import { MESSAGES, type Messages, snoozeTerm } from '../core/messages';
 import { allTicked, type OtherDoc, type PlanDoc, type Workstream } from '../core/plan-doc';
-import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type ClonePool, type Decision, type DemoKind, type ErrorCode, type Group, type Snooze, type Woke, type Item, type NewCard, type NewRepo, type TalkMoved, type PreferenceState, type ProposedSetting, type SettingProposal, type SettingProposalState, type ProjectHistory, type Proposal, type Superseded, type CardState, type Revising, type Question, type PlanDir, type Queue, STATES, type Notice, type WorkerTurn } from '../core/types';
+import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type ClonePool, type Decision, type DemoKind, type ErrorCode, type Group, type Snooze, type Woke, type Item, type NewCard, type NewRepo, type TalkCard, type TalkMoved, type PreferenceState, type ProposedSetting, type SettingProposal, type SettingProposalState, type ProjectHistory, type Proposal, type Superseded, type CardState, type Revising, type Question, type PlanDir, type Queue, STATES, type Notice, type WorkerTurn } from '../core/types';
 import { archivedWithDone, archiveRefusal, type ArchiveRefusal, finished, formatQuestion, needsYou, plannedToStart } from '../core/card';
 import { type CardAgent, AGENT_EFFORTS, type AgentEffort, type Harness, HARNESSES, modelFits, storedModel } from '../core/agents';
 import type { CardRow, DecisionRow, Friction, FrictionNote, GroupRow, NewEvent, NewRow, RowUpdate, Store } from './db';
@@ -438,6 +438,12 @@ export class Board {
   readNow(cardId: string, ids: number[]) {
     if (!ids.length) return;
     for (const e of this.store.readEvents(cardId, ids)) for (const fn of this.eventListeners) fn(e);
+  }
+
+  /** Attaches cards the Coordinator created to its reply line in `cardId`'s log and updates open views. */
+  eventCreated(cardId: string, id: number, created: TalkCard[]) {
+    const e = this.store.setEventCreated(cardId, id, created);
+    if (e) for (const fn of this.eventListeners) fn(e);
   }
 
   /**
@@ -1824,34 +1830,37 @@ export class Board {
    * written in the sheet: it goes into the repository's card "Add to CLAUDE.md" at once, without
    * a proposal. `replaces`: an active rule of the owner's it takes the place of.
    */
-  fileRule(text: string, repos: string[], cardId: string | null = null, replaces?: number) {
+  fileRule(text: string, repos: string[], cardId: string | null = null, replaces?: number): string[] {
     const clean = checkPreference(text);
     if (!repos.length) throw new BadRequest('invalid', 'no repository');
     for (const r of repos) this.checkRepo(r);
+    const cards: string[] = [];
     this.store.db.transaction(() => {
       if (replaces !== undefined) this.store.setPreference(this.canvas.id, replaces, null);
       for (const repo of new Set(repos)) {
         this.store.fileRule(this.canvas.id, clean, cardId, repo);
-        this.collect(repo, clean);
+        cards.push(this.collect(repo, clean));
       }
     })();
     this.changed();
+    return cards;
   }
 
   /**
    * Adds an accepted rule to the repository's open card "Add to CLAUDE.md": planned and not yet
-   * with the Coordinator. Without one, a new card collects it.
+   * with the Coordinator. Without one, a new card collects it. Returns the card's id.
    */
-  private collect(repo: string, rule: string) {
+  private collect(repo: string, rule: string): string {
     const open = this.collecting(repo);
     if (open) {
       this.store.update(open.id, { body: `${open.body.trimEnd()}\n- ${rule}` });
       this.log(open.id, 'state', 'coordinator', this.t.coordinator.ruleTaken(rule));
-      return;
+      return open.id;
     }
     const card = this.create({ title: this.t.claudeMd.title, body: `${this.t.claudeMd.task}\n\n- ${rule}`, repo, ...this.freeSpot() });
     this.setSetting(`${CLAUDE_MD_SETTING}${repo}`, card.id);
     this.log(card.id, 'state', 'coordinator', this.t.coordinator.ruleTaken(rule));
+    return card.id;
   }
 
   /** The repository's card "Add to CLAUDE.md" while it still collects rules, if there is one. */

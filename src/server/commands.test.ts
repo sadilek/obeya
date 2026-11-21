@@ -1734,3 +1734,66 @@ describe('card numbers', () => {
     expect(brief).toContain("a card's K-number held for one session only, so one said then names another card than the same number now");
   });
 });
+
+describe('created card links in replies', () => {
+  test('records cards created in the sheet and in an open card log once the undo window passes, and not when undone', async () => {
+    const k = new Commander({
+      board,
+      runtime,
+      cwd: '/r',
+      delayMs: 15,
+      canvases: () => [{ id: 'site', name: 'Website' }],
+      execute: (c) => {
+        if (c.do === 'newCard' && c.canvas) return 'remote-1';
+        if (c.do === 'newCard') return board.create({ title: c.title, body: c.body, x: 0, y: 0 }).id;
+        if (c.do === 'newIdea') return board.create({ idea: true, title: c.title, body: c.body, x: 0, y: 0 }).id;
+      },
+    });
+    // in Obeya's sheet: a new task and a new idea on this canvas, plus one on another canvas
+    const first = await say(k, 'mach Aufgaben', 'act', {
+      actions: [
+        { do: 'new_card', title: 'Kontrast auf dem Handy', body: 'Buttons kontrastreicher.' },
+        { do: 'new_idea', title: 'Dark Mode', body: 'Farben überdenken.' },
+        { do: 'new_card', title: 'Startseite', body: 'Neues Bild.', canvas: 'Website' },
+      ],
+      confirm: 'Neue Aufgabe „Kontrast auf dem Handy“, neue Idee „Dark Mode“ und „Startseite“ auf Website.',
+    });
+    // before the undo window passes: no links yet
+    expect(board.snapshot().talk[0]!.created).toBeUndefined();
+    k.arm(first.heard.token!);
+    await until(() => board.snapshot().talk[0]!.created?.length === 3);
+    const task = board.items().find((i) => i.title === 'Kontrast auf dem Handy')!;
+    const idea = board.items().find((i) => i.title === 'Dark Mode')!;
+    expect(board.snapshot().talk[0]!.created).toEqual([
+      { id: task.id, title: 'Kontrast auf dem Handy' },
+      { id: idea.id, title: 'Dark Mode' },
+      { id: 'remote-1', title: 'Startseite', canvas: 'site' },
+    ]);
+
+    // taken back: nothing created and no links recorded
+    const undone = await say(k, 'noch eine', 'act', {
+      actions: [{ do: 'new_card', title: 'Abgebrochen', body: '' }],
+      confirm: 'Neue Aufgabe „Abgebrochen“.',
+    });
+    k.arm(undone.heard.token!);
+    expect(k.undo(undone.heard.token!)).toBe(true);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(board.snapshot().talk[1]!.undone).toBe(true);
+    expect(board.snapshot().talk[1]!.created).toBeUndefined();
+
+    // with a card open: attached to the coordinator's reply event in that card's log too
+    const opened = k.hear('mach eine Folgeaufgabe Export', { card: task.id });
+    await settle();
+    runtime.last.call('act', {
+      actions: [{ do: 'new_card', title: 'Export', body: 'Export bauen.' }],
+      confirm: 'Neue Aufgabe „Export“, der Agent startet.',
+    });
+    runtime.last.emit({ type: 'idle' });
+    const h = await opened;
+    k.arm(h.token!);
+    await until(() => board.events(task.id).some((e) => e.created?.length === 1));
+    const exportCard = board.items().find((i) => i.title === 'Export')!;
+    const replyEv = board.events(task.id).find((e) => e.author === 'coordinator' && e.kind === 'say');
+    expect(replyEv?.created).toEqual([{ id: exportCard.id, title: 'Export' }]);
+  });
+});

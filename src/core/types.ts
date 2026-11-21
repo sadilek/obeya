@@ -930,6 +930,8 @@ export interface CardEvent {
   readAfter?: number;
   /** Obeya's reply on the card says it cannot do what the owner asked (or the owner asked to tell its makers): what a draft for them starts from. */
   wish?: Wish;
+  /** Cards Obeya's command created once its undo window passed, for its reply in the card's conversation to link to them. */
+  created?: TalkCard[];
   /**
    * Obeya's reply on the card answers the owner's words without acting on them (no actions to take
    * back): it stands in the conversation, where the confirmation of actions folds away.
@@ -1292,6 +1294,8 @@ export interface Talk {
   limitedByOutage?: true;
   /** Cards the Coordinator waits on, as its reply said, to take a step once each gets there (`wait_for`). */
   waits?: TalkWait[];
+  /** Cards the Coordinator's command created once its undo window passed, for the reply to link to them. */
+  created?: TalkCard[];
   /** Words of no one: the Coordinator took them up by itself, since a card it waited on got there (or no longer can). */
   after?: TalkAfter;
   /** A question looked up for an action that needs its answer: the step the Coordinator takes once the answer is in, until it has decided it. */
@@ -1305,6 +1309,15 @@ export interface Talk {
    * (`question` is the words), so Obeya has no reply of its own to them.
    */
   askedIn?: string;
+}
+
+/** A card the Coordinator's command created, for its reply to link to it. */
+export interface TalkCard {
+  id: string;
+  /** Its title when it was created, which the reply names. */
+  title: string;
+  /** Another canvas of this Obeya, where the card was created there instead of on this one. */
+  canvas?: string;
 }
 
 /** A card that moved to another canvas: its id and title, and that canvas. */

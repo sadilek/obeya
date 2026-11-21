@@ -193,7 +193,13 @@ it.
 Messages look like a card's: the owner's on the right, who and when above, markdown (each line a
 paragraph, each blank line an empty line as typed, lists, tables, code, nested quotes; the plan
 docs' parser), a taken-back reply struck through, bare web addresses as links without `https://`
-and without the sentence's punctuation after them.
+and without the sentence's punctuation after them. Once a command's undo window passes and it
+creates cards (a new task or idea, a pull-request review, a split-off task, a prototype, or a
+repository's "Add to CLAUDE.md"), Obeya's reply links each created card — in place on its title
+where the reply names it, or below the reply where its title was not in the text (a pull-request
+review whose title came from the forge, say), in Obeya's sheet, on the phone and in a card's
+conversation alike; a card on another canvas links there, and an archived or deleted card returns
+to plain text.
 
 ### Work retrospective
 

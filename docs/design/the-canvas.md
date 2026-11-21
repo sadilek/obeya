@@ -306,8 +306,9 @@ leaves the page rather than opening the card again. A card opened from a project
 from the project's; one opened in place of another (by a link in it) takes over that one's step, so
 Back from it returns to what was open before the first. Where a card names another (what a queued
 card waits for, the card a follow-up or a proposal comes from, the card that replaced a proposal, a
-prototype's idea and project, what Obeya waits on), the name is a link to that card while it is on
-the canvas: a click opens it in place of the open one, a click with a modifier in a tab of its own.
+prototype's idea and project, what Obeya waits on, cards Obeya created in reply to a command), the
+name is a link to that card while it is on the canvas: a click opens it in place of the open one, a
+click with a modifier in a tab of its own.
 Card faces on the canvas link nothing, since a click there opens the card itself.
 
 ### Card numbers

@@ -4,7 +4,7 @@
 // An asterisk opens emphasis only before a non-space and closes it only after one, so `5 * 3` and
 // a list's `* ` stay as they are; neither may touch a word outside, so `a*b*c` stays too.
 
-import { createContext, type ReactNode, useContext, useRef } from 'react';
+import { createContext, Fragment, type ReactNode, useContext, useRef } from 'react';
 import { CopyIcon } from './cardNumber';
 import { useCopied } from './copy';
 import { t } from './strings';
@@ -18,6 +18,12 @@ export { excerpt, plain } from '../core/plain';
  * nothing from the web or the disk.
  */
 export const DocImages = createContext<((src: string) => string | null) | null>(null);
+
+/**
+ * React nodes substituted for sentinel marks (`\u0000<n>\u0000`) in inline markdown text, used by
+ * `ReplyBody` to turn named cards into links without touching markdown syntax.
+ */
+export const CardMentions = createContext<ReactNode[] | null>(null);
 
 /**
  * A bare address without what the sentence put after it: closing punctuation, and a parenthesis
@@ -34,22 +40,38 @@ function bareUrl(s: string): string {
 }
 
 export function Inline({ md }: { md: string }) {
-  return <>{render(md, false, useContext(DocImages))}</>;
+  return <>{render(md, false, useContext(DocImages), useContext(CardMentions))}</>;
 }
 
-/** `inLink`: the text of a link, where an address is only words, since a link holds no other; `image`: where images are served. */
-function render(md: string, inLink = false, image: ((src: string) => string | null) | null = null): ReactNode[] {
+/** `inLink`: the text of a link, where an address is only words, since a link holds no other; `image`: where images are served; `mentions`: nodes for `\u0000<n>\u0000` sentinels. */
+function render(md: string, inLink = false, image: ((src: string) => string | null) | null = null, mentions: ReactNode[] | null = null): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
   let k = 0;
+  const push = (slice: string) => {
+    if (!slice) return;
+    if (!mentions || inLink || !slice.includes('\u0000')) {
+      out.push(slice);
+      return;
+    }
+    const parts = slice.split(/\u0000(\d+)\u0000/);
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]!;
+      if (i % 2 === 0) {
+        if (part) out.push(part);
+      } else {
+        out.push(<Fragment key={k++}>{mentions[Number(part)]}</Fragment>);
+      }
+    }
+  };
   for (const m of md.matchAll(TOKEN)) {
-    if (m.index > last) out.push(md.slice(last, m.index));
+    if (m.index > last) push(md.slice(last, m.index));
     const [, code, bold, strike, em, star, text, href, bare, alt, src] = m;
     let end = m.index + m[0].length;
     if (code !== undefined) out.push(<code key={k++}>{code}</code>);
-    else if (bold !== undefined) out.push(<b key={k++}>{render(bold, inLink, image)}</b>);
-    else if (strike !== undefined) out.push(<s key={k++}>{render(strike, inLink, image)}</s>);
-    else if (em !== undefined || star !== undefined) out.push(<em key={k++}>{render(em ?? star!, inLink, image)}</em>);
+    else if (bold !== undefined) out.push(<b key={k++}>{render(bold, inLink, image, mentions)}</b>);
+    else if (strike !== undefined) out.push(<s key={k++}>{render(strike, inLink, image, mentions)}</s>);
+    else if (em !== undefined || star !== undefined) out.push(<em key={k++}>{render(em ?? star!, inLink, image, mentions)}</em>);
     else if (src !== undefined) {
       const url = image?.(src);
       out.push(url ? <img key={k++} className="doc-img" src={url} alt={alt} title={alt || undefined} /> : <span key={k++}>{alt}</span>);
@@ -58,11 +80,11 @@ function render(md: string, inLink = false, image: ((src: string) => string | nu
       end = m.index + url.length;
       // shown without its scheme, which says nothing in a sentence
       out.push(inLink ? url : <a key={k++} className="link" href={url} target="_blank" rel="noreferrer">{url.replace(/^https?:\/\/(www\.)?/, '')}</a>);
-    } else if (/^https?:/.test(href!) && !inLink) out.push(<a key={k++} className="link" href={href} target="_blank" rel="noreferrer">{render(text!, true, image)}</a>);
-    else out.push(<span key={k++}>{render(text!, inLink, image)}</span>);
+    } else if (/^https?:/.test(href!) && !inLink) out.push(<a key={k++} className="link" href={href} target="_blank" rel="noreferrer">{render(text!, true, image, mentions)}</a>);
+    else out.push(<span key={k++}>{render(text!, inLink, image, mentions)}</span>);
     last = end;
   }
-  if (last < md.length) out.push(md.slice(last));
+  if (last < md.length) push(md.slice(last));
   return out;
 }
 

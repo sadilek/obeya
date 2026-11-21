@@ -14,6 +14,7 @@ import type { Act, Tell } from './cardSheet';
 import { PlayMark, StopMark } from './parts';
 import { holdsNotes } from '../core/queue';
 import { Body, Inline } from './markdown';
+import { ReplyBody } from './cardLink';
 import { goToMessage, Msg, Quote, Reading, tellable, useAnswer } from './message';
 import { useReportedHeight } from './frame';
 import { cardDraft, giveBack, questionsKey, updateDraft, useDraft } from './draft';
@@ -393,7 +394,7 @@ function Message({
       {quoted && <Quote q={eventQuote(quoted)} />}
       {answer.continues}
       {e.spot && <SpotLink cardId={e.cardId} spot={e.spot} />}
-      {!turn.quiet && <Body md={q ? q.text : ownerSide(e) ? linkStoredFiles(turn.words ?? e.text, storedFile) : (turn.words ?? e.text)} />}
+      {!turn.quiet && <ReplyBody md={q ? q.text : ownerSide(e) ? linkStoredFiles(turn.words ?? e.text, storedFile) : (turn.words ?? e.text)} created={e.created} />}
       {e.wish && <WishReplyLink wish={e.wish} />}
       {q && turn.end !== 'settled' && q.options.length > 0 && (
         <ul className="q-opts">

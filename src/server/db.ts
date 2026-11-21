@@ -646,6 +646,8 @@ export const MIGRATIONS = [
   );`,
   // an approval clicked while the card's worker was still at work on the owner's words (`CardRow.approve_after`)
   'ALTER TABLE cards ADD COLUMN approve_after TEXT;',
+  // cards the Coordinator's command created, for its reply to link to them (`Talk.created`, `CardEvent.created`)
+  'ALTER TABLE talk ADD COLUMN created TEXT; ALTER TABLE events ADD COLUMN created TEXT;',
 ];
 
 /**
@@ -663,6 +665,7 @@ const EVENT_FIELDS = {
   unread: 'flag',
   readAfter: 'int',
   wish: 'json',
+  created: 'list',
   reply: 'flag',
   forwarded: 'flag',
   token: 'flag',
@@ -1184,6 +1187,13 @@ export class Store {
   /** Takes an event out of the card's log. */
   deleteEvent(cardId: string, id: number) {
     this.db.query('DELETE FROM events WHERE card_id = $c AND id = $id').run({ c: cardId, id });
+  }
+
+  /** Records the cards created by the Coordinator's command on its reply line in the card's log; returns the updated line. */
+  setEventCreated(cardId: string, id: number, created: import('../core/types').TalkCard[]): CardEvent | undefined {
+    if (!created.length) return undefined;
+    this.db.query('UPDATE events SET created = $created WHERE card_id = $c AND id = $id').run({ c: cardId, id, created: JSON.stringify(created) });
+    return this.event(cardId, id);
   }
 
   /** One event of the card's log. */

@@ -1205,6 +1205,8 @@ span.cl-name { color: inherit; cursor: default; }
 .talk .note.snooze-line .clock-mark { vertical-align: -1px; }
 .talk .wait-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; }
 .talk .wait-line .clock-mark { vertical-align: -1px; }
+.talk .created-links { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.talk .created-links .link { color: var(--ink); }
 .snooze-acts { display: flex; gap: 8px; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
 .snooze-acts .btn.small { margin-top: 4px; background: var(--card); border: 1px solid var(--line); color: var(--ink); }
 /* "Later …" and its menu of times, above the button in a card's action row; on the snooze line over the conversation, placed by script */

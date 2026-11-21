@@ -1628,8 +1628,9 @@ export class CanvasRuntime {
     // the rule it changes may have been deleted in the meantime: then it is a new one
     const replaces = o.replaces !== undefined && this.board.preferences('active').some((p) => p.id === o.replaces) ? o.replaces : undefined;
     if (o.repos?.length) {
-      this.board.fileRule(text, o.repos, o.card ?? null, replaces);
+      const cards = this.board.fileRule(text, o.repos, o.card ?? null, replaces);
       this.fileRules();
+      return cards;
     } else if (replaces !== undefined) this.board.setPreference(replaces, text);
     else this.board.addPreference(text, o.card ?? null);
   }
@@ -2167,7 +2168,7 @@ export class CanvasRuntime {
         this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
         // the agent opens the discussion with what the owner said
         this.explorers.discuss(card.id, c.body.trim() || c.title, true, this.images.resolve(c.images));
-        return;
+        return card.id;
       }
       case 'newRepo': {
         const card = this.board.item(c.card);

@@ -89,7 +89,7 @@ export interface StageCard {
    * handovers in order, and a `spot` (a comment's place in a demo video) names its `demo` by its
    * place in that order; earlier demos need code that has them.
    */
-  events?: { kind: string; author: string; text: string; ago?: string; mocks?: { title: string; html: string }[]; spot?: { at: number; chapter?: string; demo?: number }; token?: boolean; reply?: boolean; forwarded?: boolean }[];
+  events?: { kind: string; author: string; text: string; ago?: string; mocks?: { title: string; html: string }[]; spot?: { at: number; chapter?: string; demo?: number }; token?: boolean; reply?: boolean; forwarded?: boolean; created?: string[] }[];
   /** Any other column of `cards`, objects stored as JSON. A review card's `contribution` naming one of `pulls` gets that PR's head as `reviewed` where it names none. */
   row?: Record<string, unknown>;
 }
@@ -248,6 +248,8 @@ export interface Stage {
     askedIn?: string;
     /** A question without `answer`, followed up while it was looked up: the index of the later exchange whose answer answers both. */
     joinedInto?: number;
+    /** Keys of cards the command created, for the reply to link to them; needs code that has `talk.created`. */
+    created?: string[];
   }[];
 }
 
@@ -780,7 +782,7 @@ async function writeCard(db: Database, ctx: Context, c: StageCard, i: number) {
     db.query("INSERT INTO spend (canvas_id, card_id, session, usd) SELECT canvas_id, id, 'staged:' || id, $usd FROM cards WHERE id = $id").run({ id, usd: c.spent });
     db.query('UPDATE cards SET spent = $usd WHERE id = $id').run({ id, usd: c.spent });
   }
-  writeEvents(db, c, id, demo);
+  writeEvents(db, c, id, demo, ctx);
 }
 
 /** The workspace a card holds (`workspace`): the columns of its row that say so. */
@@ -828,20 +830,33 @@ function holdWorkspace(db: Database, ctx: Context, c: StageCard, i: number, bran
 }
 
 /** The card's conversation, with the demos of its handovers and the spots its comments name. */
-function writeEvents(db: Database, c: StageCard, id: string, demo: Record<string, unknown> | undefined) {
+function writeEvents(db: Database, c: StageCard, id: string, demo: Record<string, unknown> | undefined, ctx: Context) {
   const reviews: { id: number; at: string }[] = [];
   const spots: [number, NonNullable<StageEvent['spot']>][] = [];
   for (const e of c.events ?? []) {
     // only code that has mocks (an error's token) has their column
     const at = ago(e.ago ?? '0s');
-    const { lastInsertRowid } = db.query(`INSERT INTO events (card_id, at, kind, author, text${e.mocks ? ', mocks' : ''}${e.token ? ', token' : ''}${e.reply ? ', reply' : ''}${e.forwarded ? ', forwarded' : ''}) VALUES ($c, $at, $kind, $author, $text${e.mocks ? ', $mocks' : ''}${e.token ? ', 1' : ''}${e.reply ? ', 1' : ''}${e.forwarded ? ', 1' : ''})`).run({
-      c: id,
-      at,
-      kind: e.kind,
-      author: e.author,
-      text: e.text,
-      ...(e.mocks ? { mocks: JSON.stringify(e.mocks) } : {}),
-    });
+    const created = e.created?.length
+      ? e.created.map((k) => {
+          const cardId = ctx.ids[k] ?? fail(`event on ${c.key ?? id}: created card ${k} does not exist`);
+          const card = ctx.stage.cards.find((s) => s.key === k);
+          const target = ctx.canvasOf[k] && ctx.canvasOf[k] !== ctx.canvas ? ctx.canvasOf[k] : undefined;
+          return { id: cardId, title: card?.title ?? k, ...(target ? { canvas: target } : {}) };
+        })
+      : undefined;
+    const { lastInsertRowid } = db
+      .query(
+        `INSERT INTO events (card_id, at, kind, author, text${e.mocks ? ', mocks' : ''}${e.token ? ', token' : ''}${e.reply ? ', reply' : ''}${e.forwarded ? ', forwarded' : ''}${created ? ', created' : ''}) VALUES ($c, $at, $kind, $author, $text${e.mocks ? ', $mocks' : ''}${e.token ? ', 1' : ''}${e.reply ? ', 1' : ''}${e.forwarded ? ', 1' : ''}${created ? ', $created' : ''})`,
+      )
+      .run({
+        c: id,
+        at,
+        kind: e.kind,
+        author: e.author,
+        text: e.text,
+        ...(e.mocks ? { mocks: JSON.stringify(e.mocks) } : {}),
+        ...(created ? { created: JSON.stringify(created) } : {}),
+      });
     if (e.kind === 'review') reviews.push({ id: Number(lastInsertRowid), at });
     if (e.spot) spots.push([Number(lastInsertRowid), e.spot]);
   }
@@ -884,7 +899,7 @@ function writePreferences(db: Database, { stage, canvas, ids }: Context) {
   }
 }
 
-function writeTalk(db: Database, { stage, canvas, ids, home }: Context) {
+function writeTalk(db: Database, { stage, canvas, ids, canvasOf, home }: Context) {
   const talkIds: number[] = [];
   const threadOf = new Map<number, number>();
   for (const [i, x] of (stage.talk ?? []).entries()) {
@@ -901,6 +916,15 @@ function writeTalk(db: Database, { stage, canvas, ids, home }: Context) {
     if (x.unread) row.unread = 1;
     if (x.replyOnly) row.reply_only = 1;
     if (x.wish) row.wish = JSON.stringify(x.wish);
+    if (x.created?.length) {
+      const created = x.created.map((k) => {
+        const cardId = ids[k] ?? fail(`talk ${i}: created card ${k} does not exist`);
+        const c = stage.cards.find((s) => s.key === k);
+        const target = canvasOf[k] && canvasOf[k] !== canvas ? canvasOf[k] : undefined;
+        return { id: cardId, title: c?.title ?? k, ...(target ? { canvas: target } : {}) };
+      });
+      row.created = JSON.stringify(created);
+    }
     if (x.askedIn) row.asked_in = row.about = ids[x.askedIn] ?? fail(`talk ${i}: project ${x.askedIn} does not exist`);
     if (x.follows !== undefined) {
       const followed = talkIds[x.follows] ?? fail(`talk ${i}: follows ${x.follows}, which comes later or does not exist`);

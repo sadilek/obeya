@@ -27,7 +27,7 @@ import { ClockMark } from './snooze';
 import { know, read, session, useStoredState, write, useKnown } from './stored';
 import { cardPath } from './address';
 import { PlayMark, StopMark } from './parts';
-import { CardLink, Naming } from './cardLink';
+import { CardLink, Naming, ReplyBody } from './cardLink';
 import { TextDiff } from './textDiff';
 
 interface Props {
@@ -351,7 +351,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
                 onReply={reply('reply', 'coordinator', x.reply)}
                 head={x.thread === undefined && tellable(x, items) && <WalkthroughButton of={{ talk: x.id }} hint={x.id === hinted} />}
               >
-                <Body md={x.reply} />
+                <ReplyBody md={x.reply} created={x.created} items={items} onOpen={onOpen} />
                 {x.wish && !x.undone && <WishReplyLink wish={x.wish} />}
                 {x.undone && <div className="hint">{t.coordinator.undone}</div>}
                 {x.waits?.map((w) => <WaitLine key={w.card} talk={x.id} wait={w} card={items.find((i) => i.id === w.card)} onOpen={onOpen} />)}
