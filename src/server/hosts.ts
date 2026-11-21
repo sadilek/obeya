@@ -178,7 +178,7 @@ export class SshHost {
     const line = typeof command === 'string' ? command : `exec ${command.map(sh).join(' ')}`;
     const script = [
       o.env ? 'IFS= read -r obeya_env; eval "$obeya_env"; unset obeya_env;' : '',
-      o.path === false ? '' : `PATH="${PATH_PREFIX}":${this.terminal.length ? `${sh(this.terminal.join(':'))}:` : ''}"$PATH"; export PATH;`,
+      o.path === false ? '' : this.pathLine(),
       o.cwd ? `cd ${sh(o.cwd)} && { ${line}
 }` : line,
     ]
@@ -191,11 +191,16 @@ export class SshHost {
     return [this.o.program ?? process.env.OBEYA_SSH ?? 'ssh', ...this.options(!!o.local), ...forwards, this.o.ssh, `exec sh -c ${sh(script)}`];
   }
 
+  /** The shell line that sets the PATH of a command there: the installers' directories first, then the one a terminal there has (as last read), then what ssh gives. */
+  pathLine(): string {
+    return `PATH="${PATH_PREFIX}":${this.terminal.length ? `${sh(this.terminal.join(':'))}:` : ''}"$PATH"; export PATH;`;
+  }
+
   /**
    * The argv of `ssh` running the shell line `line` there with a terminal (`-t`), for a terminal here
    * in which the owner answers what it asks (a login's code): `ssh` may ask for a password there too.
    */
-  terminal(line: string): string[] {
+  interactive(line: string): string[] {
     return [this.o.program ?? process.env.OBEYA_SSH ?? 'ssh', '-t', this.o.ssh, line];
   }
 

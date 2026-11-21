@@ -27,7 +27,7 @@ import { isEmptyRepo } from './branches';
 import type { CanvasRuntime } from './canvas';
 import type { Config } from './config';
 import { previewGitSetup, setUpGit, withoutCommit, withoutGit } from './git-setup';
-import { HOST_DIR, LOST, onHost, PATH_PREFIX, remote, saveClaudeToken, sh, type SshHost } from './hosts';
+import { HOST_DIR, LOST, onHost, remote, saveClaudeToken, sh, type SshHost } from './hosts';
 import { parseRemote, repoInfo } from './repo';
 import { COMPILED } from './resources';
 import { claudeExecutable, machineClaude, runClaudeHere } from './claude';
@@ -223,10 +223,10 @@ export function codexManager(real: string): string[] | null {
 /**
  * Gemini's login on a host: a script in Obeya's directory there (`HOST_DIR`, a path from the home,
  * where ssh starts), written before a terminal here runs it, so the command the terminal's shell
- * reads names a file alone, nothing a shell here or there would read differently. agy is found where
- * its installer puts it too, as for every command there.
+ * reads names a file alone, nothing a shell here or there would read differently. It sets the PATH
+ * every command there gets (`SshHost.pathLine`), so agy is found as for a session.
  */
-const GEMINI_LOGIN_THERE = { path: `${HOST_DIR}/gemini-login`, script: `#!/bin/sh\nPATH="${PATH_PREFIX}:$PATH"; export PATH\nexec agy acp --login\n` };
+const GEMINI_LOGIN_THERE = `${HOST_DIR}/gemini-login`;
 
 /** A command line as a terminal's shell reads it: each word quoted where it needs it (cmd's double quotes on Windows, a POSIX shell's single quotes elsewhere). */
 function shown(argv: string[], platform: string = process.platform): string {
@@ -566,9 +566,11 @@ export class MachineSetup {
     if (host !== undefined && host !== null) {
       if (id !== 'geminiLogin' || token) throw new BadRequest('invalid', `${id} is not logged in on a host from here`);
       const there = this.host(host);
-      const w = await there.run(`mkdir -p ${sh(HOST_DIR)} && cat > ${sh(GEMINI_LOGIN_THERE.path)} && chmod 700 ${sh(GEMINI_LOGIN_THERE.path)}`, { input: GEMINI_LOGIN_THERE.script, timeout: 30_000 });
+      // a first command there reads the PATH a terminal there has, which the script then sets
+      const dir = await there.run(`mkdir -p ${sh(HOST_DIR)}`, { timeout: 30_000 });
+      const w = dir.code === 0 ? await there.run(`cat > ${sh(GEMINI_LOGIN_THERE)} && chmod 700 ${sh(GEMINI_LOGIN_THERE)}`, { input: `#!/bin/sh\n${there.pathLine()}\nexec agy acp --login\n`, timeout: 30_000 }) : dir;
       if (w.code !== 0) throw new BadRequest('invalid', `${there.name}: ${w.code === LOST ? 'does not answer' : failureText(w)}`);
-      const argv = there.terminal(GEMINI_LOGIN_THERE.path);
+      const argv = there.interactive(GEMINI_LOGIN_THERE);
       return { opened: await openTerminal(argv, this.platform, this.env), command: shown(argv, this.platform) };
     }
     const { item, found } = await this.item(section!, id!);

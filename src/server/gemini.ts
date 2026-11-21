@@ -227,6 +227,8 @@ export async function geminiQuotaOn(host: SshHost): Promise<Quota> {
  * the host does not answer.
  */
 export async function geminiOn(host: SshHost): Promise<{ version: string; loggedIn: boolean; how?: string } | null> {
+  // what was installed there since the last look is found, as for Claude Code and Codex there
+  await host.readPath();
   const r = await host.run('v=$(agy --version 2>/dev/null) || exit 3; printf \'%s\\n\' "$v"', { timeout: 30_000 });
   if (r.code === 3) return null;
   if (r.code !== 0) throw new HostError(`${host.name}: ${failureText(r)}`);
