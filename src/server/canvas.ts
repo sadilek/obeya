@@ -2385,8 +2385,10 @@ export class CanvasRuntime {
    */
   atWork(): Item[] {
     const busy = new Set(this.busy());
-    // a turn that ended and only waits for background work holds nothing where the card waits for the owner
-    return this.board.items().filter((i) => (busy.has(i.id) && (i.inTurn || !needsYou(i))) || pausableNow(i) || !!i.proposal?.revising);
+    const git = new Set(this.repos.flatMap((r) => r.workers.gitBusy()));
+    // a turn that ended and only waits for background work holds nothing where the card waits for the owner;
+    // git at work in its workspace (made ready, landing, freed) holds it whatever its state
+    return this.board.items().filter((i) => git.has(i.id) || (busy.has(i.id) && (i.inTurn || !needsYou(i))) || pausableNow(i) || !!i.proposal?.revising);
   }
 
   /**
@@ -2410,11 +2412,19 @@ export class CanvasRuntime {
     const own = resolve(this.deps.home, 'workspaces', this.id);
     if (/^ssh:\/\//.test(kept) || !resolve(kept).startsWith(own + sep)) return false;
     if (this.repos.some((r) => (r.config.workspaces ?? []).some((w) => resolve(expandHome(w)) === resolve(kept)))) return false;
+    return this.ahead(kept, branch, main);
+  }
+
+  /**
+   * Whether `branch` in the repository at `path` has commits main lacks: main as its origin has it
+   * (merged pull requests land there first), else as here. Where git cannot tell, it has: what the
+   * owner is told goes is rather too much than too little.
+   */
+  private async ahead(path: string, branch: string, main: string): Promise<boolean> {
     for (const base of [`origin/${main}`, main]) {
-      const ahead = await gitTry(kept, 'rev-list', '--count', '--cherry-pick', '--right-only', `${base}...${branch}`);
-      if (ahead !== null) return ahead !== '0';
+      const n = await gitTry(path, 'rev-list', '--count', '--cherry-pick', '--right-only', `${base}...${branch}`);
+      if (n !== null) return n !== '0';
     }
-    // git could not tell: what the owner is told goes is rather too much than too little
     return true;
   }
 
@@ -2437,8 +2447,7 @@ export class CanvasRuntime {
         if (r.kept_in) return r.branch ? this.keptWork(r.kept_in, r.branch, repo.info.branch) : false;
         // a branch without a workspace (its worktree gone) with commits main does not have
         if (!r.branch || r.adopted || !branches.get(repo.ref.id)?.has(r.branch)) return false;
-        const ahead = await gitTry(repo.info.path, 'rev-list', '--count', '--cherry-pick', '--right-only', `${repo.info.branch}...${r.branch}`);
-        return ahead !== '0';
+        return this.ahead(repo.info.path, r.branch, repo.info.branch);
       }),
     );
     return {

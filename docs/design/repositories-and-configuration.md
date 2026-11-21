@@ -399,8 +399,8 @@ button, and shows only while the pointer or the focus is on its entry (a canvas:
 always where nothing hovers (touch); a canvas's bin opens a panel that deletes it (see Deleting a
 canvas), not a change of the draft. An unsaved draft survives per tab, also a reload or restart.
 Closing the dialog (its close button, Esc, a press on the margin) while the canvases' or the demo
-settings' draft is not saved asks first: "Unsaved changes", naming the canvases changed (or "the
-order of the canvases") and Demos, with "Discard changes", "Stay" and "Save". "Save" saves and
+settings' draft is not saved asks first: "Unsaved changes", naming the canvases changed, "the
+order of the canvases" where one moved, and Demos, with "Discard changes", "Stay" and "Save". "Save" saves and
 closes, but where saving shows problems the dialog stays open on them; "Discard changes" resets the
 drafts and closes; "Stay", Esc or a press beside it returns. A step that leaves the dialog for
 something else (Obeya's conversation, connecting a phone) keeps the draft without asking. Its sections, listed on the left and shown one at a time (the last one chosen per tab):
@@ -430,7 +430,8 @@ several canvases ↑ and ↓ that move it one place, as in the queue), its name,
 as tabs (the home repository first, each counting its problems), with "+ Repository" beside them;
 one repository shows at a time. A move is a change of the draft like any other. All canvases are
 saved together with "Save" at the bottom of every canvas's page, which says so while several
-have changes. Renaming a canvas keeps its id and cards. Save covers edits only: it removes no canvas
+have changes. Renaming a canvas keeps its id and cards, also one that does not run. While a delete is
+under way, Save waits. Save covers edits only: it removes no canvas
 the configuration has saved (the server refuses one left out), and a draft that lacks one (kept from
 before, when the bin took a canvas out of the draft) gets it back at its place; a canvas deleted
 meanwhile (in another tab, by the Coordinator) leaves the draft. A canvas added in the dialog and not
@@ -457,7 +458,7 @@ the first canvas; where that is the page the dialog deleted it from, the dialog 
 with the draft and "Shop deleted.".
 
 While an agent of the canvas is at work, starting (its workspace being made ready), in a turn,
-landing or being approved, or an idea's or a Question card's agent replying, the panel has no Delete:
+landing or being approved, or git is at work in a card's workspace (freeing it, taking it for another card), or an idea's or a Question card's agent replying, the panel has no Delete:
 it names those cards as links (with their status lines), and a question being looked up in Obeya's
 sheet with "Obeya is looking this up", and says to stop them or wait, with "Pause its 2 running
 agents" for the cards, the canvas's pause (see Pausing a canvas's agents in Communication; a look-up

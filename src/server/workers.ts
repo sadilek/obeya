@@ -2643,6 +2643,14 @@ export class Workers {
   }
 
   /**
+   * The cards whose workspace git works in now, apart from a turn: being made ready, landing, being
+   * approved, freed or taken from them. They hold their canvas from being deleted whatever their state.
+   */
+  gitBusy(): string[] {
+    return [...new Set([...this.preparing.keys(), ...this.landing, ...this.approving, ...[...this.freeing.values()].map((f) => f.card), ...this.evicting])];
+  }
+
+  /**
    * The cards whose worker is in the middle of a turn (or whose ended turn waits for its background
    * work), and those whose workspace is being made ready, freed or taken from them (`evict`) or whose work is landing or being
    * approved (a review card's push, comment and merge): a restart would cut off git, or the forge, midway.

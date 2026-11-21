@@ -823,11 +823,12 @@ export class Store {
       run(`UPDATE talk SET card_id = NULL WHERE canvas_id != $c AND card_id IN ${mine}`);
       run(`UPDATE preferences SET card_id = NULL WHERE canvas_id != $c AND card_id IN ${mine}`);
       run('UPDATE preferences SET replaces = NULL WHERE canvas_id != $c AND replaces IN (SELECT id FROM preferences WHERE canvas_id = $c)');
-      run(`DELETE FROM session_tools WHERE session IN (SELECT session_id FROM cards WHERE canvas_id = $c AND session_id IS NOT NULL UNION SELECT session_id FROM talk WHERE canvas_id = $c AND session_id IS NOT NULL)`);
       // cards that moved on to another canvas keep their decisions, friction and costs there, without the project they had here
-      run(`UPDATE decisions SET project_id = NULL WHERE canvas_id != $c AND project_id IN ${mine}`);
       for (const table of ['decisions', 'friction', 'spend'])
-        run(`UPDATE ${table} SET canvas_id = (SELECT canvas_id FROM cards WHERE id = ${table}.card_id) WHERE canvas_id = $c AND card_id IN (SELECT id FROM cards WHERE canvas_id != $c)`);
+        // OR IGNORE: a session that went on there has its row there already (costs are kept per canvas and session)
+        run(`UPDATE OR IGNORE ${table} SET canvas_id = (SELECT canvas_id FROM cards WHERE id = ${table}.card_id) WHERE canvas_id = $c AND card_id IN (SELECT id FROM cards WHERE canvas_id != $c)`);
+      run(`UPDATE decisions SET project_id = NULL WHERE canvas_id != $c AND project_id IN ${mine}`);
+      run(`DELETE FROM session_tools WHERE session IN (SELECT session_id FROM cards WHERE canvas_id = $c AND session_id IS NOT NULL UNION SELECT session_id FROM talk WHERE canvas_id = $c AND session_id IS NOT NULL UNION SELECT session FROM spend WHERE canvas_id = $c)`);
       run(`DELETE FROM events WHERE card_id IN ${mine}`);
       run(`DELETE FROM folder_cards WHERE card_id IN ${mine}`);
       for (const table of ['decisions', 'friction', 'spend', 'workspaces']) run(`DELETE FROM ${table} WHERE canvas_id = $c OR card_id IN ${mine}`);

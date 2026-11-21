@@ -13,7 +13,6 @@ import { AccessSection } from './access';
 import { HarnessUpdate, ModelMenu, ModelPicker, onModelLabel } from './agentPick';
 import { api, ApiError, reload, type SiteHow, failText } from './api';
 import { useAct, useLoaded, usePoll } from './act';
-import { useLatest } from './latest';
 import { type FilledClones, keepConfigDraft, keptConfigDraft, leave, type LeaveChoice, reconciled, restartsAgents, withClones, withoutDeleted } from './configDraft';
 import { keep } from './keep';
 import { plain } from './markdown';
@@ -130,11 +129,10 @@ const rowsOf = (canvases: CanvasConfig[], origin: (string | null)[] = []): Row[]
 
 /**
  * The rows with the ids of their canvases once the check of the configuration as `loaded` resolved
- * them: a canvas without one yet gets the id of the loaded canvas with its repositories, and a
- * running one the owner renamed meanwhile keeps it, as a rename does once the id is known; one they
- * added has none.
+ * them: a canvas without one yet gets the id of the loaded canvas with its repositories, and one
+ * the owner renamed meanwhile keeps it, as a rename does once the id is known; one they added has none.
  */
-function pinned(rows: Row[], loaded: CanvasConfig[], resolved: Checked['resolved'], running: string[]): Row[] {
+function pinned(rows: Row[], loaded: CanvasConfig[], resolved: Checked['resolved']): Row[] {
   // a saved canvas a row has already is no other row's
   const taken = new Set<number>(resolved.flatMap((r, j) => (r && rows.some((x) => x.origin === r.id) ? [j] : [])));
   return rows.map((r) => {
@@ -144,7 +142,8 @@ function pinned(rows: Row[], loaded: CanvasConfig[], resolved: Checked['resolved
     if (j < 0) return r;
     taken.add(j);
     const id = resolved[j]?.id ?? null;
-    return { ...r, origin: id, canvas: id && running.includes(id) && !c.id && c.name !== loaded[j]!.name ? { ...c, id } : c };
+    // a saved one renamed keeps its id, running or not: Save removes no saved canvas
+    return { ...r, origin: id, canvas: id && !c.id && c.name !== loaded[j]!.name ? { ...c, id } : c };
   });
 }
 
@@ -212,7 +211,6 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
     setRows(rowsOf(v.canvases, c?.resolved.map((r) => r?.id ?? null)));
     unpinned.current = c ? null : v.canvases;
   };
-  const running = useLatest(view?.running ?? []);
   const savedSeq = useRef(0);
   const checkSaved = () => {
     const n = ++savedSeq.current;
@@ -225,7 +223,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
       // rows without an id yet (loaded before the check, or saved new just now) take the saved canvas's with their
       // repositories; the draft then follows canvases deleted meanwhile (another tab, the Coordinator), and Save removes none
       setRows((rows) => {
-        const pins = pinned(rows, c.canvases, c.resolved, running.current);
+        const pins = pinned(rows, c.canvases, c.resolved);
         return reconciled(pins, c.canvases, ids, (canvas, origin) => ({ key: rowKeys++, origin, canvas })) ?? pins;
       });
       // what is saved is what was checked: Discard goes back to it, by the ids it resolved to
@@ -347,18 +345,23 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
     setPick(Math.max(0, Math.min(i, rows.length - 2)));
   };
   // deletes a saved canvas at once, on its own: the draft's other changes stay, waiting for Save
+  // while a canvas is being deleted, Save waits: the draft still holds it until the delete is through
+  const [deleting, setDeleting] = useState(false);
   const deleteCanvas = async (i: number) => {
     const id = rows[i]?.origin;
     if (!id) return;
     const name = canvasName(rows[i]!.canvas, i);
     // the page shows it: it goes to the first canvas, and the dialog comes back there with the draft
     if (page === id) write(session, REOPEN_KEY, name);
+    setDeleting(true);
     try {
       await api.deleteCanvas(id);
     } catch (e) {
       // refused: the page stays (a request cut off as the page goes to the first canvas is no refusal)
       if (e instanceof ApiError) write(session, REOPEN_KEY, null);
       throw e;
+    } finally {
+      setDeleting(false);
     }
     const v = await api.config();
     savedSeq.current++;
@@ -378,11 +381,13 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
       // what is saved now is the draft as last checked; settings applied at once change what the
       // repositories amount to (where "For everyone" goes, say), so it is read and checked again
       const fresh = applied ? await api.config() : null;
+      // the ids the saved list resolves to, in the order it was saved: what pins a canvas saved new
+      const after = await api.configCheck().catch(() => null);
       savedSeq.current++;
       setSaved(checked);
       // a canvas new in the draft takes the id it was saved under, by its place in the list: never by its
       // text, which saving may have tidied (a path's spaces trimmed, say), so it never shows twice
-      const pins = checked;
+      const pins = after;
       if (pins && pins.resolved.length === keys.length)
         setRows((rows) =>
           rows.map((r) => {
@@ -401,8 +406,16 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   const demoDraft = useRef<DraftHandle | null>(null);
   // what is not saved, named for the dialog that asks before closing: the canvases changed, else their order; the demo settings
   const unsaved = () => {
-    const names = rows.flatMap((r, i) => (canvasChanged(i) ? [canvasName(r.canvas, i)] : []));
-    return [...(changed ? (names.length ? names : [c.leave.order]) : []), ...(demoDraft.current?.changed ? [c.leave.demos] : [])];
+    if (!view) return [];
+    // by the saved canvas with its id, wherever it stands now: a move alone changes the order, not the canvas
+    const at = (i: number) => {
+      const id = rows[i]!.origin;
+      return id && saved ? saved.resolved.findIndex((r) => r?.id === id) : i;
+    };
+    const names = changed ? rows.flatMap((r, i) => (at(i) < 0 || JSON.stringify(draft[i]) !== JSON.stringify(view.canvases[at(i)]) ? [canvasName(r.canvas, i)] : [])) : [];
+    const moved = changed && rows.some((_, i) => at(i) >= 0 && at(i) !== i);
+    const what = [...names, ...(moved ? [c.leave.order] : [])];
+    return [...(changed ? (what.length ? what : [c.leave.canvases]) : []), ...(demoDraft.current?.changed ? [c.leave.demos] : [])];
   };
   const [leaving, setLeaving] = useState(false);
   // ×, Esc and a press on the margin close the dialog, asking first where something is not saved; Esc while it asks stays
@@ -534,7 +547,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
                 n={shown}
                 checked={checked}
                 changed={changed}
-                busy={busy}
+                busy={busy || deleting}
                 focus={focus}
                 onAsk={onAsk}
                 onRecheck={recheck}
@@ -764,7 +777,7 @@ function Canvases({ view, rows, n, checked, changed, busy, focus, onAsk, onReche
           checking={!checked}
           resolved={checked?.resolved[n] ?? null}
           running={view.running}
-          pin={pin && view.running.includes(pin) ? pin : undefined}
+          pin={pin ?? undefined}
           saved={!changed}
           problems={problems.filter((p) => p.canvas === n)}
           focus={focus}
@@ -2549,6 +2562,11 @@ function DeletePanel({ id, name, repos, othersChanged, onDelete, onCancel }: { i
   const [facts, setFacts] = useState<CanvasDeletion | null>(null);
   const { status, busy, act, failed } = useAct();
   const [pausing, setPausing] = useState(false);
+  // once none is at work, a pause asked for is over: one that starts later gets the button again
+  const idle = facts !== null && facts.running.length === 0;
+  useEffect(() => {
+    if (idle) setPausing(false);
+  }, [idle]);
   const look = () => api.canvasDeletion(id).then(setFacts);
   useEffect(() => void look().catch(failed), [id]);
   usePoll(true, look, 2000);

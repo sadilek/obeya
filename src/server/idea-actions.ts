@@ -319,7 +319,12 @@ export class IdeaActions {
           const repos = c.repos.filter((r) => r.path !== added.path);
           return repos.length ? [{ ...c, repos }] : [];
         });
-      undo.push(() => config.save(without()));
+      // taking it back deletes the canvas it made, which nothing else has a part in yet
+      undo.push(async () => {
+        const next = without();
+        const left = await config.leftOut((await config.check(next)).resolved);
+        await config.save(next, { deletes: left.map((l) => l.id) });
+      });
       if (!target.canvas) return this.joined(cardId, path, repo);
       const checked = await config.check(after);
       const id = checked.resolved.at(-1)?.id;
@@ -733,6 +738,9 @@ export class IdeaActions {
   shutdown() {
     this.stopped = true;
     clearTimeout(this.settleSoon);
+    // a new repository still in its undo window is never made: its canvas stopped (deleted, say)
+    for (const timer of this.newRepos.values()) clearTimeout(timer);
+    this.newRepos.clear();
   }
 }
 
