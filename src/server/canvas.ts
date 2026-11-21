@@ -841,6 +841,7 @@ export class CanvasRuntime {
     workers = new Workers({
       board,
       runtime: deps.workerRuntime ?? deps.runtime,
+      ...(deps.idleWorkers ? { idleWorkers: true } : {}),
       workspaces,
       adapter,
       machineSettings: this.settingsOf(rc),

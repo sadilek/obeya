@@ -2685,12 +2685,13 @@ export class Workers {
   }
 
   /**
-   * Whether what comes for the card waits for the worker that starts later, as no session can take
-   * it in now: git still makes its workspace ready, or the card has none (one a scratch Obeya staged
-   * at work), where no worker can start, as a restart leaves such a card be.
+   * Whether what comes for the card waits for a worker that starts later, as no session can take it
+   * in now: git still makes its workspace ready, or, with idle workers, the card has none (one a
+   * scratch Obeya staged at work), where no session can start. Elsewhere a card without a workspace
+   * has no worker coming for it, and delivering to it fails rather than wait for one.
    */
   private startsLater(cardId: string): boolean {
-    return this.preparingFor(cardId) || (!this.live.has(cardId) && !this.o.board.row(cardId).workspace);
+    return this.preparingFor(cardId) || (!!this.o.idleWorkers && !this.live.has(cardId) && !this.o.board.row(cardId).workspace);
   }
 
   /** What waits for the worker, without what starts with `prefix` (news an event since has made stale). */
