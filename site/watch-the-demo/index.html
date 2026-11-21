@@ -53,12 +53,12 @@
       autonomy.</p>
 
     <h2>What the agent hands over</h2>
-    <p>In <a href="../">Obeya</a>, the tool I built for this, an agent always hands over with a demo: a narrated
+    <p>In <a href="../">Obeya</a>, the tool I built for this, an agent always hands over its work with a demo: a narrated
       screen recording of the change in the running app, with chapters. A fix gets 30 to 60 seconds, showing the broken
       behaviour and then the fixed one. A feature gets one and a half to three minutes. With the video comes a short handover note,
-      a few sentences on what the video cannot tell me: what is left open or unverified, a decision the agent took
-      for me. It asks in the chat when it needs a decision from me, and proposes a new task for a problem it
-      noticed outside its own.</p>
+      a few sentences on what the video cannot tell me: what is left open or unverified, a decision the agent made
+      for me. The agent asks in the chat when it needs a decision from me, and proposes a new task for a problem it
+      noticed outside its own task.</p>
     <figure class="essay-shot">
       <a href="https://demos.obeya.si"><img src="../img/demo.png" width="1360" height="950" loading="lazy"
         alt="A card unfolded with the demo video of a tip calculator, its chapters and the approve button"></a>
@@ -67,8 +67,8 @@
     <p>A few rules make a demo evidence rather than a sales pitch:</p>
     <ul>
       <li>The app in the video runs the code under review.</li>
-      <li>Every behaviour the change adds or alters, edge cases included, is in the video. That tests
-        cover a behaviour is no reason to leave it out of the video.</li>
+      <li>Every behaviour the change adds or alters, edge cases included, is in the video. Being covered
+        by tests is no reason to leave a behaviour out of the video.</li>
       <li>Backend changes get a demo too, through whatever view of the app makes them visible. If no view does,
         the agent adds one.</li>
       <li>When the result is something to look at rather than something that happens, such as a layout or three
