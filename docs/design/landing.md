@@ -350,7 +350,16 @@ card's log before the merge, and the worker hears them with it (on their own whe
 merges nothing, or the forge refuses the merge). "To contributor" and "Change it myself" hold the PR
 up: while one stands unsent, the approve buttons are greyed and a line below them says to send it
 first or take it back. The finding then reads what is under way ("Going to amerlander
-…", "Becoming a follow-up task …") until the worker records what came of it. Words alone that ask the same („schick ihm Befund 1“) count the
+…", "Becoming a follow-up task …") until the worker records what came of it.
+
+An open finding also takes a comment of the owner's own: "Comment", shown while the pointer is over
+the finding (always on a screen without hover), opens a field under its choices, typed or dictated
+into; emptied and left, it goes again. A comment stands in the card's draft like the decisions,
+shows above the field with the finding's decision ("Finding 3: Change it myself – “only the
+desktop”", or the comment alone) and goes with the same Send; the worker reads it with its finding,
+and the card's log shows it on the finding's line. A comment on a finding decided for a follow-up
+task or ignored goes with the merge as its decision does; one on a finding left undecided, or with a
+decision that holds the PR up, holds the merge up too, until it is sent. Words alone that ask the same („schick ihm Befund 1“) count the
 same; anything else the owner says (a question, more to look at) stays on the card.
 
 - To the contributor: the worker writes the findings sent as one review asking for changes (GitHub's
@@ -709,6 +718,12 @@ A card no agent worked on, a prototype or an archived card has no field.
   so alone it costs no turn. Rejected: only saying so in words („Befund 2 ist egal“; it works, but is
   not found beside the other choices, and costs a turn of the worker); a click that ignores at once
   (every other choice goes with the Send).
+- **A comment per finding, opened on request** (2026-11-21, the owner: they wrote comments on single
+  findings into the general field, naming each finding's number, and wanted the field on the
+  finding itself, but not standing open on every one, which would crowd a long list). Comments go
+  with the one Send like the choices, and attach to the finding for the worker rather than being
+  folded into the owner's words. Rejected: a field standing open under every finding (too busy);
+  a comment only with a decision (a question about a finding comes before deciding it).
 - **Decisions on findings left unsent go with the merge where they fit it** (2026-11-06, the review
   of PR #57: the owner chose "As a follow-up task" for both findings and clicked "Merge" without
   Send; the choices stayed in the field and no task was made). A follow-up task or an ignored finding

@@ -35,7 +35,7 @@ import { WishReplyLink } from './wish';
 import { claudeLoginFailed, codexLoginLost, geminiLoginLost } from '../core/login';
 import { CodexLogin, Reauthenticate } from './reauthenticate';
 import { clip } from '../core/text';
-import { DecidedChip, useUnsentDecisions } from './review';
+import { DecidedChip, useUnsentComments, useUnsentDecisions } from './review';
 
 /** The owner's first words in the discussion are the card's text (an idea said aloud): it is not shown again as the starting point. */
 const opened = (events: CardEvent[], body: string) => {
@@ -597,8 +597,8 @@ interface TalkField {
   onWords: (text: string, images?: string[], replyTo?: number, spoken?: boolean) => Promise<void>;
   /** Picked options go to the agent with the words: `picks` holds them for each question, and with `quote` the text names them too. */
   onPicked: (text: string, picks: string[][], images?: string[], replyTo?: number, spoken?: boolean) => Promise<void>;
-  /** On a review card: the owner's decisions on its findings go to the agent with the words. */
-  onDecided?: (text: string, findings: Record<string, ChangeRoute>, images?: string[], replyTo?: number, spoken?: boolean) => Promise<void>;
+  /** On a review card: the owner's decisions on its findings, and their comments on single ones, go to the agent with the words. */
+  onDecided?: (text: string, findings: Record<string, ChangeRoute>, comments: Record<string, string>, images?: string[], replyTo?: number, spoken?: boolean) => Promise<void>;
 }
 
 /**
@@ -628,16 +628,18 @@ export function Talk({ item, past, field }: { item: Item; past?: boolean; field?
   // the demo video stands at a place: the words are about it, where the card's agent hears them
   const place = usePlace(item.id);
   const at = field && !field.listener && !options ? place : null;
-  // a review card's field, where its agent hears the words: the owner's decisions on its findings go with them
+  // a review card's field, where its agent hears the words: the owner's decisions on its findings, and comments on them, go with them
   const review = !!item.contribution && !!field && !field.listener && !finished(item.state);
   const unsent = useUnsentDecisions(item);
+  const unsaid = useUnsentComments(item);
   const decided = review ? unsent : {};
-  const deciding = Object.keys(decided).length > 0;
+  const comments = review ? unsaid : {};
+  const deciding = Object.keys(decided).length > 0 || Object.keys(comments).length > 0;
   const send = async (words: string, images?: string[], to?: Reply['to'], spoken?: boolean) => {
     const replyTo = typeof to === 'number' ? to : undefined;
     if (deciding && field!.onDecided) {
-      await field!.onDecided(words.trim(), decided, images, replyTo, spoken);
-      updateDraft(draft, { findings: undefined });
+      await field!.onDecided(words.trim(), decided, comments, images, replyTo, spoken);
+      updateDraft(draft, { findings: undefined, comments: undefined });
       return;
     }
     await (picked ? field!.onPicked(field!.quote ? answerText(questions, picks.picks, words) : words.trim(), picks.picks, images, replyTo, spoken) : field!.onWords(words, images, replyTo, spoken));
@@ -665,7 +667,7 @@ export function Talk({ item, past, field }: { item: Item; past?: boolean; field?
             (at || deciding) && (
               <>
                 {at && <PlaceChip cardId={item.id} place={at} />}
-                {deciding && <DecidedChip item={item} decided={decided} />}
+                {deciding && <DecidedChip item={item} decided={decided} comments={comments} />}
               </>
             )
           }

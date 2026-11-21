@@ -155,19 +155,29 @@ export class ReviewCards {
    * Each is marked as decided until the worker records what came of it; a follow-up task the worker
    * makes itself (`followUpTask`), bundling the findings as the owner's words say, else as it bundled
    * them. One the owner ignores is not pursued from now on, which asks nothing of the worker (`quiet`
-   * where that is all). Refuses a finding that is not open, and the worker's own change where the
-   * contributor allows no maintainers' edits.
+   * where that is all). `comments`: what the owner wrote on single findings, by number, with a
+   * decision or without; the worker reads each with its finding. Refuses a finding that is not open,
+   * and the worker's own change where the contributor allows no maintainers' edits.
    */
-  decide(cardId: string, decisions: Record<number, ChangeRoute>): { note: string; log: string; quiet: boolean } {
+  decide(cardId: string, decisions: Record<number, ChangeRoute>, comments: Record<number, string> = {}): { note: string; log: string; quiet: boolean } {
     const c = fromJson(this.o.board.row(cardId).contribution);
     if (!c) throw new BadRequest('notReview', 'only a review card has findings to decide on');
     const t = this.o.board.t.worker;
-    const picked = Object.entries(decisions).map(([id, route]) => {
+    const open = (id: string) => {
       const f = c.findings?.find((x) => x.id === Number(id) && x.status === 'open' && !x.decided);
       if (!f) throw new BadRequest('noFinding', `finding ${id} is not open`);
+      return f;
+    };
+    const picked = Object.entries(decisions).map(([id, route]) => {
+      const f = open(id);
       if (route === 'self' && !c.canModify) throw new BadRequest('noEdits', 'the contributor does not allow maintainers to push to the pull request');
       return { f, route };
     });
+    // comments on findings the owner decided nothing for (yet), in the findings' order
+    const remarked = Object.keys(comments)
+      .filter((id) => !(id in decisions))
+      .map(open)
+      .sort((a, b) => a.id - b.id);
     const of = (route: ChangeRoute) => picked.filter((p) => p.route === route);
     // a request to the contributor while the worker's own changes are under way or held goes with them, as one message
     const changing = of('self').length > 0;
@@ -179,7 +189,9 @@ export class ReviewCards {
       return { ...f, decided: p.route, ...(p.route === 'contributor' && withChanges ? { withChanges: true as const } : {}) };
     });
     this.o.board.work(cardId, { contribution: toJson({ ...c, findings, ...(changing ? { changing: true as const } : {}) }) });
-    const name = (f: Finding) => `#${f.id} “${f.title}”`;
+    const said = (f: Finding) => comments[f.id]?.trim();
+    // a finding as the worker reads it, with what the owner wrote on it
+    const name = (f: Finding) => `#${f.id} “${f.title}”${said(f) ? ` (the owner’s comment: “${said(f)}”)` : ''}`;
     const what = (p: (typeof picked)[number]) => (p.route === 'self' ? t.findingSelf : p.route === 'later' ? t.findingLater : p.route === 'drop' ? t.findingDrop : t.findingTo(c.author));
     const later = of('later');
     const ids = new Set(later.map((p) => p.f.id));
@@ -192,9 +204,10 @@ export class ReviewCards {
           .map((b) => b.join(' + ')),
       ),
     ];
+    const quiet = picked.length > 0 && picked.every((p) => p.route === 'drop') && !Object.keys(comments).length;
     return {
       note: [
-        picked.every((p) => p.route === 'drop') ? FINDINGS_IGNORED : 'The owner decided on findings of your review, on the card; do it now:',
+        quiet ? FINDINGS_IGNORED : picked.length ? 'The owner decided on findings of your review, on the card; do it now:' : 'The owner commented on findings of your review, on the card:',
         of('contributor').length
           ? withChanges
             ? `- To ${c.author}: ${of('contributor').map((p) => name(p.f)).join(', ')}. ${changing ? 'They go with your own changes below' : 'Your own changes wait for the owner’s approval, and these go with them'}, as one message: write the request into the same pr_draft as what you changed, and do not send it now. Obeya posts it as one review asking for changes once the owner approves.${changing ? '' : ' Hand over again with that pr_draft; the demo on the card stands.'}`
@@ -209,11 +222,16 @@ export class ReviewCards {
         of('drop').length
           ? `- Ignored: ${of('drop').map((p) => name(p.f)).join(', ')}. The owner does not pursue ${of('drop').length === 1 ? 'it' : 'them'}, and Obeya marked ${of('drop').length === 1 ? 'it' : 'them'} dropped: nothing to do for ${of('drop').length === 1 ? 'it' : 'them'}, neither for ${c.author} nor in your changes.`
           : '',
+        remarked.length ? `- Comments on findings ${picked.length ? 'the owner decided nothing for yet' : 'still open'}: ${remarked.map(name).join(', ')}. Take them up as you would the owner's words; the findings stay open for the owner to decide on.` : '',
       ]
         .filter(Boolean)
         .join('\n'),
-      log: picked.map((p) => t.findingDecided(p.f.id, p.f.title, what(p))).join('\n'),
-      quiet: picked.every((p) => p.route === 'drop'),
+      // the owner's message lists the findings in their order, each with its decision and comment
+      log: [...picked.map((p) => ({ f: p.f, what: what(p) })), ...remarked.map((f) => ({ f, what: '' }))]
+        .sort((a, b) => a.f.id - b.f.id)
+        .map(({ f, what }) => t.findingDecided(f.id, f.title, [what, said(f) && `“${said(f)}”`].filter(Boolean).join(' – ')))
+        .join('\n'),
+      quiet,
     };
   }
 
@@ -322,9 +340,10 @@ export class ReviewCards {
    * fit a merge (a follow-up task, ignored) go with it: decided where the approval goes through
    * (after a push and its post), and the worker hears them with the merge, or on their own where
    * nothing is merged; the others (to the contributor, the worker's own change) hold the merge up
-   * and are refused.
+   * and are refused. `comments`: what the owner wrote on findings among those, which goes with them;
+   * one on a finding left open holds the merge up too.
    */
-  async mergeContribution(cardId: string, { merge = true, findings, kept = false }: { merge?: boolean; findings?: Record<number, ChangeRoute>; kept?: boolean } = {}): Promise<ApproveResult | void> {
+  async mergeContribution(cardId: string, { merge = true, findings, comments, kept = false }: { merge?: boolean; findings?: Record<number, ChangeRoute>; comments?: Record<number, string>; kept?: boolean } = {}): Promise<ApproveResult | void> {
     const forge = this.o.forge;
     const c = fromJson(this.o.board.row(cardId).contribution);
     if (!forge || !c) throw new BadRequest('notReview', 'the card reviews no pull request');
@@ -334,10 +353,12 @@ export class ReviewCards {
       const shut = Object.keys(findings).filter((id) => !c.findings?.some((f) => f.id === Number(id) && f.status === 'open' && !f.decided));
       if (shut.length) throw new BadRequest('noFinding', `finding ${shut.join(', ')} is not open`);
     }
+    // a comment goes with the merge only on a finding decided with it; one on a finding left open is the agent's to take up first
+    if (comments && Object.keys(comments).some((id) => !findings || !(id in findings))) throw new BadRequest('decideFirst', 'a comment on a finding left open holds the merge up: send it first');
     // the decisions as the owner reads them in the card's log, and the worker with the approval
     const decide = (): Comments | undefined => {
       if (!findings) return undefined;
-      const decided = this.decide(cardId, findings);
+      const decided = this.decide(cardId, findings, comments);
       this.o.board.log(cardId, 'hint', 'owner', decided.log);
       return { text: decided.note, images: [] };
     };

@@ -1,6 +1,6 @@
 // A review card: what its agent found in the pull request, the owner's decisions on it, and the merge.
 
-import { useContext } from 'react';
+import { useContext, useRef, useState } from 'react';
 import type { ApproveResult, CardAction, ChangeRoute, Contribution, Item, Finding, Clash as ClashFound } from '../core/types';
 import { finished } from '../core/card';
 import { Inline, plain } from './markdown';
@@ -8,6 +8,7 @@ import { Cards } from './message';
 import { cardDraft, updateDraft, useDraft } from './draft';
 import { t } from './strings';
 import { type ActDone } from './cardSheet';
+import { DictatedArea } from './dictation';
 
 /**
  * Approving a review card: "Merge (PR #5)", or where its agent's own changes wait for the approval,
@@ -18,14 +19,15 @@ import { type ActDone } from './cardSheet';
 export function ApproveReview({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
   const c = item.contribution!;
   const decided = useUnsentDecisions(item);
-  // a follow-up task or an ignored finding goes with the merge; a decision that holds the PR up goes with Send first
-  const heldUp = Object.values(decided).some(holdsUp);
+  const comments = useUnsentComments(item);
+  // a follow-up task or an ignored finding goes with the merge, with its comment; a decision that holds the PR up goes with Send first, as does a comment on a finding left open
+  const heldUp = heldUpBy(decided, comments).length > 0;
   // a PR in conflict with main is not merged: the confirmation says who resolves it
   const ackFor = (r: unknown) => {
     const conflict = (r as Extract<ApproveResult, { conflict: unknown }> | undefined)?.conflict;
     return conflict === 'agent' ? t.review.conflictAgent(c.number) : conflict === 'contributor' ? t.review.conflictContributor(c.number, c.author) : undefined;
   };
-  const go = (ack: string, pending: string) => act({ action: 'approve', ...(Object.keys(decided).length ? { findings: decided } : {}) }, { close: true, ack, ackFor, pending });
+  const go = (ack: string, pending: string) => act({ action: 'approve', ...(Object.keys(decided).length ? { findings: decided } : {}), ...(Object.keys(comments).length ? { comments } : {}) }, { close: true, ack, ackFor, pending });
   if (c.held?.asks.length)
     return (
       <button className="btn primary" disabled={heldUp} title={t.review.pushSendHint(c.author)} onClick={() => go(t.review.pushedSent(c.author), t.review.pushingHeld)}>
@@ -55,14 +57,17 @@ export function ApproveReview({ item, act }: { item: Item; act: (a: CardAction, 
  * it myself", "As a follow-up task", "Ignore", a second click takes it back; a bracket picks nothing for its others)
  * while their words reach its agent (`decides`); the decisions stand in the card's draft and go out
  * with the field's one Send. "Change it myself" is greyed with its reason where the contributor allows
- * no edits by maintainers. A finding something came of says what; one made a follow-up task links
+ * no edits by maintainers. "Comment" (shown on hover) opens a field under the finding for words on
+ * it alone, which stand in the draft too and go to the agent with the same Send, beside its decision. A finding something came of says what; one made a follow-up task links
  * that task.
  */
 export function Findings({ item, decides, onPush }: { item: Item; decides: boolean; onPush?: () => void }) {
   const c = item.contribution!;
   const cards = useContext(Cards);
   const draft = cardDraft(item.id);
-  const picks = useDraft(draft).findings ?? {};
+  const { findings: picks = {}, comments = {} } = useDraft(draft);
+  // the finding whose comment field the owner opened and has written nothing into yet
+  const [writing, setWriting] = useState<number | null>(null);
   const findings = c.findings ?? [];
   const open = findings.filter((f) => f.status === 'open');
   const pick = (f: Finding, route: ChangeRoute) =>
@@ -71,7 +76,14 @@ export function Findings({ item, decides, onPush }: { item: Item; decides: boole
       return { findings: was === route ? rest : { ...rest, [f.id]: route } };
     });
   const ok = !!c.results && c.results.mergeable && c.results.checks.every((x) => x.passed);
+  // a comment emptied stays open while the owner is in it (`text` ''), and goes once they leave it (`null`)
+  const comment = (f: Finding, text: string | null) =>
+    updateDraft(draft, (d) => {
+      const { [f.id]: _, ...rest } = d.comments ?? {};
+      return { comments: text === null ? rest : { ...rest, [f.id]: text } };
+    });
   const one = (f: Finding) => {
+    const commenting = writing === f.id || comments[f.id] !== undefined;
     const task = f.status === 'later' && f.card ? cards.items.find((x) => x.id === f.card) : undefined;
     return (
       <div key={f.id} className={['finding', f.security && 'security', f.status !== 'open' && 'settled'].filter(Boolean).join(' ')}>
@@ -119,8 +131,23 @@ export function Findings({ item, decides, onPush }: { item: Item; decides: boole
                   {r.label}
                 </button>
               ))}
+              {!commenting && (
+                <button className="f-comment-open" title={t.review.commentHint} onMouseDown={(e) => e.preventDefault()} onClick={() => setWriting(f.id)}>
+                  {t.review.comment}
+                </button>
+              )}
             </div>
           )
+        )}
+        {decides && f.status === 'open' && !f.decided && commenting && (
+          <FindingComment
+            text={comments[f.id] ?? ''}
+            onChange={(text) => comment(f, text)}
+            onDone={() => {
+              if (writing === f.id) setWriting(null);
+              if (!comments[f.id]?.trim()) comment(f, null);
+            }}
+          />
         )}
       </div>
     );
@@ -149,6 +176,17 @@ export function Findings({ item, decides, onPush }: { item: Item; decides: boole
       {blocks}
       {decides && open.some((f) => !f.decided) && <p className="hint">{t.review.decideHint}</p>}
     </section>
+  );
+}
+
+/** The owner's comment on one finding, dictated into or typed: Enter or leaving it ends it, and emptied it goes again. */
+function FindingComment({ text, onChange, onDone }: { text: string; onChange: (text: string) => void; onDone: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const leave = () => box.current?.querySelector('textarea')?.blur();
+  return (
+    <div className="f-comment" ref={box}>
+      <DictatedArea fit sends={false} autoFocus={!text} rows={1} value={text} placeholder={t.review.commentPlaceholder} onChange={onChange} onEnter={leave} onEscape={leave} onBlur={onDone} />
+    </div>
   );
 }
 
@@ -198,6 +236,17 @@ export function useUnsentDecisions(item: Item): Record<string, ChangeRoute> {
   return all ? Object.fromEntries(Object.entries(all).filter(([id]) => findings?.some((f) => f.id === Number(id) && f.status === 'open' && !f.decided))) : {};
 }
 
+/** What the owner wrote in the card's draft on findings still open and undecided on the card, which has not gone out yet. */
+export function useUnsentComments(item: Item): Record<string, string> {
+  const all = useDraft(cardDraft(item.id)).comments;
+  const findings = item.contribution?.findings;
+  return all ? Object.fromEntries(Object.entries(all).filter(([id, text]) => text.trim() && findings?.some((f) => f.id === Number(id) && f.status === 'open' && !f.decided))) : {};
+}
+
+/** The findings, by number, that hold the merge up until sent: a decision that does (`holdsUp`), or a comment on one the merge leaves open. */
+export const heldUpBy = (decided: Record<string, ChangeRoute>, comments: Record<string, string>): number[] =>
+  [...new Set([...Object.entries(decided).filter(([, route]) => holdsUp(route)).map(([id]) => id), ...Object.keys(comments).filter((id) => !decided[id])])].map(Number).sort((a, b) => a - b);
+
 /** The owner's decisions on a finding, in the order their buttons stand; "Change it myself" greyed with its reason where the contributor allows no edits by maintainers. */
 const routes = (c: Contribution): { route: ChangeRoute; label: string; hint?: string; off?: boolean }[] => [
   { route: 'contributor', label: t.review.toContributor },
@@ -213,29 +262,33 @@ export const holdsUp = (route: ChangeRoute) => route === 'contributor' || route 
 const bundled = (f: Finding) => f.status === 'open' || f.status === 'later';
 
 /**
- * Above the field of a review card: what the owner decided for its findings (`useUnsentDecisions`),
- * which goes out with the words; with several made follow-up tasks, how many tasks they become as
+ * Above the field of a review card: what the owner decided for its findings (`useUnsentDecisions`)
+ * and wrote on them (`useUnsentComments`), which goes out with the words; × drops the decisions,
+ * while a comment goes where it was written; with several made follow-up tasks, how many tasks they become as
  * their agent bundled them.
  */
-export function DecidedChip({ item, decided }: { item: Item; decided: Record<string, ChangeRoute> }) {
+export function DecidedChip({ item, decided, comments }: { item: Item; decided: Record<string, ChangeRoute>; comments: Record<string, string> }) {
   const c = item.contribution!;
   const named = Object.entries(decided);
-  if (!named.length) return null;
+  const ids = [...new Set([...Object.keys(decided), ...Object.keys(comments)])].map(Number).sort((a, b) => a - b);
+  if (!ids.length) return null;
   const later = named.filter(([, route]) => route === 'later').map(([id]) => c.findings!.find((f) => f.id === Number(id))!);
   const tasks = new Set(later.map((f) => [f.id, ...(f.with ?? []).filter((w) => later.some((l) => l.id === w))].sort((a, b) => a - b).join())).size;
   return (
     <div className="quote decided">
       <div className="decided-lines">
-        {named.map(([id, route]) => (
+        {ids.map((id) => (
           <span key={id} className="quote-text">
-            {t.review.decidedLine(Number(id), routes(c).find((r) => r.route === route)!.label)}
+            {t.review.decidedLine(id, [decided[id] && routes(c).find((r) => r.route === decided[id])!.label, comments[id] && `“${comments[id].trim()}”`].filter(Boolean).join(' – '))}
           </span>
         ))}
         {later.length > 1 && <span className="decided-tasks">{t.review.tasks(tasks)}</span>}
       </div>
-      <button className="quote-clear" title={t.review.undecide} aria-label={t.review.undecide} onMouseDown={(m) => m.preventDefault()} onClick={() => updateDraft(cardDraft(item.id), { findings: undefined })}>
-        ×
-      </button>
+      {named.length > 0 && (
+        <button className="quote-clear" title={t.review.undecide} aria-label={t.review.undecide} onMouseDown={(m) => m.preventDefault()} onClick={() => updateDraft(cardDraft(item.id), { findings: undefined })}>
+          ×
+        </button>
+      )}
     </div>
   );
 }

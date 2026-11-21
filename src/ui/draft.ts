@@ -31,6 +31,8 @@ export interface Draft {
   reply?: Reply;
   /** On a review card: what the owner decided for its findings, by number, which goes with the words. */
   findings?: Record<string, ChangeRoute>;
+  /** On a review card: what the owner wrote on single findings, by number, which goes with the words. */
+  comments?: Record<string, string>;
   /** The paths of dropped files among the words (`insertFiles`), which go back beside the microphone with the screenshots (`moveFiles`). */
   files?: string[];
   /** Texts pasted outside a text field among the words (`insertPasted`): beside the microphone they show apart from the paths, and they move with them (`moveFiles`). */
@@ -53,14 +55,15 @@ export interface Picks {
 /** Which questions picks belong to: they count only while the same questions stand. */
 export const questionsKey = (questions: unknown[]) => JSON.stringify(questions);
 
-type Kept = Pick<Draft, 'text' | 'images' | 'picks' | 'reply' | 'files' | 'pasted' | 'findings' | 'pastedAsFile' | 'dictated'>;
-const keptOf = ({ text, images, picks, reply, files, pasted, findings, pastedAsFile, dictated }: Draft): Kept | null => {
+type Kept = Pick<Draft, 'text' | 'images' | 'picks' | 'reply' | 'files' | 'pasted' | 'findings' | 'comments' | 'pastedAsFile' | 'dictated'>;
+const keptOf = ({ text, images, picks, reply, files, pasted, findings, comments, pastedAsFile, dictated }: Draft): Kept | null => {
   const picked = picks?.picks.some((p) => p.length) ? picks : undefined;
   const decided = findings && Object.keys(findings).length ? findings : undefined;
+  const said = comments && Object.values(comments).some((c) => c.trim()) ? comments : undefined;
   const standing = filesIn(text, files);
   const texts = filesIn(text, pasted);
-  return text.trim() || images.length || picked || reply || decided
-    ? { text, images, ...(picked ? { picks: picked } : {}), ...(reply ? { reply } : {}), ...(standing.length ? { files: standing } : {}), ...(texts.length ? { pasted: texts } : {}), ...(decided ? { findings: decided } : {}), ...(pastedAsFile && text.includes(pastedAsFile) ? { pastedAsFile } : {}), ...(dictated && text.trim() ? { dictated } : {}) }
+  return text.trim() || images.length || picked || reply || decided || said
+    ? { text, images, ...(picked ? { picks: picked } : {}), ...(reply ? { reply } : {}), ...(standing.length ? { files: standing } : {}), ...(texts.length ? { pasted: texts } : {}), ...(decided ? { findings: decided } : {}), ...(said ? { comments: said } : {}), ...(pastedAsFile && text.includes(pastedAsFile) ? { pastedAsFile } : {}), ...(dictated && text.trim() ? { dictated } : {}) }
     : null;
 };
 

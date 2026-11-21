@@ -124,7 +124,8 @@ export function DictateButton({ draft, field }: { draft: string; field: RefObjec
  * A text field whose text is its own (a rule's, say) rather than a draft's, dictated into as every
  * field is: it gets a draft of its own for the dictation while it is on the page, is framed while
  * spoken into, and has the line about its dictation under it, after what stands beside it
- * (`children`). Enter without Shift calls `onEnter`, Escape `onEscape`; `fit`: as tall as its text.
+ * (`children`). Enter without Shift calls `onEnter`, Escape `onEscape`; `fit`: as tall as its text;
+ * `sends`: whether Enter sends what is written (it ends the editing otherwise, which says no more).
  */
 export function DictatedArea({
   value,
@@ -133,12 +134,13 @@ export function DictatedArea({
   onEscape,
   onBlur,
   fit = false,
+  sends = true,
   children,
   ...props
-}: { value: string; onChange: (text: string) => void; onEnter: () => void; onEscape?: () => void; onBlur?: () => void; fit?: boolean; children?: ReactNode } & Pick<TextareaHTMLAttributes<HTMLTextAreaElement>, 'rows' | 'placeholder' | 'autoFocus'> & { 'data-esc'?: boolean }) {
+}: { value: string; onChange: (text: string) => void; onEnter: () => void; onEscape?: () => void; onBlur?: () => void; fit?: boolean; sends?: boolean; children?: ReactNode } & Pick<TextareaHTMLAttributes<HTMLTextAreaElement>, 'rows' | 'placeholder' | 'autoFocus'> & { 'data-esc'?: boolean }) {
   const field = useRef<HTMLTextAreaElement>(null);
   const key = `field:${useId()}`;
-  useDraftField(key, () => field.current, false);
+  useDraftField(key, () => field.current, false, true, sends);
   useEffect(() => () => dropDraft(key), [key]);
   const talk = useSpaceToTalk(field);
   const spoken = dictating(useDraft(key));

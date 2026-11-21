@@ -1775,6 +1775,20 @@ export class CanvasRuntime {
     return Object.keys(out).length ? out : undefined;
   }
 
+  /** What the owner wrote on single findings of a review card, as the browser sent it: by finding number, the comment; an empty one is none. */
+  private comments(comments: unknown): Record<number, string> | undefined {
+    if (comments === undefined || comments === null) return undefined;
+    const bad = () => new BadRequest('invalid', 'comments must map finding numbers to texts');
+    if (typeof comments !== 'object') throw bad();
+    const out: Record<number, string> = {};
+    for (const [id, text] of Object.entries(comments as Record<string, unknown>)) {
+      if (!/^\d+$/.test(id) || typeof text !== 'string') throw bad();
+      if (text.trim()) out[Number(id)] = text.trim();
+    }
+    if (Object.values(out).reduce((n, x) => n + x.length, 0) > MAX_MESSAGE_CHARS) throw new BadRequest('textTooLong', `comments may have at most ${MAX_MESSAGE_CHARS} characters`);
+    return Object.keys(out).length ? out : undefined;
+  }
+
   /** A place in the demo video as the browser sent it: a frame Obeya does not have is left out; `demo` names the demo it is in. */
   private spot(spot: unknown): SpotInput | undefined {
     if (!spot || typeof spot !== 'object') return;
@@ -1800,7 +1814,7 @@ export class CanvasRuntime {
     const replyTo = 'replyTo' in a ? this.board.quoted(cardId, a.replyTo)?.id : undefined;
     // a prototype may leave it to the idea's brief what it shows; a screenshot or an option picked may speak for itself
     const picks = a.action === 'answer' && Array.isArray(a.picks) ? a.picks.filter((o): o is string => typeof o === 'string') : [];
-    const decided = a.action === 'message' && !!a.findings && typeof a.findings === 'object' && Object.keys(a.findings).length > 0;
+    const decided = a.action === 'message' && ((!!a.findings && typeof a.findings === 'object' && Object.keys(a.findings).length > 0) || !!this.comments(a.comments));
     if ('text' in a && (typeof text !== 'string' || (!text.trim() && a.action !== 'prototype' && !images.length && !picks.length && !decided)))
       throw new BadRequest('emptyText', 'text must be a non-empty string');
     if (text.length > MAX_MESSAGE_CHARS) throw new BadRequest('textTooLong', `text may have at most ${MAX_MESSAGE_CHARS} characters`);
@@ -1847,7 +1861,7 @@ export class CanvasRuntime {
       case 'message':
         // a note to a Question card is a question to its agent
         if (card?.kind === 'question') return this.answers.ask(cardId, text.trim(), { images, spoken: !!a.spoken, replyTo });
-        return this.repoOf(cardId).workers.message(cardId, text.trim(), images, !!a.spoken, replyTo, this.spot(a.spot), this.decisions(a.findings));
+        return this.repoOf(cardId).workers.message(cardId, text.trim(), images, !!a.spoken, replyTo, this.spot(a.spot), this.decisions(a.findings), this.comments(a.comments));
       case 'release':
         return this.repoOf(cardId).workers.released(cardId, !!a.now);
       case 'unsay':
@@ -1856,7 +1870,7 @@ export class CanvasRuntime {
       case 'answer':
         return this.repoOf(cardId).workers.answer(cardId, text.trim(), images, !!a.spoken, replyTo, picks, this.spot(a.spot));
       case 'approve':
-        return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct, findings: this.decisions(a.findings), ...(typeof a.upstream === 'boolean' ? { upstream: a.upstream } : {}) });
+        return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct, findings: this.decisions(a.findings), comments: this.comments(a.comments), ...(typeof a.upstream === 'boolean' ? { upstream: a.upstream } : {}) });
       case 'undo':
         return this.repoOf(cardId).workers.undo(cardId);
       case 'pushMain':

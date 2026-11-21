@@ -24,7 +24,7 @@ import { ClockMark, SnoozeMenu, snoozeWho } from './snooze';
 import { kindLabel, snoozeWhen, t } from './strings';
 import { agentWorks, ownerField, talkAlone, waitsFirstStart, worked as isWorked } from './cardState';
 import { type Act, type ActDone, CardAgentPick, ArchiveButton, Armed, CardHead, DeleteButton, Later, type Pending, MoveToBox, RepoDownBox, type Run, StartButton, StateLine, SupersededBox, type Tell } from './cardSheet';
-import { ApproveReview, Findings, holdsUp, useUnsentDecisions } from './review';
+import { ApproveReview, Findings, heldUpBy, useUnsentComments, useUnsentDecisions } from './review';
 import { IdeaView, PrototypeDemos } from './idea';
 import { Conversation, Fold, LastFailure, Mocks, Split, Talk, TalkColumn, useOpenQuestions, wordsField } from './conversation';
 import { DemoView } from './demo';
@@ -97,7 +97,7 @@ export function Detail(p: Props) {
         if (approves) await saveHeld(item.id);
         const r = await api.act<ApproveResult | void>(item.id, a);
         // the decisions on findings that went with the approval are no longer the field's to send
-        if (a.action === 'approve' && a.findings) updateDraft(cardDraft(item.id), { findings: undefined });
+        if (a.action === 'approve' && (a.findings || a.comments)) updateDraft(cardDraft(item.id), { findings: undefined, comments: undefined });
         return r;
       },
       // while the agent is at work on the owner's words, the approval waits for its reply in view, as "Build it like this" does on an idea
@@ -404,10 +404,8 @@ function TaskView(v: View) {
   const change = useCardDiff(item, { on: worked, poll: inFolder });
   // the tab the left column shows: a file picked there or in the change list beside the handover
   const [tab, setTab] = useState<string | null>(null);
-  // on a review card, the findings decided in the field that hold the merge up until they are sent
-  const heldUp = Object.entries(useUnsentDecisions(item))
-    .filter(([, route]) => holdsUp(route))
-    .map(([id]) => Number(id));
+  // on a review card, the findings decided or commented on in the field that hold the merge up until they are sent
+  const heldUp = heldUpBy(useUnsentDecisions(item), useUnsentComments(item));
   // a task waiting for its first start, planned or in the queue, keeps its text in full beside its conversation, where notes wait for its agent
   const waits = waitsFirstStart(item);
   const proto = prototypeState(item, all, from);
@@ -1066,7 +1064,7 @@ function TaskTalk({
               listener,
               onWords: async (text, images, replyTo, spoken) => onTell(text, images, field, replyTo, spoken),
               onPicked: (text, [picks = []], images, replyTo, spoken) => act({ action: 'answer', text, picks, images, ...(replyTo ? { replyTo } : {}), ...(spoken ? { spoken } : {}) }, { close: false, rejects: true }),
-              onDecided: (text, findings, images, replyTo, spoken) => act({ action: 'message', text, findings, ...(images ? { images } : {}), ...(replyTo ? { replyTo } : {}), ...(spoken ? { spoken } : {}) }, { close: false, rejects: true }),
+              onDecided: (text, findings, comments, images, replyTo, spoken) => act({ action: 'message', text, findings, comments, ...(images ? { images } : {}), ...(replyTo ? { replyTo } : {}), ...(spoken ? { spoken } : {}) }, { close: false, rejects: true }),
             }
           : undefined
       }

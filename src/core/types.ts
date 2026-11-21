@@ -1505,7 +1505,7 @@ export type CardAction =
   /** `replyTo`: the message of the card's conversation the words reply to (`CardEvent.replyTo`). */
   /** `spot`: the place in the card's demo video the words are about. */
   /** `findings`: on a review card, what the owner decided for its findings, by their numbers; with them the text may be empty. */
-  | { action: 'message'; text: string; spoken?: boolean; images?: string[]; replyTo?: number; spot?: SpotInput; findings?: Record<string, ChangeRoute> }
+  | { action: 'message'; text: string; spoken?: boolean; images?: string[]; replyTo?: number; spot?: SpotInput; findings?: Record<string, ChangeRoute>; comments?: Record<string, string> }
   /** `picks`: the options of the question the owner picked; with them the text, their own words, may be empty. */
   | { action: 'answer'; text: string; spoken?: boolean; images?: string[]; replyTo?: number; picks?: string[]; spot?: SpotInput }
   /**
@@ -1538,7 +1538,7 @@ export type CardAction =
    * `findings`: on a review card, the decisions on its findings that stood unsent, which go with the merge (a follow-up task, ignored).
    */
   /** `upstream`: in a fork, whether the work goes to the original repository as a pull request too, in place of the card's choice (`Item.upstream`). */
-  | { action: 'approve'; direct?: boolean; findings?: Record<string, ChangeRoute>; upstream?: boolean }
+  | { action: 'approve'; direct?: boolean; findings?: Record<string, ChangeRoute>; comments?: Record<string, string>; upstream?: boolean }
 
   /** In a folder without git, on a card waiting for approval: what it changed there is put back as it was before ("Discard changes"). */
   | { action: 'undo' }

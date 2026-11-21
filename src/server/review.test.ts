@@ -551,6 +551,35 @@ describe('a review card', () => {
     expect(board.item(id)!.contribution!.findings![1]!.status).toBe('open');
   });
 
+  test('a comment on a finding goes to the worker with the finding, beside its decision or alone, and shows on its line in the log', async () => {
+    const id = await reviewCard();
+    await handOver();
+    workers.message(id, '', [], false, undefined, undefined, { 1: 'contributor' }, { 1: 'Only the folder part.', 2: 'Is a shortcut really needed?' });
+    const told = runtime.last.inbox.at(-1)!;
+    expect(told).toContain('To amerlander: #1 “Path in the file name” (the owner’s comment: “Only the folder part.”)');
+    expect(told).toContain('Comments on findings the owner decided nothing for yet: #2 “No shortcut” (the owner’s comment: “Is a shortcut really needed?”)');
+    expect(board.events(id).at(-1)!.text).toBe('Befund 1 „Path in the file name“: an amerlander – “Only the folder part.”\nBefund 2 „No shortcut“: “Is a shortcut really needed?”');
+    // commented on, the second stays open for the owner to decide
+    expect(board.item(id)!.contribution!.findings!.map((f) => [f.status, f.decided])).toEqual([
+      ['open', 'contributor'],
+      ['open', undefined],
+    ]);
+  });
+
+  test('a comment alone asks the worker, and one on an ignored finding is no quiet ignore', async () => {
+    const id = await reviewCard();
+    await handOver();
+    const before = runtime.last.inbox.length;
+    workers.message(id, '', [], false, undefined, undefined, { 2: 'drop' }, { 2: 'Fine as it is, say so on the PR.' });
+    expect(runtime.last.inbox.length).toBe(before + 1);
+    expect(runtime.last.inbox.at(-1)).toContain('Ignored: #2 “No shortcut” (the owner’s comment: “Fine as it is, say so on the PR.”)');
+    runtime.last.emit({ type: 'idle' });
+    workers.message(id, '', [], false, undefined, undefined, undefined, { 1: 'Why is this a security issue?' });
+    expect(runtime.last.inbox.at(-1)).toContain('The owner commented on findings of your review, on the card:\n- Comments on findings still open: #1 “Path in the file name” (the owner’s comment: “Why is this a security issue?”)');
+    expect(board.item(id)!.contribution!.findings![0]!.status).toBe('open');
+    expect(() => workers.message(id, '', [], false, undefined, undefined, undefined, { 2: 'Ignored already.' })).toThrow();
+  });
+
   test('an ignored finding beside other decisions goes to the worker with them', async () => {
     const id = await reviewCard();
     await handOver();
@@ -780,6 +809,17 @@ describe('a review card', () => {
       ['open', undefined],
       ['open', undefined],
     ]);
+  });
+
+  test('comments go with the approval on findings decided with it; one on a finding left open holds the merge up', async () => {
+    const id = await reviewCard();
+    await handOver();
+    await expect(workers.approve(id, { findings: { 1: 'later' }, comments: { 2: 'What about this one?' } })).rejects.toMatchObject({ code: 'decideFirst' });
+    expect(fake.said.merges).toEqual([]);
+    await workers.approve(id, { findings: { 1: 'later' }, comments: { 1: 'Cover the import too.' } });
+    expect(fake.said.merges).toEqual([prHead]);
+    expect(board.events(id).some((e) => e.text === 'Befund 1 „Path in the file name“: als Folgeaufgabe – “Cover the import too.”')).toBe(true);
+    expect(runtime.last.inbox.at(-1)).toContain('As follow-up tasks: #1 “Path in the file name” (the owner’s comment: “Cover the import too.”)');
   });
 
   test('a merge the forge refuses after the decisions went with it: the worker hears them all the same', async () => {

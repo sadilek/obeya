@@ -51,6 +51,8 @@ export interface ApproveAfter {
   direct?: boolean;
   upstream?: boolean;
   findings?: Record<number, ChangeRoute>;
+  /** The owner's comments on findings among `findings`, which go with them. */
+  comments?: Record<number, string>;
   push?: boolean;
   /** The worker's latest handover (its log line's id) when the owner clicked. */
   handover?: number;

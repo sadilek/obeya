@@ -488,14 +488,14 @@ export class Workers {
    * conversation the words reply to, which the worker reads above them; `spot`: the place in the
    * demo video they are about. Such words on a handover are held back while the owner watches (`hold`).
    */
-  message(cardId: string, text: string, images: string[] = [], spoken = false, replyTo?: number, spot?: SpotInput, findings?: Record<number, ChangeRoute>) {
+  message(cardId: string, text: string, images: string[] = [], spoken = false, replyTo?: number, spot?: SpotInput, findings?: Record<number, ChangeRoute>, comments?: Record<number, string>) {
     const card = this.card(cardId);
     const place = spot ? this.place(cardId, spot) : undefined;
     const w: OwnerWords = { text, images, spoken, replyTo, place };
     const handover = handedOver(card);
-    if (place && handover && !findings) return this.hold(card, { ...w, place });
-    // on a review card, what the owner decided for its findings goes with the words, above them
-    const decided = findings ? this.reviews.decide(cardId, findings) : undefined;
+    if (place && handover && !findings && !comments) return this.hold(card, { ...w, place });
+    // on a review card, what the owner decided for its findings and wrote on them goes with the words, above them
+    const decided = findings || comments ? this.reviews.decide(cardId, findings ?? {}, comments) : undefined;
     // findings ignored, and nothing else: done as they stand, the worker hears it with its next message or step
     if (decided?.quiet && !text && !images.length) {
       this.o.board.log(cardId, 'hint', 'owner', decided.log, { replyTo });
@@ -939,22 +939,24 @@ export class Workers {
   /**
    * `direct`: the work goes onto the default branch at once instead of into a pull request, where
    * the repository's settings allow it. `findings`: on a review card, what the owner decided for its
-   * findings and had not sent yet, which goes with the approval (`mergeContribution`). Clicked while
+   * findings and had not sent yet, which goes with the approval (`mergeContribution`), with
+   * `comments`, what they wrote on those. Clicked while
    * the worker is still at work on the owner's words, the approval waits for its reply (`approveAfterReply`).
    */
-  async approve(cardId: string, { direct = false, findings, upstream }: { direct?: boolean; findings?: Record<number, ChangeRoute> | undefined; upstream?: boolean } = {}): Promise<ApproveResult | void> {
+  async approve(cardId: string, { direct = false, findings, comments: remarks, upstream }: { direct?: boolean; findings?: Record<number, ChangeRoute> | undefined; comments?: Record<number, string> | undefined; upstream?: boolean } = {}): Promise<ApproveResult | void> {
     const card = this.card(cardId);
     if (!handedOver(card) || this.landing.has(cardId) || this.approving.has(cardId)) throw new BadRequest('notReady', 'the card is not ready for review');
     const decided = findings && Object.keys(findings).length ? findings : undefined;
+    const said = remarks && Object.keys(remarks).length ? remarks : undefined;
     if (card.contribution && direct) throw new BadRequest('noDirect', 'a review card merges its pull request');
     if (!card.contribution) {
-      if (decided) throw new BadRequest('notReview', 'only a review card has findings to decide on');
+      if (decided || said) throw new BadRequest('notReview', 'only a review card has findings to decide on');
       if (upstream && (!this.o.upstream?.() || direct || card.prototypeOf || this.folder)) throw new BadRequest('noUpstream', 'this repository is no fork whose work lands on its main branch, with an original repository to send a pull request to');
       if (direct && card.prototypeOf) throw new BadRequest('noDirect', 'a prototype never lands');
       if (direct && card.adopted?.pr) throw new BadRequest('branchPr', `the branch ${card.adopted.branch} has an open pull request, which the work goes onto`);
     }
-    if (this.atWorkOn(cardId, card)) return this.approveAfterReply(cardId, card, { ...(direct ? { direct } : {}), ...(decided ? { findings: decided } : {}), ...(upstream !== undefined ? { upstream } : {}) });
-    if (card.contribution) return this.reviews.mergeContribution(cardId, decided ? { findings: decided } : {});
+    if (this.atWorkOn(cardId, card)) return this.approveAfterReply(cardId, card, { ...(direct ? { direct } : {}), ...(decided ? { findings: decided } : {}), ...(said ? { comments: said } : {}), ...(upstream !== undefined ? { upstream } : {}) });
+    if (card.contribution) return this.reviews.mergeContribution(cardId, { ...(decided ? { findings: decided } : {}), ...(said ? { comments: said } : {}) });
     // a prototype never lands: approving it is having seen enough
     if (card.prototypeOf) {
       this.takeHeld(cardId);
