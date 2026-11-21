@@ -940,8 +940,10 @@ export class Board {
         repo: this.repoColumn(idea?.repo),
       },
     ]);
+    // its worker runs on what the idea's agents do
+    if (idea?.agent) this.store.update(row!.id, { agent: toJson(idea.agent) });
     this.changed();
-    return this.itemOf(row!);
+    return this.itemOf(this.store.card(row!.id)!);
   }
 
   /** The prototype's worker proposes to build the idea on it; the owner accepts on the prototype's card. */
@@ -994,10 +996,11 @@ export class Board {
   }
 
   /**
-   * The harness, model and effort the card's agent runs on, over the workers' group's (`null`: the
-   * group's again), for each session of its next run. A session keeps what it started on, so the choice
-   * changes only while the card waits to start (planned, proposed, an idea its worker will build, or a
-   * Question card it will start as a task).
+   * The harness, model and effort every agent of the card runs on (its worker, an idea's exploration
+   * agent), over each one's group's (`null`: the groups' again), for each session of its next run; an
+   * idea's discussion takes it from its next message on. A worker's session keeps what it started on,
+   * so the choice changes only while the card waits to start (planned, proposed, an idea, or a
+   * Question card it will start as a task or discuss as an idea).
    */
   chooseAgent(id: string, agent: CardAgent | null) {
     this.own(id);

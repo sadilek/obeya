@@ -443,16 +443,62 @@ describe('an idea', () => {
     expect(() => canvas.act(i.id, { action: 'discuss', text: 'Noch was.' })).toThrow('not an idea');
   });
 
-  test('the harness and model chosen for it go to the worker who builds it, not to its exploration agent', async () => {
+  test('the harness and model chosen for it go to its exploration agent, from the next message on, and to the worker who builds it', async () => {
     const i = idea();
     canvas.act(i.id, { action: 'agent', agent: { harness: 'claude', model: 'sonnet', effort: 'low' } });
     expect(item(i.id).agent).toEqual({ harness: 'claude', model: 'sonnet', effort: 'low' });
     canvas.act(i.id, { action: 'discuss', text: 'Los.' });
-    expect(explorer().spec).toMatchObject({ model: 'opus', effort: 'high' });
+    expect(explorer().spec).toMatchObject({ harness: 'claude', model: 'sonnet', effort: 'low' });
     turn(explorer(), 'Gut.', () => explorer().call('update_brief', { brief: '**Ziel:** CSV-Export.' }));
+    // changed during the discussion: its session goes on with the new model
+    canvas.act(i.id, { action: 'agent', agent: { harness: 'claude', model: 'fable', effort: 'max' } });
+    canvas.act(i.id, { action: 'discuss', text: 'Und jetzt?' });
+    expect(explorer().spec).toMatchObject({ resume: 'sess-1', harness: 'claude', model: 'fable', effort: 'max' });
+    turn(explorer(), 'Weiter.');
+    // without a choice, the explorers' setting again
+    canvas.act(i.id, { action: 'agent', agent: null });
+    canvas.act(i.id, { action: 'discuss', text: 'Noch mal.' });
+    expect(explorer().spec).toMatchObject({ resume: 'sess-1', model: 'opus', effort: 'high' });
+    turn(explorer(), 'Ja.');
+    canvas.act(i.id, { action: 'agent', agent: { harness: 'claude', model: 'sonnet', effort: 'low' } });
     canvas.act(i.id, { action: 'build' });
     await settle();
     expect(runtime.withTool('ready_for_review')[0]!.spec).toMatchObject({ harness: 'claude', model: 'sonnet', effort: 'low' });
+  });
+
+  test('chosen to run on another harness, its discussion goes on in a new session there that hears where the idea stands', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Los.' });
+    turn(explorer(), 'CSV oder PDF?', () => explorer().call('update_brief', { brief: '**Ziel:** CSV-Export.' }));
+    canvas.act(i.id, { action: 'agent', agent: { harness: 'codex', model: 'gpt-#-sol' } });
+    canvas.act(i.id, { action: 'discuss', text: 'CSV.' });
+    const s = explorer();
+    expect(s.spec.resume).toBeUndefined();
+    expect(s.spec).toMatchObject({ harness: 'codex', model: 'gpt-#-sol' });
+    expect(s.inbox[0]).toContain('This idea was discussed before');
+    expect(s.inbox[0]).toContain('**Ziel:** CSV-Export.');
+    expect(s.inbox[0]).toContain('You: CSV oder PDF?');
+    expect(s.inbox[0]).toContain('CSV.');
+    s.emit({ type: 'session', id: 'codex:t1' });
+    s.call('reply', { text: 'Gut.' });
+    s.emit({ type: 'idle' });
+    // the next message goes on in that session
+    canvas.act(i.id, { action: 'discuss', text: 'Weiter.' });
+    expect(explorer().spec).toMatchObject({ resume: 'codex:t1', harness: 'codex' });
+  });
+
+  test('its prototypes and the task split off it run on what was chosen for it', async () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'agent', agent: { harness: 'claude', model: 'sonnet', effort: 'low' } });
+    canvas.act(i.id, { action: 'discuss', text: 'Los.' });
+    turn(explorer(), 'Gut.', () => explorer().call('plan_split', { title: 'CSV-Export', brief: 'Exportiere CSV.' }));
+    canvas.act(i.id, { action: 'splitOff' });
+    const task = board().items().find((x) => x.title === 'CSV-Export')!;
+    expect(task.agent).toEqual({ harness: 'claude', model: 'sonnet', effort: 'low' });
+    canvas.act(i.id, { action: 'prototype', text: 'Den Export-Knopf.' });
+    const prototype = board().items().find((x) => x.prototypeOf === i.id)!;
+    expect(prototype.agent).toEqual({ harness: 'claude', model: 'sonnet', effort: 'low' });
+    await settle();
   });
 
   test('its agent shows variants as mocks, in its reply and under the brief, and the worker who builds it gets them', async () => {

@@ -9,7 +9,7 @@ import { Naming } from './cardLink';
 import { CardIdRoom } from './cardNumber';
 import { plain } from './markdown';
 import { shownTitle } from './parts';
-import { AgentPick, ContinueOn } from './agentPick';
+import { AgentChoice, ContinueOn } from './agentPick';
 import { useFitHeight } from './fitHeight';
 import { contributorChoice, SnoozeMenu } from './snooze';
 import { clock as time, snoozeWhen, stateLabel, t } from './strings';
@@ -136,24 +136,20 @@ export function Later({ item, act }: { item: Item; act: Act }) {
   );
 }
 
-/** A button that starts the card (`children`), with the menu of what its agent runs on joined to it where `on`. */
-export function StartOn({ item, act, on = true, primary, children }: { item: Item; act: Act; on?: boolean; primary?: boolean; children: ReactNode }) {
-  if (!on || item.kind === 'project') return <>{children}</>;
-  return (
-    <AgentPick item={item} act={(a) => act(a, { close: false })} {...(primary === false ? { primary } : {})}>
-      {children}
-    </AgentPick>
-  );
+/**
+ * Among a card's buttons, after those that start an agent: what that agent runs on, whichever of them
+ * starts it, and where to change that for this card.
+ */
+export function CardAgentPick({ item, act }: { item: Item; act: Act }) {
+  return <AgentChoice item={item} act={(a) => act(a, { close: false })} />;
 }
 
-/** "Start" in its variants (`label`, `hint`): starts the card, with the menu of what its agent runs on joined to it where `on`. */
-export function StartButton({ item, act, label, hint, disabled, on }: { item: Item; act: Act; label: string; hint: string; disabled?: boolean; on?: boolean }) {
+/** "Start" in its variants (`label`, `hint`): starts the card. */
+export function StartButton({ act, label, hint, disabled }: { act: Act; label: string; hint: string; disabled?: boolean }) {
   return (
-    <StartOn item={item} act={act} on={on}>
-      <button className="btn primary" disabled={disabled} title={hint} onClick={() => act({ action: 'start' }, { close: false })}>
-        {label}
-      </button>
-    </StartOn>
+    <button className="btn primary" disabled={disabled} title={hint} onClick={() => act({ action: 'start' }, { close: false })}>
+      {label}
+    </button>
   );
 }
 

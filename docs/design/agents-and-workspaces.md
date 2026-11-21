@@ -166,14 +166,13 @@ Luna and whatever else its catalog for the login on this machine lists; for Gemi
 own families agy lists, Neon, Argon, Hydrogen, Flash, while the Claude and GPT models agy also
 offers are left out, since they repeat what the other harnesses run directly) and the effort (low to
 max, for a Codex or Gemini family those its newest model here takes), all three in one picker that names them ("Claude
-Code · Opus 5.5 · effort medium") and opens the same menu as the narrow part of a card's start button
-(see below), and marks the presets: Claude Code with Opus
+Code · Opus 5.5 · effort medium") and opens the same menu as the chip button among a card's buttons (see below), and marks the presets: Claude Code with Opus
 throughout, high effort for workers and exploration agents, medium otherwise. A Codex family shows
 by its name (Sol, Terra; Codex Max for `gpt-#-codex-max`; one named only by its version, as `o#`,
 by its newest model here, o3) and stands for whatever is newest of it where an agent runs (see
 Codex), as Opus does for Claude Code; a version cannot be pinned. A Gemini family likewise (Neon for
-`gemini-#-neon`; see Gemini), its models listed by `agy models` (a line per model and effort). Both menus (this dialog's and the
-one beside a card's start button) show after each name the version it stands for on this machine,
+`gemini-#-neon`; see Gemini), its models listed by `agy models` (a line per model and effort). Both menus (this dialog's and a
+card's) show after each name the version it stands for on this machine,
 in the card's menu greyed (Opus 5.5, Sol 6.1): for Codex its newest model's, for an alias the model
 Claude Code says it stands for (the one it lists under the alias, else the newest of the family it
 lists): the newest of its family Claude Code lists, by its id or under the alias, since a new model
@@ -228,9 +227,9 @@ card's agent runs on Codex · Sol instead."); other agents move without a word.
 
 A worker that the limit stops in the middle of its work waits for it as before (see Usage limit in
 Communication), and its card offers "Continue with Codex" (or another harness) above the
-conversation, saying until when the limit holds. Beside the button, as on a start button, a narrow
-part opens the other harnesses' models and efforts, and what the new agent will run on stands next
-to it: the workers' fallback, else their own setting where it is on another harness, else the preset
+conversation, saying until when the limit holds. Beside the button stands the chip button of a card's
+buttons (see below), here always naming what the new agent will run on ("Sol 6.2 · effort high"),
+which opens the other harnesses' models and efforts: the workers' fallback, else their own setting where it is on another harness, else the preset
 of the first other harness that can take over, until the owner picks another there. That harness
 has to be ready and not at its limit; the box goes as soon as none is, and a pick of one that is not
 is refused. The click ends the waiting
@@ -239,19 +238,35 @@ resumed on its branch, with the card's conversation so far (who said what, oldes
 path of the transcript of the agent before it (none on a host). The card runs there from then on,
 after a restart too: its own harness and model become that one's.
 
-A card may run on another harness, model or effort than its group. Joined to each button that
-starts a card (and "Accept and start" on a proposed task, "Build it like this" on an idea, "Start
-as task" on a Question card, "Start anyway" in the queue) is a narrow
-part with a triangle that opens a menu: each ready harness's models, as "Agents and models" lists
-them, and the efforts the model takes, with what applies checked (the workers' setting until the
-card has one of its own). Picking what the workers have is no choice of the card's: it follows
-their setting. What the card chose of its own stands small beside the button ("Codex · Sol ·
-effort very high"); without a choice nothing does. The choice is the card's, stored with it, and
-goes with every session of its next run, the ones resumed after a restart included, and with the
-instructions that differ by harness (how a worker waits); what it leaves out is the workers'. It
-changes only while the card waits to start (planned, proposed, in the queue, an idea still under
-discussion, a Question card not archived; the exploration agent and the Question card's own agent it
-leaves alone); once it is at work the choice stays as it began.
+A card may run on another harness, model or effort than its groups. The choice is the card's,
+stored with it, and holds for every agent that works on it: an idea's exploration agent, the worker
+who builds or plans it, a prototype of the idea and a task split off it (which start with it); what
+it leaves out is each agent's group's. Among the buttons of every card whose buttons start an agent
+or hand one work (a planned task, a proposal, a Question card, an idea), after those that start one,
+stands one small button with a chip icon. It holds whichever of those buttons starts the agent
+("Start agent", "Discuss as an idea", "Plan as a project", "Build it like this", "Split off a task",
+"Have a prototype built", "Accept and start", "Start as task"): on hover it names what the agent
+will run on, the card's choice over the group's setting, with the version ("Runs on Claude Code ·
+Opus 5.5 · effort high"), and a click opens the same menu as the Configuration's pickers, headed by
+that line: each ready harness's models, as "Agents and models" lists them, and the efforts the model
+takes, with what applies checked. The group it names is the explorers' on an idea or a proposed
+idea, the workers' elsewhere; where the card chose no harness and model and the other group's
+setting differs, it names that one too ("as an idea: …", "building it: …"). Picking what the group
+has is no choice of the card's: it follows the setting. Only while the card has a choice of its own
+does the button name it beside the icon ("Fable 5.2 · effort high"; a Codex model with "Codex"),
+with a × that goes back to the groups' settings. Those cards' conversation heading names no model;
+once an agent is at work (or a card waits in the queue, which has no such button), it names what the
+agent's session runs on.
+
+The choice goes with every session of the next run of a worker, the ones resumed after a restart
+included, and with the instructions that differ by harness (how a worker waits). It changes only
+while the card waits to start (planned, proposed, in the queue, an idea, a Question card not
+archived; the Question card's own agent it leaves alone); once a worker is at work the choice stays
+as it began. An idea's discussion takes it from the owner's next message on: each message resumes
+the idea's session with the model and effort chosen then; on another harness than the session's,
+the discussion goes on in a new session there, briefed with where the idea stands and the
+conversation so far (as after a lost session, see Ideas), unless that harness is at its limit, when
+the session goes on where it is. The same holds for a change of the explorers' setting.
 
 #### Updating Claude Code, Codex and Gemini
 
@@ -832,13 +847,14 @@ for its hooks), and what the repository's work needs.
   Rejected: a terminal with `codex login` (the UI sends the owner to no command line, and on a host
   it would not reach the sign-in's return); the device-code sign-in, which works from a phone but
   has to be switched on in ChatGPT's settings first.
-- **A card's own harness, model and effort are chosen in a narrow menu part of its start button and
-  kept with the card** (2026-11-04): starting stays one click on the group's setting, and a card
-  picked for another (a hard one for a bigger model or more effort, one for Codex to compare) keeps
-  it for every session of its run. Rejected: a part of the button naming the group's setting on
-  every card (owner, 2026-11-04: too prominent for what is rarely wanted); the choice in a menu that
-  starts the card at once; changing it while the card works (a session cannot move to another
-  harness, and a model changed between turns would not be what the owner saw it start with).
+- **A card's own harness, model and effort are kept with the card** (2026-11-04): starting stays one
+  click on the group's setting, and a card picked for another (a hard one for a bigger model or more
+  effort, one for Codex to compare) keeps it for every session of its run. Where it is chosen, see
+  the decision on the chip button below. Rejected: a part of the start button naming the group's
+  setting on every card (owner, 2026-11-04: too prominent for what is rarely wanted); the choice in
+  a menu that starts the card at once; changing it while a worker works (a session cannot move to
+  another harness, and a model changed between turns would not be what the owner saw it start
+  with).
 - **A fallback per group for the usage limit, and the owner moves a worker at work** (owner,
   2026-11-14, GitHub issue #92): with Claude Code at its limit, a card started for Codex stayed
   at "Obeya checking", since the check ran on Claude Code and waited for its reset, and changing the
@@ -853,6 +869,21 @@ for its hooks), and what the repository's work needs.
   selects beside a fourth that picked only a model read as if the fallback had no effort of its own,
   and the owner picks model and effort the same way everywhere; "Continue with …" offers the same
   menu, since the owner may want another model or effort for the takeover.
+- **A card's choice holds for every agent on it, the one discussing it as an idea as well as its
+  worker, chosen at one small button among the card's buttons** (owner, 2026-11-17/18): the owner
+  picked a model beside "Start agent", clicked "Discuss as an idea", and could not tell whether the
+  idea's agent took it (it did not: the choice went to the worker alone). One choice per card is
+  what the owner has in mind, and a card worth a bigger model to build is worth it to think through.
+  A discussion takes a change from its next message, since it ends its session after each reply
+  anyway; a model changed between turns reads the conversation as it stands, and only the prompt
+  cache is lost once. The button is an icon until the card chooses, so the usual case stays quiet,
+  and the model shows once on the card, not also over the conversation. Rejected: a menu part on
+  each button that starts an agent (three or four identical menus in a row, and a line "for every
+  agent on this card" that left unclear what "every agent" meant: it meant "whichever button you
+  click"); a picker naming the setting in a line of its own under the buttons (large, prominent, a
+  second mention of the model beside the conversation's, and the extra line pushed the buttons up
+  from the card's edge); a separate choice for the exploration agent (two menus that look alike and
+  mean different things).
 - **Harness, model and effort are set per group and per card, nowhere else** (owner, 2026-11-05):
   the two levels cover what the owner picks in use, and each further level makes it harder to tell
   what a card will run on. Rejected: defaults per canvas and per project over the machine-wide

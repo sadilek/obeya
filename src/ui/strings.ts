@@ -268,9 +268,13 @@ const de = {
   /** Beside the button that starts a card: what its agent runs on, the workers' group's unless chosen for this card. */
   agentPick: {
     /** The narrow part beside the start button that opens the menu. */
-    hint: 'Harness, Modell und Effort nur für diese Karte wählen',
-    /** Beside it while the card has a choice of its own. */
-    chosenHint: 'Gilt nur für diese Karte, für jede Sitzung ihres Laufs. Ändern im Menü daneben.',
+    /** Under the card's buttons: what its agent runs on, as a picker. */
+    runsOn: 'Läuft auf',
+    hint: 'Gilt für jeden Button, der den Agenten startet. Klicken, um für diese Karte ein anderes Modell zu wählen.',
+    /** Beside it where the other role's setting differs (`what`: "Codex · Sol 6.1 · Effort hoch"). */
+    other: { explorer: (what: string) => `als Idee: ${what}`, worker: (what: string) => `beim Bauen: ${what}` },
+    /** Beside it while the card has a choice of its own: back to what the Configuration sets for each role. */
+    reset: 'Einstellungen verwenden',
     effort: 'Effort',
     /** The effort chosen, beside the harness and model in the line beside the button. */
     chosenEffort: (effort: string) => `Effort ${effort}`,
@@ -2690,8 +2694,10 @@ const en: Strings = {
   start: 'Start agent',
   startHint: 'An agent starts on a branch of its own and shows a demo at the end.',
   agentPick: {
-    hint: 'Choose harness, model and effort for this card alone',
-    chosenHint: 'Holds for this card alone, for every session of its run. Change it in the menu beside.',
+    runsOn: 'Runs on',
+    hint: 'Holds for whichever button starts the agent. Click to choose another model for this card.',
+    other: { explorer: (what: string) => `as an idea: ${what}`, worker: (what: string) => `building it: ${what}` },
+    reset: 'Use the settings',
     effort: 'Effort',
     chosenEffort: (effort: string) => `effort ${effort}`,
   },

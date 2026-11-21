@@ -397,6 +397,8 @@ export class IdeaActions {
     const shown = this.board.events(cardId).flatMap((e) => (e.kind === 'talk' && e.author === 'owner' ? (e.images ?? []) : []));
     const images = [...new Set([...(idea.images ?? []), ...shown])].slice(-MAX_IMAGES);
     const task = this.board.create({ title: split.title, body: `${split.brief}\n\n${t.settledTask(idea.title)}`, from: cardId, ...(images.length ? { images } : {}) });
+    // its worker runs on what the idea's agents do
+    if (idea.agent) this.board.chooseAgent(task.id, idea.agent);
     this.board.log(task.id, 'state', 'owner', t.settledFrom(idea.title));
     this.board.setIdea(cardId, { split: undefined });
     this.board.decide({ project_id: null, card_id: cardId, question: t.howOn(idea.title), answer: t.splitOffAnswer(split.title), by: 'owner' });

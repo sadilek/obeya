@@ -435,6 +435,8 @@ export class CanvasRuntime {
       imageFiles: this.imageFiles,
       onReplied: (cardId, replied) => this.ideas.replied(cardId, replied),
       toObeya: this.toObeya,
+      harness: () => agents('explorer').harness,
+      avail,
       ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
     });
     this.ideas = new IdeaActions({

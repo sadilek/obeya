@@ -23,7 +23,7 @@ import { makingWords, newRepoWords, type RepoChoice, RepoPick, useRepoChoice } f
 import { ClockMark, SnoozeMenu, snoozeWho } from './snooze';
 import { kindLabel, snoozeWhen, t } from './strings';
 import { agentWorks, ownerField, talkAlone, waitsFirstStart, worked as isWorked } from './cardState';
-import { type Act, type ActDone, ArchiveButton, Armed, CardHead, DeleteButton, Later, type Pending, MoveToBox, RepoDownBox, type Run, StartButton, StartOn, StateLine, SupersededBox, type Tell } from './cardSheet';
+import { type Act, type ActDone, CardAgentPick, ArchiveButton, Armed, CardHead, DeleteButton, Later, type Pending, MoveToBox, RepoDownBox, type Run, StartButton, StateLine, SupersededBox, type Tell } from './cardSheet';
 import { ApproveReview, Findings, holdsUp, useUnsentDecisions } from './review';
 import { IdeaView, PrototypeDemos } from './idea';
 import { Conversation, Fold, LastFailure, Mocks, Split, Talk, TalkColumn, useOpenQuestions, wordsField } from './conversation';
@@ -155,12 +155,10 @@ function QuestionView({ item, act, run, onTell, error }: View) {
             >
               {t.question.asIdea}
             </button>
-            {/* what its worker runs on, beside it as beside "Start" */}
-            <StartOn item={item} act={act} primary={false}>
-              <button className="btn" title={t.question.asTaskHint} onClick={() => act({ action: 'asTask' }, { close: false })}>
-                {t.question.asTask}
-              </button>
-            </StartOn>
+            <button className="btn" title={t.question.asTaskHint} onClick={() => act({ action: 'asTask' }, { close: false })}>
+              {t.question.asTask}
+            </button>
+            <CardAgentPick item={item} act={act} />
             <ArchiveButton item={item} run={run} className="btn primary" label={t.question.done} hint={t.question.doneHint} />
           </>
         )}
@@ -229,11 +227,9 @@ function ProposalView({ item, all, from, act, listener, onTell, editable, repos,
           <Armed label={t.acceptWaits(idea || armed === 'idea')} undo={t.unaccept} onUndo={() => act({ action: 'unaccept' }, { close: false })} />
         ) : (
           // one to start later is planned and waits until then: taking it on is all there is to it
-          <StartOn item={item} act={act} on={!idea}>
-            <button className="btn primary" title={later ? t.startAt.accept : undefined} onClick={() => accept(true)}>
-              {idea ? t.acceptIdea : later ? t.acceptOnly : t.accept}
-            </button>
-          </StartOn>
+          <button className="btn primary" title={later ? t.startAt.accept : undefined} onClick={() => accept(true)}>
+            {idea ? t.acceptIdea : later ? t.acceptOnly : t.accept}
+          </button>
         )}
         {!later && (
           <button className="btn" disabled={!!revising} onClick={() => accept(false)}>
@@ -246,6 +242,7 @@ function ProposalView({ item, all, from, act, listener, onTell, editable, repos,
             {t.acceptAsIdea}
           </button>
         )}
+        <CardAgentPick item={item} act={act} />
         <button className="btn" onClick={() => act({ action: 'dismiss' }, { close: true, ack: t.dismissed })}>
           {t.dismiss}
         </button>
@@ -595,11 +592,9 @@ function QueueBox({ item, all, act, onClones }: { item: Item; all: Item[]; act: 
       <div className="actions">
         {/* behind other cards, it may start anyway */}
         {'behind' in q && (
-          <StartOn item={item} act={act} primary={false}>
-            <button className="btn" onClick={() => act({ action: 'force' }, { close: true, ack: forcedText(q) })}>
-              {t.queue.force}
-            </button>
-          </StartOn>
+          <button className="btn" onClick={() => act({ action: 'force' }, { close: true, ack: forcedText(q) })}>
+            {t.queue.force}
+          </button>
         )}
         <button className="btn" onClick={() => act({ action: 'dequeue' }, { close: false })}>
           {t.queue.dequeue}
@@ -980,14 +975,14 @@ function TaskActions({ v, worked, proto, approve }: { v: View; worked: boolean; 
     item.newRepo?.due ? (
       <Armed label={makingWords(item, choice.name)} undo={t.undo} {...(item.newRepo.making ? {} : { onUndo: () => act({ action: 'stayHere' }, { close: false }) })} />
     ) : (
-      !item.snoozed && <StartButton item={item} act={act} on={!fresh} disabled={!!fresh && !fresh.ready} label={fresh?.button ?? t.start} hint={fresh?.hint ?? (repo?.folder ? t.folder.startHint : t.startHint)} />
+      !item.snoozed && <StartButton act={act} disabled={!!fresh && !fresh.ready} label={fresh?.button ?? t.start} hint={fresh?.hint ?? (repo?.folder ? t.folder.startHint : t.startHint)} />
     )
   ) : onPrototype && !item.snoozed ? (
-    <StartButton item={item} act={act} label={t.start} hint={t.startHint} />
+    <StartButton act={act} label={t.start} hint={t.startHint} />
   ) : rest ? (
-    <StartButton item={item} act={act} label={t.landedPart.start} hint={t.landedPart.startHint} />
+    <StartButton act={act} label={t.landedPart.start} hint={t.landedPart.startHint} />
   ) : (
-    halted && !item.archivedAt && <StartButton item={item} act={act} label={t.startAgain} hint={t.startAgainHint} />
+    halted && !item.archivedAt && <StartButton act={act} label={t.startAgain} hint={t.startAgainHint} />
   );
   const prototype = item.prototypeOf && <PrototypeActions item={item} act={act} proto={proto} />;
   // work waiting for the owner's verdict: its approval, or on a prototype its decisions
@@ -1027,6 +1022,7 @@ function TaskActions({ v, worked, proto, approve }: { v: View; worked: boolean; 
             </button>
           </>
         )}
+        {item.state === 'planned' && !item.queue && <CardAgentPick item={item} act={act} />}
         {archive && <ArchiveButton item={item} run={v.run} />}
         {own && (unworked || (halted && !item.archivedAt)) && <DeleteButton onDelete={v.onDelete} />}
       </div>

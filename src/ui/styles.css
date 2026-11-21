@@ -1219,17 +1219,20 @@ span.cl-name { color: inherit; cursor: default; }
 .snooze-pick { display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); margin-top: 2px; align-items: center; }
 .snooze-pick input { min-width: 0; font: inherit; font-size: 13px; padding: 5px 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg); color: var(--ink); }
 .snooze-pick .btn { padding: 6px 12px; }
-/* the button that starts a card, joined to a narrow part with a triangle that opens the menu of what its agent runs on (placed by script), and that choice beside them where the card has one */
-.agent-split, .agent-join { display: inline-flex; align-items: stretch; }
-.agent-join { border-radius: 3px; }
-.agent-join > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.agent-join > .agent-pick { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 1px; padding: 0 6px; display: inline-flex; align-items: center; }
-.agent-join > .btn.agent-pick:not(.primary) { box-shadow: inset 1px 0 0 var(--line); }
-.agent-join:has(> .btn.suggested:first-child) { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--idea); }
-.agent-join > .btn.suggested:first-child { box-shadow: none; }
-.agent-split.saving .agent-join > .btn:first-child { pointer-events: none; opacity: 0.7; }
+/* "Continue with …", with the chip button beside it that names and picks what the new agent runs on (menu placed by script) */
+.agent-split { display: inline-flex; align-items: stretch; gap: 10px; }
 .agent-caret { flex: none; opacity: 0.8; }
-.agent-chosen { align-self: center; margin: 0 0 0 10px; font-size: 12.5px; white-space: nowrap; }
+/* among a card's buttons: what its agent runs on, an icon until the card has a choice of its own, then that choice and a × back to the settings */
+.agent-choice { display: inline-flex; align-items: stretch; }
+.agent-choice-btn { display: inline-flex; align-items: center; gap: 7px; padding-left: 10px; padding-right: 10px; background: none; box-shadow: none; color: var(--muted); }
+.agent-choice-btn:hover, .agent-choice-btn[aria-expanded="true"] { color: var(--ink); background: var(--chip); }
+.agent-choice.chosen .agent-choice-btn { color: var(--ink); background: var(--chip); border-top-right-radius: 0; border-bottom-right-radius: 0; font-weight: 500; }
+.agent-choice.chosen.alone .agent-choice-btn { border-radius: 3px; }
+.agent-choice-reset { padding: 0 9px; font-weight: 500; margin-left: 1px; border-top-left-radius: 0; border-bottom-left-radius: 0; background: var(--chip); color: var(--muted); }
+.agent-choice-reset:hover { color: var(--ink); }
+.agent-choice.saving button { pointer-events: none; opacity: .7; }
+.agent-chip { flex: none; }
+.agent-menu .agent-runs-on { text-transform: none; letter-spacing: normal; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 2px; }
 .agent-menu { position: fixed; z-index: 75; bottom: auto; max-width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; }
 .agent-menu .snooze-opt { display: flex; align-items: baseline; }
 /* a project's buttons where they do not fit beside its title, from its "…" button (placed by script) */
