@@ -170,7 +170,8 @@ does once its canvas is gone. It shows five lists:
   Tab's order, then "Obeya answered" where an answer waits unread, framed in a waiting card's orange
   (the answer is finished and waits for the owner, so nothing on it moves). Each card says what it waits
   for (its state line: "Demo ready", "Question for you" …) and since when (the server keeps that across
-  restarts). A card the owner snoozed leaves it until it comes back (see Snoozing a card), and so
+  restarts). After those of a canvas come its cards the owner marked to check by hand, "⚑ To check"
+  and the note in place of the state line (see Marked to check by hand). A card the owner snoozed leaves it until it comes back (see Snoozing a card), and so
   does one set aside on the phone (below). Its heading counts what it shows. The canvas's
   navigation shows the same entries in the same order, built once for both, as light rows, those
   set aside on the phone among them (see The navigation).

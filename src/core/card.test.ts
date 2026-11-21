@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { ANY, archiveRefusal, lineOf, openPerGroup, started, unreadPerProject, withSupplemented } from './card';
+import { ANY, archivedWithDone, archiveRefusal, forYou, lineOf, markable, openPerGroup, started, unreadPerProject, waitingIn, waitingOn, withSupplemented } from './card';
 import { MESSAGES } from './messages';
 import type { Item, Talk } from './types';
 
@@ -62,6 +62,27 @@ describe('archiveRefusal', () => {
     expect(archiveRefusal(card({ state: 'live', finishing: true }))).toBe('notDone');
     expect(archiveRefusal(card({ state: 'working' }))).toBe('notDone');
     expect(archiveRefusal(card({ state: 'live', source: 'plan', parent: 'p' }))).toBe('planCard');
+  });
+
+  test('a card marked to check by hand stays on the canvas until the mark is off, with or without a note', () => {
+    expect(archiveRefusal(card({ state: 'live', check: '' }))).toBe('marked');
+    expect(archiveRefusal(card({ state: 'done', check: 'DNS on the server' }))).toBe('marked');
+    expect(archivedWithDone(card({ state: 'live', check: '' }))).toBe(false);
+    expect(archivedWithDone(card({ state: 'live' }))).toBe(true);
+    // the mark holds only what the archive would take otherwise
+    expect(archiveRefusal(card({ state: 'working', check: '' }))).toBe('notDone');
+    expect(archiveRefusal(card({ state: 'approved', check: '' }))).toBe('notDone');
+  });
+
+  test('a task is marked once its work is approved, and stands in "Needs you" while marked', () => {
+    expect(['planned', 'working', 'waiting', 'approved', 'inPr', 'live', 'done'].filter((state) => markable(card({ state: state as Item['state'] })))).toEqual(['approved', 'inPr', 'live', 'done']);
+    expect(markable(card({ state: 'live', source: 'plan' }))).toBe(false);
+    expect(markable(card({ state: 'live', archivedAt: 'now' }))).toBe(false);
+    expect(forYou(card({ state: 'live', check: '' }))).toBe(true);
+    expect(forYou(card({ state: 'live' }))).toBe(false);
+    const w = waitingIn({ items: [card({ id: 'a', state: 'live', check: 'DNS' }), card({ id: 'b', state: 'live' })], talk: [] });
+    expect(w.items.map((i) => i.id)).toEqual(['a']);
+    expect(waitingOn(w)).toBe(1);
   });
 
   test('a project goes once its work is done', () => {

@@ -155,9 +155,18 @@ export const cardClass = (item: Item, underway?: string) =>
     (item.paused || item.restartPaused) && 'paused',
     item.snoozed && 'snoozed',
     item.queue && 'queued',
+    item.check !== undefined && 'to-check',
   ]
     .filter(Boolean)
     .join(' ');
+
+/** A card marked to check by hand, on its face: that it is, and the owner's note. */
+const CheckMeta = ({ note }: { note: string }) => (
+  <>
+    <span className="check-label">⚑ {t.check.short}</span>
+    {note.trim() && `: ${excerpt(note)}`}
+  </>
+);
 
 /**
  * What a card says on its face, on the canvas and in the phone view's lists alike: its kind (after
@@ -199,6 +208,7 @@ export function CardFace({ item, where, underway, since, chip, inButton }: { ite
     (item.queue && 'workspace' in item.queue ? t.queue.workspaceWhy[item.queue.workspace] : undefined) ??
     (item.queue && 'paused' in item.queue ? t.queue.pausedWhy : undefined) ??
     status ??
+    (item.check !== undefined ? <CheckMeta note={item.check} /> : undefined) ??
     (item.idea ? firstLine(item.idea.brief) || firstLine(item.body) : firstLine(item.body));
   return (
     <>
@@ -407,8 +417,8 @@ export function Minimap({
             width={b.w * k}
             height={b.h * k}
             rx={item.kind === 'project' ? 1.5 : 0.5}
-            style={{ fill: item.kind === 'project' ? 'var(--container-line)' : `var(--${shownState(item)})` }}
-            opacity={item.kind === 'project' || needsYou(item) ? 1 : 0.55}
+            style={{ fill: item.kind === 'project' ? 'var(--container-line)' : item.check !== undefined ? 'var(--check)' : `var(--${shownState(item)})` }}
+            opacity={item.kind === 'project' || needsYou(item) || item.check !== undefined ? 1 : 0.55}
           />
         ))}
         <rect

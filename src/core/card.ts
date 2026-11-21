@@ -17,18 +17,23 @@ export const stopped = (i: Pick<Item, 'state' | 'branch' | 'unstarted'>) => i.st
 /** A finished card of the owner's whose agent is done: the archive may take it. */
 export const finishedArchivable = (i: Pick<Item, 'state' | 'source' | 'finishing'>) => finished(i.state) && i.source === 'manual' && !i.finishing;
 /** Why the archive does not take a card (`archiveRefusal`), as the server's refusal names it. */
-export type ArchiveRefusal = 'notDone' | 'holdsWork' | 'prototypeRunning' | 'planCard';
+export type ArchiveRefusal = 'notDone' | 'holdsWork' | 'prototypeRunning' | 'planCard' | 'marked';
 /**
  * Why the archive does not take the card; nothing where it does. It takes a finished card of the
  * owner's whose agent is done; a parked or dropped idea without a prototype on the canvas; a project
  * whose work is done; and a stopped task of the owner's that nothing waits to start, whose workspace
  * holds no work (a branch with commits or changes keeps it, and archiving would leave that work
  * unseen in a clone) or whose repository does not run on the canvas, where nothing shows that work
- * anyway. A workstream stays with its project.
+ * anyway. A workstream stays with its project, and a card the owner marked to check by hand
+ * (`Item.check`) on the canvas until they take the mark off.
  */
 export function archiveRefusal(
-  i: Pick<Item, 'kind' | 'state' | 'source' | 'idea' | 'prototypes' | 'branch' | 'unstarted' | 'prototypeOf' | 'queue' | 'workspace' | 'keptIn' | 'repoDown' | 'finishing'>,
+  i: Pick<Item, 'kind' | 'state' | 'source' | 'idea' | 'prototypes' | 'branch' | 'unstarted' | 'prototypeOf' | 'queue' | 'workspace' | 'keptIn' | 'repoDown' | 'finishing' | 'check'>,
 ): ArchiveRefusal | undefined {
+  // the mark holds only what the archive would take otherwise: removing it never lets in a card that is not done
+  return refusalUnmarked(i) ?? (i.check !== undefined ? 'marked' : undefined);
+}
+function refusalUnmarked(i: Parameters<typeof archiveRefusal>[0]): ArchiveRefusal | undefined {
   if (i.kind === 'project') return i.state === 'done' ? undefined : 'notDone';
   if (i.source === 'plan') return 'planCard';
   if (i.state === 'idea') return (i.idea?.status ?? 'open') === 'open' ? 'notDone' : i.prototypes?.some((p) => !p.archivedAt) ? 'prototypeRunning' : undefined;
@@ -37,11 +42,18 @@ export function archiveRefusal(
 }
 /**
  * A card the canvas's "Archive finished cards" takes, and so counts on its button: a finished one the
- * archive may take, but no Question card, which is done when the owner says so, not with the work;
- * and a project whose work is done.
+ * archive may take, but no Question card, which is done when the owner says so, not with the work,
+ * nor one marked to check by hand; and a project whose work is done.
  */
-export const archivedWithDone = (i: Pick<Item, 'state' | 'source' | 'finishing' | 'kind'>) =>
-  (finishedArchivable(i) && i.kind !== 'question') || (i.kind === 'project' && i.state === 'done');
+export const archivedWithDone = (i: Pick<Item, 'state' | 'source' | 'finishing' | 'kind' | 'check'>) =>
+  (finishedArchivable(i) && i.kind !== 'question' && i.check === undefined) || (i.kind === 'project' && i.state === 'done');
+/** The states in which a task may be marked to check by hand: its work approved, landing or landed. */
+export const MARKABLE_STATES: readonly CardState[] = ['approved', 'inPr', 'live', 'done'];
+/** A task of the owner's that may be marked to check by hand (`Item.check`): one whose work the owner approved, not a prototype. */
+export const markable = (i: Pick<Item, 'kind' | 'source' | 'prototypeOf' | 'archivedAt' | 'state'>) =>
+  i.kind === 'task' && i.source === 'manual' && !i.prototypeOf && !i.archivedAt && MARKABLE_STATES.includes(i.state);
+/** A card on the canvas the owner marked to check by hand: it stands in "Needs you" (`forYou`) until they remove the mark. */
+export const toCheck = (i: Pick<Item, 'check' | 'archivedAt' | 'snoozed'>) => i.check !== undefined && !i.archivedAt && !i.snoozed;
 /** A finished card whose agent still works: after the landing, or answering a follow-up question. */
 export const finishingUp = (i: Pick<Item, 'state' | 'finishing'>) => !!i.finishing && finished(i.state);
 /** The card's agent is snoozed (by itself or the owner, "Later …"): it stops until its time, and neither pauses nor resumes meanwhile. */
@@ -233,17 +245,20 @@ export function unreadPerProject(talk: Talk[]): Map<string, number> {
   return m;
 }
 
-/** What on a canvas waits for the owner: the cards that need them, and the Coordinator while an answer waits unread. */
-export const waitingOn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>) => s.items.filter(needsYou).length + (unreadAnswers(s.talk) ? 1 : 0);
+/** A card "Needs you" lists: one that needs the owner, or one they marked to check by hand. */
+export const forYou = (i: Item) => needsYou(i) || toCheck(i);
+
+/** What on a canvas waits for the owner: the cards "Needs you" lists, and the Coordinator while an answer waits unread. */
+export const waitingOn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>) => s.items.filter(forYou).length + (unreadAnswers(s.talk) ? 1 : 0);
 
 /**
  * What of a canvas "Needs you" lists (the phone's, and the navigation on every other canvas's page):
- * the cards that need the owner (none snoozed, which are put off), and the Coordinator's answers that
- * wait unread.
+ * the cards that need the owner (none snoozed, which are put off), those they marked to check by
+ * hand, and the Coordinator's answers that wait unread.
  */
 export type Waiting = Pick<CanvasSnapshot, 'items' | 'talk'>;
 export const waitingIn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>): Waiting => ({
-  items: s.items.filter(needsYou),
+  items: s.items.filter(forYou),
   talk: s.talk.filter((x) => x.unread),
 });
 

@@ -1475,7 +1475,8 @@ export class Commander {
   private brief(s: Session, transcript: string, focus: Focus, input: Input, shots = 0): string {
     const { items, groups: groupList } = this.o.board.snapshot();
     const groups = new Map(groupList.map((g) => [g.id, g.name]));
-    const relevant = items.filter((i) => i.kind !== 'project' && (!finished(i.state) || i.finishing || i.kind === 'question' || i.id === focus.card));
+    // a finished card the owner marked to check by hand among them, so they can ask which are left to check
+    const relevant = items.filter((i) => i.kind !== 'project' && (!finished(i.state) || i.finishing || i.kind === 'question' || i.check !== undefined || i.id === focus.card));
     const numbers = new Map(items.map((i) => [i.id, i.number]));
     const tag = (id: string) => {
       const n = numbers.get(id);
@@ -1681,6 +1682,7 @@ function cardLine(i: Item, c: LineContext): string {
   const s = i.superseded;
   if (s) parts.push(` — the agent that proposed it ${s.by ? `replaced it by "${s.title ?? ''}"` : 'withdrew it'}${s.why ? ` (${clip(oneLine(s.why), 200)})` : ''}; the owner removes it (dismiss) or keeps it (keep)`);
   if (i.statusLine) parts.push(` — status: ${clip(oneLine(i.statusLine), 160)}`);
+  if (i.check !== undefined) parts.push(` — marked by the owner to check by hand${i.check.trim() ? `: ${clip(oneLine(i.check), 200)}` : ''} (it stays out of the archive until they take the mark off on the card)`);
   parts.push(asks(i));
   const x = i.idea;
   if (x?.next) parts.push(` — its agent would ${NEXT_ACTION[x.next.step]} next: ${clip(oneLine(x.next.why), 200)}`);

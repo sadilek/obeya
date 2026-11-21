@@ -7,20 +7,22 @@
 
 import { type ReactNode, useRef, useState } from 'react';
 import type { CanvasInfo, Item, Talk } from '../core/types';
-import { needsYou, snoozable, type Waiting, waitingOn } from '../core/card';
+import { forYou, needsYou, snoozable, type Waiting, waitingOn } from '../core/card';
 import { Aside, SWIPED_CARD } from './aside';
 import { plain } from './markdown';
+import { excerpt } from '../core/plain';
 import { ClockMark, SnoozeFor } from './snooze';
 import { CardFace, cardClass, shownTitle } from './parts';
 import { stateLabel, t, when } from './strings';
 
 /**
  * One canvas's entries in Tab's order: the cards that need the owner (but none they just acted on,
- * `underway`, nor any snoozed, which are put off until they come back); and Obeya's latest answer
- * while answers wait unread in its conversation.
+ * `underway`, nor any snoozed, which are put off until they come back), then those they marked to
+ * check by hand; and Obeya's latest answer while answers wait unread in its conversation.
  */
 export function forYouOf(w: Waiting, underway: (id: string) => boolean): { cards: Item[]; obeya?: Talk } {
-  const cards = w.items.filter((i) => needsYou(i) && !underway(i.id));
+  const listed = w.items.filter((i) => forYou(i) && !underway(i.id));
+  const cards = [...listed.filter(needsYou), ...listed.filter((i) => !needsYou(i))];
   const unread = w.talk.filter((x) => x.unread);
   return unread.length ? { cards, obeya: unread.at(-1)! } : { cards };
 }
@@ -125,8 +127,8 @@ export function ForYouRows({
             <button className={i.id === open ? 'fy-row on' : 'fy-row'} aria-current={i.id === open || undefined} onClick={() => onOpen(i)}>
               <span className="fy-ttl">{shownTitle(i)}</span>
               <span className="fy-state">
-                {stateLabel(i)}
-                {i.waitingSince && ` · ${t.phone.since(when(i.waitingSince))}`}
+                {needsYou(i) ? stateLabel(i) : `⚑ ${t.check.short}${i.check?.trim() ? `: ${excerpt(i.check)}` : ''}`}
+                {needsYou(i) && i.waitingSince && ` · ${t.phone.since(when(i.waitingSince))}`}
               </span>
             </button>
           </li>

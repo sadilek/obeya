@@ -29,7 +29,7 @@
   --serif: Newsreader, "Iowan Old Style", Georgia, serif; --cond: "Plex Condensed", "Arial Narrow", sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --planned: #a0978a; --working: #1d5fe0; --waiting: #f27405; --approved: #3d9a1f; --inPr: #08888e; --live: #b4ab98; --proposal: #7b4fd6; --idea: #dc2f5e; --question: #4f7896;
-  --on-ink: #fff; --error: #c42b1c; --warn: #a3520a;
+  --on-ink: #fff; --error: #c42b1c; --warn: #a3520a; --check: #c08a00;
   --dep-line: #aaa190; --container: rgba(255,252,242,.45); --container-line: rgba(120,105,75,.22);
   --dim: rgba(40,32,18,.34); --panel: #fdfbf5; --chip: #f0ebdf;
   --s: 1;
@@ -42,7 +42,7 @@
   --shadow: inset 0 1px 0 rgba(255,250,235,.05), 0 1px 0 rgba(0,0,0,.7), 1px 3px 0 rgba(0,0,0,.45);
   --lift: inset 0 1px 0 rgba(255,250,235,.06), 0 1px 0 rgba(0,0,0,.7), 3px 7px 0 rgba(0,0,0,.45), 0 18px 30px -10px rgba(0,0,0,.7);
   --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf;
-  --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
+  --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a; --check: #f0c445;
   --dep-line: #5c564c; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
   --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925;
   color-scheme: dark;
@@ -52,7 +52,7 @@
   --shadow: inset 0 1px 0 rgba(255,250,235,.05), 0 1px 0 rgba(0,0,0,.7), 1px 3px 0 rgba(0,0,0,.45);
   --lift: inset 0 1px 0 rgba(255,250,235,.06), 0 1px 0 rgba(0,0,0,.7), 3px 7px 0 rgba(0,0,0,.45), 0 18px 30px -10px rgba(0,0,0,.7);
   --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf;
-  --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
+  --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a; --check: #f0c445;
   --dep-line: #5c564c; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
   --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925;
   color-scheme: dark;
@@ -215,6 +215,11 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .card.paused .state::after { display: none; }
 .card .landed-part { color: var(--approved); border: 1px solid color-mix(in srgb, var(--approved) 45%, transparent); border-radius: 2px; padding: 0 5px; font-weight: 500; }
 .card.s-live .ttl, .card.s-done .ttl { font-weight: 500; }
+/* marked to check by hand: a sticky note on the card, awake again however finished it is */
+.card.to-check { opacity: 1; background-color: color-mix(in srgb, var(--check) 13%, var(--card)); }
+.card.to-check::before { background: var(--check); }
+.card.to-check .ttl { font-weight: 600; }
+.check-label { color: color-mix(in srgb, var(--check) 70%, var(--ink)); font-weight: 600; }
 /* a proposal is a card only pencilled in: no stock yet, a dashed outline */
 .card.s-proposal { background: transparent; box-shadow: none; border: 1.5px dashed var(--proposal); }
 .card.s-proposal:hover { transform: none; background: color-mix(in srgb, var(--proposal) 5%, transparent); }
@@ -883,6 +888,11 @@ textarea.p-body:focus { border-color: var(--muted); }
 .question.proposal { border-style: dashed; border-color: var(--proposal); }
 .question.superseded { border-color: var(--proposal); background: color-mix(in srgb, var(--proposal) 6%, transparent); }
 .question.repo-down { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 6%, transparent); }
+.check-toggle { font-weight: 600; }
+.check-toggle input { accent-color: var(--check); }
+.check-note { margin-top: 10px; }
+.check-note textarea { display: block; width: 100%; padding: 8px 10px; border: 1px solid var(--check); border-radius: 3px; background: color-mix(in srgb, var(--check) 6%, var(--card)); color: var(--ink); font: inherit; resize: none; overflow: hidden; }
+.check-note .hint { margin-top: 4px; }
 .question.brief .p-lead { margin-top: 6px; font-size: 14px; }
 .question.brief .p-list { margin-top: 4px; }
 .talk { background: var(--chip); border-radius: 3px; padding: 12px 14px; overflow: auto;

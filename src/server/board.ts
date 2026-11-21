@@ -14,7 +14,7 @@ import type { Language } from '../core/locale';
 import { MESSAGES, type Messages, snoozeTerm } from '../core/messages';
 import { allTicked, type OtherDoc, type PlanDoc, type Workstream } from '../core/plan-doc';
 import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type ClonePool, type Decision, type DemoKind, type ErrorCode, type Group, type Snooze, type Woke, type Item, type NewCard, type NewRepo, type TalkCard, type TalkMoved, type PreferenceState, type ProposedSetting, type SettingProposal, type SettingProposalState, type ProjectHistory, type Proposal, type Superseded, type CardState, type Revising, type Question, type PlanDir, type Queue, STATES, type Notice, type WorkerTurn } from '../core/types';
-import { archivedWithDone, archiveRefusal, type ArchiveRefusal, finished, formatQuestion, needsYou, plannedToStart } from '../core/card';
+import { archivedWithDone, archiveRefusal, type ArchiveRefusal, finished, formatQuestion, MARKABLE_STATES, needsYou, plannedToStart } from '../core/card';
 import { type CardAgent, AGENT_EFFORTS, type AgentEffort, type Harness, HARNESSES, modelFits, storedModel } from '../core/agents';
 import type { CardRow, DecisionRow, Friction, FrictionNote, GroupRow, NewEvent, NewRow, RowUpdate, Store } from './db';
 import { History } from './history';
@@ -67,6 +67,7 @@ const ARCHIVE_REFUSED: Record<ArchiveRefusal, string> = {
   holdsWork: 'its workspace holds work that has not landed',
   prototypeRunning: 'a prototype for this idea is still on the canvas',
   planCard: 'a workstream stays with its project',
+  marked: 'the card is marked to check by hand; take the mark off first',
 };
 
 /** How long an empty card of the owner's (no title, text or screenshots) may exist before Obeya drops it on start. */
@@ -2036,7 +2037,7 @@ export class Board {
 
   patch(id: string, p: CardPatch) {
     const row = this.own(id);
-    const allowed = row.plan_ref ? (row.kind === 'project' ? ['x', 'y', 'collapsed'] : ['x', 'y', 'state', 'need', 'upstream']) : ['x', 'y', 'title', 'body', 'state', 'need', 'repo', 'images', 'newRepo', 'upstream'];
+    const allowed = row.plan_ref ? (row.kind === 'project' ? ['x', 'y', 'collapsed'] : ['x', 'y', 'state', 'need', 'upstream']) : ['x', 'y', 'title', 'body', 'state', 'need', 'repo', 'images', 'newRepo', 'upstream', 'check'];
     const bad = Object.keys(p).filter((k) => !allowed.includes(k));
     if (bad.length) throw new BadRequest('invalid', `cannot change ${bad.join(', ')} on this card`);
     if (p.x !== undefined) checkNumber(p.x, 'x');
@@ -2047,7 +2048,15 @@ export class Board {
     if (p.images !== undefined) this.checkImages(p.images);
     if (p.state !== undefined && !STATES.includes(p.state)) throw new BadRequest('invalid', `state must be one of ${STATES.join(', ')}`);
     if (p.need !== undefined && p.need !== null && p.need !== 'demo' && p.need !== 'question') throw new BadRequest('invalid', 'need must be demo, question or null');
-    const { repo, images, collapsed, newRepo, upstream, ...fields } = p;
+    if (p.check !== undefined) {
+      if (p.check !== null) checkText(p.check, 'check', BODY_MAX);
+      if (row.kind !== 'task' || row.prototype_of) throw new BadRequest('invalid', 'only a task is marked to check by hand');
+      if (row.archived_at) throw new BadRequest('invalid', 'a card in the archive is not marked');
+      // a mark is set once the work is approved; its note can be changed, and the mark removed, whatever the card's state since
+      if (p.check !== null && (row.check_note ?? null) === null && !MARKABLE_STATES.includes(row.state ?? 'planned'))
+        throw new BadRequest('invalid', 'a task is marked to check by hand once its work is approved');
+    }
+    const { repo, images, collapsed, newRepo, upstream, check, ...fields } = p;
     if (newRepo !== undefined) this.checkNewRepo(row, newRepo);
     if (upstream !== undefined) {
       if (typeof upstream !== 'boolean') throw new BadRequest('invalid', 'upstream must be true or false');
@@ -2079,6 +2088,7 @@ export class Board {
       ...(images !== undefined ? { images: images.length ? toJson(images) : null } : {}),
       ...(collapsed !== undefined ? { collapsed: collapsed ? 1 : 0 } : {}),
       ...(upstream !== undefined ? { upstream: upstream ? 1 : null } : {}),
+      ...(check !== undefined ? { check_note: check } : {}),
     });
     this.changed();
   }
@@ -2352,7 +2362,8 @@ export class Board {
       const from = !r.from_id ? origin.get(r.plan_ref!) : undefined;
       if (!from) continue;
       this.store.update(r.id, { from_id: from });
-      this.takePlace(r.id, from, docs);
+      // a task the owner marked to check by hand stays where it is, and the project stands where a new one does
+      if ((rows.find((x) => x.id === from)?.check_note ?? null) === null) this.takePlace(r.id, from, docs);
       this.retire(from);
       linked = true;
     }
@@ -2390,7 +2401,8 @@ export class Board {
   private retire(ideaId: string): boolean {
     const r = this.store.card(ideaId);
     // `done`: approved without a change, its doc written in a plan folder outside the repository
-    if (!r || r.deleted_at || r.archived_at || (r.state !== 'live' && r.state !== 'done') || finishing(r)) return false;
+    // a task the owner marked to check by hand stays on the canvas until they remove the mark
+    if (!r || r.deleted_at || r.archived_at || (r.check_note ?? null) !== null || (r.state !== 'live' && r.state !== 'done') || finishing(r)) return false;
     if (!this.store.projects(this.canvas.id).some((p) => p.from_id === ideaId && !p.archived_at)) return false;
     this.store.update(ideaId, { archived_at: new Date().toISOString() });
     this.log(ideaId, 'state', 'obeya', r.idea ? this.t.idea.becameProject : this.t.idea.taskBecameProject);
