@@ -649,6 +649,8 @@ const de = {
     workspaceConfig: { none: 'Anzahl der Klone ändern', dirty: 'Anzahl der Klone ändern', slots: 'Anzahl der Slots ändern' },
     force: 'Trotzdem starten',
     dequeue: 'Aus der Warteschlange nehmen',
+    /** While Obeya still checks the card: it is not started after all. */
+    cancelCheck: 'Doch nicht starten',
     drag: 'Ziehen, um die Aufgabe an einen anderen Platz zu stellen',
     forced: 'Gestartet, trotz möglicher Merge-Konflikte.',
     /** Started anyway where only the owner's arrows held it. */
@@ -3008,6 +3010,8 @@ const en: Strings = {
     workspaceConfig: { none: 'Change the number of clones', dirty: 'Change the number of clones', slots: 'Change the number of slots' },
     force: 'Start anyway',
     dequeue: 'Take out of the queue',
+    /** While Obeya still checks the card: it is not started after all. */
+    cancelCheck: 'Don’t start after all',
     drag: 'Drag to move the task to another place',
     forced: 'Started, despite possible merge conflicts.',
     forcedDrawn: 'Started without waiting for the cards you connected it to.',

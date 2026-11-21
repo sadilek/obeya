@@ -421,7 +421,7 @@ function TaskView(v: View) {
       <RepoDownBox item={item} />
       <MoveToBox item={item} act={act} />
 
-      {!waits && <QueueBox item={item} all={all} act={act} onClones={v.onClones} />}
+      {!waits && <QueueBox item={item} all={all} act={act} onClones={v.onClones} onDelete={v.onDelete} />}
 
       {item.prototypeOf && (
         <p className="hint">
@@ -461,7 +461,7 @@ function TaskView(v: View) {
         <Split
           main={
             <>
-              <QueueBox item={item} all={all} act={act} onClones={v.onClones} />
+              <QueueBox item={item} all={all} act={act} onClones={v.onClones} onDelete={v.onDelete} />
               {text({ fresh: true, grow: true })}
             </>
           }
@@ -555,20 +555,21 @@ function Where({ item, parent, worked, inFolder, change, onReadPlan }: { item: I
   );
 }
 
-/** What a card in the queue waits for, with the buttons that start it anyway or take it out of the queue. */
-function QueueBox({ item, all, act, onClones }: { item: Item; all: Item[]; act: Act; onClones?: ((repo: string, field: 'clones' | 'slots') => void) | undefined }) {
+/**
+ * What a card in the queue waits for, with the buttons that start it anyway, take it out of the
+ * queue or delete it; also while Obeya still checks it, so a card started by mistake goes at once.
+ */
+function QueueBox({ item, all, act, onClones, onDelete }: { item: Item; all: Item[]; act: Act; onClones?: ((repo: string, field: 'clones' | 'slots') => void) | undefined; onDelete: () => void }) {
   const q = item.queue;
   if (item.state !== 'planned' || !q) return null;
-  if ('checking' in q)
-    return (
-      <div className="question queue">
-        <div className="q-text">{t.queue.checkingLong}</div>
-      </div>
-    );
+  // as in the card's row of buttons once it is out of the queue: the owner's task nobody worked on, or one stopped
+  const deletable = item.source === 'manual' && !item.prototypeOf && (!isWorked(item) || stopped(item));
   return (
     <div className="question queue">
       <div className="q-text">
-        {'paused' in q ? (
+        {'checking' in q ? (
+          t.queue.checkingLong
+        ) : 'paused' in q ? (
           t.queue.pausedLong
         ) : 'workspace' in q ? (
           <>
@@ -594,8 +595,9 @@ function QueueBox({ item, all, act, onClones }: { item: Item; all: Item[]; act: 
           </StartOn>
         )}
         <button className="btn" onClick={() => act({ action: 'dequeue' }, { close: false })}>
-          {t.queue.dequeue}
+          {'checking' in q ? t.queue.cancelCheck : t.queue.dequeue}
         </button>
+        {deletable && <DeleteButton onDelete={onDelete} />}
       </div>
     </div>
   );

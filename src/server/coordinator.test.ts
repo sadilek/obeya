@@ -326,6 +326,37 @@ describe('Coordinator', () => {
     expect(item(c.id).state).toBe('working');
   });
 
+  test('a card taken out of the queue while Obeya checks it does not start once the check ends', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const b = card('B');
+    k.request(b.id);
+    await settle();
+    expect(item(b.id).queue).toMatchObject({ checking: true });
+    k.dequeue(b.id);
+    expect(item(b.id).queue).toBeUndefined();
+    await scope(['src/b.ts']);
+    expect(item(b.id).state).toBe('planned');
+    expect(item(b.id).queue).toBeUndefined();
+  });
+
+  test('a card deleted while Obeya checks it comes back out of the queue', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const c = card('C');
+    k.request(c.id);
+    await settle();
+    board.remove(c.id);
+    await scope(['src/c.ts']);
+    // brought back, it waits for the owner's start rather than for a check that ended
+    board.restore(c.id);
+    expect(item(c.id).state).toBe('planned');
+    expect(item(c.id).queue).toBeUndefined();
+    expect(item(a.id).state).toBe('working');
+  });
+
   test('a card keeps its place in the queue while what it waits for changes', async () => {
     const a = card('A');
     k.request(a.id);
