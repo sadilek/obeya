@@ -347,7 +347,12 @@ at the next start, before Obeya serves its own entry (removing rewrites the whol
 
 What the owner writes on a card may carry screenshots: pasted, dropped or picked with the field's
 image button, scaled to at most 2000 px in the browser and uploaded at once. They show as thumbnails
-in field and conversation and reach the agent as images in the message, with their paths. A click
+in field and conversation and reach the agent as images in the message, with their paths. A message
+takes at most six, enough to show a flow, few enough to keep the agent's context small. Those pasted,
+dropped or picked beyond that are not attached, and the field says so at once ("A message takes at
+most 6 screenshots: 2 were not attached. Send them with the next message."), so the owner does not
+first try to send; a field that holds more by other ways (moved over from the microphone) does not
+send and says how many to take out. A click
 enlarges one over the greyed page; Esc or a click shrinks it back. After the first screenshot picked
 by file dialog, a hint under the thumbnails names the paste and capture keys (⌘V / Ctrl+V, ⌃⇧⌘4 /
 Win+Shift+S), across sends and reloads, until "Got it" or the first paste; never on a device

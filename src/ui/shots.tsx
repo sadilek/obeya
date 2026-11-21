@@ -5,7 +5,7 @@
 
 import { type ClipboardEvent, type DragEvent, type MouseEvent, type PointerEvent, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { IMAGE_TYPES, MAX_FILE_BYTES, MAX_IMAGE_BYTES } from '../core/types';
+import { IMAGE_TYPES, MAX_FILE_BYTES, MAX_IMAGE_BYTES, MAX_IMAGES } from '../core/types';
 import { api, ApiError, at, failText } from './api';
 import { droppedPath, withBytes } from './appDrop';
 import { draftOf, type DraftsHome, draftsHome, dropDraft, insertAt, insertFilesAfter, insertFilesAt, insertPastedAt, markupOf, pathWord, setMarkup, updateDraft, updateDraftAt, useDraft } from './draft';
@@ -77,13 +77,23 @@ async function eachFile(key: string, files: File[], one: (f: File, home: DraftsH
   return arrived;
 }
 
-/** Screenshots for a draft, uploaded one after the other; `added` hears each one that arrived. How many did. */
-const attachTo = (key: string, files: File[], added?: () => void) =>
-  eachFile(key, files, async (f, home) => {
+/**
+ * Screenshots for a draft, uploaded one after the other; `added` hears each one that arrived. Those
+ * beyond what a message takes (`MAX_IMAGES`, counting the ones in the draft and on their way) stay
+ * out, and the draft says so at once, before the owner tries to send it. How many arrived.
+ */
+function attachTo(key: string, files: File[], added?: () => void) {
+  const d = draftOf(key);
+  const room = Math.max(0, MAX_IMAGES - d.images.length - d.uploading);
+  const arriving = eachFile(key, files.slice(0, room), async (f, home) => {
     const id = await api.uploadImage(await prepareImage(await withBytes(f)));
     updateDraftAt(home, key, (d) => ({ images: [...d.images, id] }));
     added?.();
   });
+  // after `eachFile` cleared the draft's last error
+  if (files.length > room) updateDraft(key, { error: t.shots.tooMany(files.length - room, MAX_IMAGES) });
+  return arriving;
+}
 
 /**
  * Files for a draft that are no screenshots, one after the other; the path of each goes into its

@@ -3,11 +3,10 @@
 
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { IMAGE_TYPES, MAX_IMAGE_BYTES } from '../core/types';
+import { IMAGE_TYPES, MAX_IMAGE_BYTES, MAX_IMAGES } from '../core/types';
 import { BadRequest } from './board';
 
-/** Per message: enough to show a flow, few enough to keep the agent's context small. */
-export const MAX_IMAGES = 6;
+export { MAX_IMAGES };
 const NAME = /^[0-9a-f-]{36}\.(png|jpg|gif|webp)$/;
 
 export class Images {
@@ -45,7 +44,8 @@ export class Images {
   /** The files of images a message refers to; an unknown id is refused. */
   resolve(ids: unknown): string[] {
     if (ids === undefined) return [];
-    if (!Array.isArray(ids) || ids.length > MAX_IMAGES) throw new BadRequest('invalid', `images must be a list of at most ${MAX_IMAGES} ids`);
+    if (!Array.isArray(ids)) throw new BadRequest('invalid', 'images must be a list of ids');
+    if (ids.length > MAX_IMAGES) throw new BadRequest('tooManyImages', `a message may have at most ${MAX_IMAGES} screenshots`);
     return ids.map((id) => {
       const p = typeof id === 'string' ? this.path(id) : null;
       if (!p) throw new BadRequest('invalid', 'unknown image');

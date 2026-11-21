@@ -7,7 +7,7 @@ import { type Language, languageOf } from '../core/locale';
 import { MESSAGES } from '../core/messages';
 import type { OutdatedBy } from '../core/page-changes';
 import type { NotAProject } from '../core/plan-doc';
-import { type CardState, type DemoKind, type ClipProblem, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type Theme, type VoiceKind, type Idea, type Item, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId, type CloudPreset, type MachineSectionId, type NeededId, type PrId, type PrWait, type Snooze, type Awaited, type AwaitedState, type LostWork } from '../core/types';
+import { type CardState, type DemoKind, type ClipProblem, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type Theme, type VoiceKind, type Idea, type Item, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId, type CloudPreset, type MachineSectionId, type NeededId, type PrId, type PrWait, type Snooze, type Awaited, type AwaitedState, type LostWork, MAX_IMAGES } from '../core/types';
 import { stopped } from '../core/card';
 import type { AgentEffort, AgentModel, AgentRole, Harness } from '../core/agents';
 import type { ConfigProblemCode, LeavingClone } from '../core/config';
@@ -793,6 +793,7 @@ const de = {
     unknownSetting: 'Über diesen Vorschlag ist schon entschieden.',
     imageType: 'Das ist kein Bild, das der Agent lesen kann (PNG, JPEG, GIF oder WebP).',
     imageTooLarge: 'Das Bild ist zu groß, auch verkleinert.',
+    tooManyImages: `Nicht gesendet: Eine Nachricht nimmt höchstens ${MAX_IMAGES} Screenshots mit. Nimm einige heraus oder schick sie mit einer zweiten Nachricht.`,
     fileTooLarge: 'Die Datei ist zu groß (höchstens 100 MB).',
     notDone: 'Archivieren lässt sich nur eine eigene Aufgabe, die live, erledigt oder gestoppt ist, oder eine geparkte oder verworfene Idee.',
     holdsWork: 'Auf dem Branch liegt Arbeit, die noch nicht gelandet ist. Starte die Aufgabe neu oder lösche sie.',
@@ -2469,6 +2470,11 @@ const de = {
       `Screenshots fügst du auch mit ${k.paste} aus der Zwischenablage ein, ohne sie erst als Datei zu speichern.${k.grab ? ` ${k.grab} legt einen Screenshot direkt dort ab.` : ''}`,
     tooLong: (n: number, max: number) => `Zu lang zum Senden (${n.toLocaleString('de-DE')} von höchstens ${max.toLocaleString('de-DE')} Zeichen). Kürze den Text oder lagere ihn in eine Datei aus; dann steht ihr Pfad im Feld.`,
     intoFile: 'In Datei auslagern',
+    /** Screenshots pasted, dropped or picked beyond `max` for the message: `refused` of them stay out. */
+    tooMany: (refused: number, max: number) =>
+      `Eine Nachricht nimmt höchstens ${max} Screenshots mit: ${refused === 1 ? 'einer ist' : `${refused} sind`} nicht angehängt. Schick ${refused === 1 ? 'ihn' : 'sie'} mit der nächsten Nachricht.`,
+    /** More screenshots in the field than a message takes (`n` of at most `max`): it does not send. */
+    overLimit: (n: number, max: number) => `Zu viele Screenshots zum Senden (${n} von höchstens ${max}). Nimm ${n - max === 1 ? 'einen' : n - max} heraus; ${n - max === 1 ? 'er geht' : 'sie gehen'} mit der nächsten Nachricht.`,
     pastedAsFile: 'Der eingefügte Text war zu lang für eine Nachricht; er steht jetzt in einer Datei, ihr Pfad im Feld.',
   },
   /** The menu of the agent's skills that `/` opens in a field whose words go to a card's agent. */
@@ -3168,6 +3174,7 @@ const en: Strings = {
     unknownSetting: 'This proposal has been decided already.',
     imageType: 'This is not an image the agent can read (PNG, JPEG, GIF or WebP).',
     imageTooLarge: 'The image is too large, even scaled down.',
+    tooManyImages: `Not sent: a message takes at most ${MAX_IMAGES} screenshots. Take some out, or send them with a second message.`,
     fileTooLarge: 'The file is too large (100 MB at most).',
     notDone: 'Only your own task that is live, done or stopped, or a parked or dropped idea, can be archived.',
     holdsWork: 'Its branch holds work that has not landed. Start the task again or delete it.',
@@ -4731,6 +4738,9 @@ const en: Strings = {
       `You can also paste screenshots from the clipboard with ${k.paste}, without saving them as a file first.${k.grab ? ` ${k.grab} puts a screenshot straight there.` : ''}`,
     tooLong: (n: number, max: number) => `Too long to send (${n.toLocaleString('en-US')} of ${max.toLocaleString('en-US')} characters at most). Shorten the text or move it into a file; its path then stands in the field.`,
     intoFile: 'Move into a file',
+    tooMany: (refused: number, max: number) =>
+      `A message takes at most ${max} screenshots: ${refused === 1 ? 'one was' : `${refused} were`} not attached. Send ${refused === 1 ? 'it' : 'them'} with the next message.`,
+    overLimit: (n: number, max: number) => `Too many screenshots to send (${n} of ${max} at most). Take ${n - max === 1 ? 'one' : n - max} out; ${n - max === 1 ? 'it goes' : 'they go'} with the next message.`,
     pastedAsFile: 'The pasted text was too long for a message, so it went into a file; its path stands in the field.',
   },
   /** The menu of the agent's skills that `/` opens in a field whose words go to a card's agent. */

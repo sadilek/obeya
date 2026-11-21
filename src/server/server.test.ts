@@ -908,6 +908,8 @@ describe('screenshots', () => {
     // a text too long for a message is refused as such, not as an empty one
     expect(await codeOf(act(c.id, { action: 'message', text: 'x'.repeat(MAX_MESSAGE_CHARS + 1) }))).toBe('textTooLong');
     expect(await codeOf(act(c.id, { action: 'message', text: 'x', images: ['0000.png'] } as CardAction))).toBe('invalid');
+    // more than a message takes, refused as such
+    expect(await codeOf(act(c.id, { action: 'message', text: 'x', images: Array(7).fill(id) }))).toBe('tooManyImages');
     expect(await codeOf(upload(png, 'text/html'))).toBe('imageType');
     expect(await codeOf(upload(new Uint8Array(4_000_000)))).toBe('imageTooLarge');
     expect((await fetch(new URL(api('/images/..%2Fobeya.db'), server.url))).status).toBe(404);

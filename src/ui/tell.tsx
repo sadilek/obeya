@@ -10,6 +10,7 @@ import { agentListens } from '../core/card';
 import { Aside } from './aside';
 import { api, ApiError, type Field, type Heard, type Where, failText } from './api';
 import { clip } from '../core/text';
+import { cardDraft, putBack } from './draft';
 import { excerpt, plain } from './markdown';
 import { sent, take, videoOf } from './spot';
 import { t } from './strings';
@@ -127,8 +128,10 @@ export function tellers(byId: (id: string) => Item | undefined, told: ReturnType
    * they go straight to it, else the Coordinator reads them like spoken ones. The conversation shows
    * them at once either way; above the mic only the Coordinator's confirmation shows, with "Undo".
    * Words Obeya refused for the card's agent reject, after the refusal shows, so the field keeps them.
+   * The field has left words for the Coordinator by the time it reads them: refused, they go back into
+   * `draft` (by default the card's).
    */
-  const tellTyped = async (text: string, images: string[] | undefined, target: Where, field?: Field, replyTo?: number | TalkRef) => {
+  const tellTyped = async (text: string, images: string[] | undefined, target: Where, field?: Field, replyTo?: number | TalkRef, draft = target && 'card' in target ? cardDraft(target.card) : undefined) => {
     if (listening(target))
       try {
         // typed while the card's demo video stands at a place: about that place, and the video plays on
@@ -142,7 +145,13 @@ export function tellers(byId: (id: string) => Item | undefined, told: ReturnType
       }
     else {
       const at = place();
-      void told.tell(null, toldCard(target), () => api.command(text, target, { images, field, replyTo, ...(at ? { place: at } : {}) }));
+      void told.tell(null, toldCard(target), () =>
+        api.command(text, target, { images, field, replyTo, ...(at ? { place: at } : {}) }).catch((e: unknown) => {
+          // refused: Obeya did nothing with the words; anything else may have come after they arrived
+          if (draft && e instanceof ApiError && e.code) putBack(draft, text, images);
+          throw e;
+        }),
+      );
     }
   };
   return { listening, tellAbout, tellTyped };

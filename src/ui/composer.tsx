@@ -18,7 +18,7 @@ import { type Reply, replyOn, setReply, useReply } from './reply';
 import { knowsSkills, matching, type Slash, skillWord, slashAt, useSkills, usedSkills } from './skills';
 import { AttachButton, ShotStrip, textAsFile, useShotInput } from './shots';
 import { t } from './strings';
-import { MAX_MESSAGE_CHARS, type Skill } from '../core/types';
+import { MAX_IMAGES, MAX_MESSAGE_CHARS, type Skill } from '../core/types';
 import { useLatest } from './latest';
 
 /** Whether Enter sends what is written (Shift+Enter breaks the line), as at the desk. */
@@ -157,7 +157,9 @@ export function Composer({
   const tooLong = length > MAX_MESSAGE_CHARS;
   // a paste too long for a message went in as a file: while its path stands in the words, the line under the field says why
   const pastedAsFile = !!d.pastedAsFile && text.includes(d.pastedAsFile);
-  const ready = (!!text.trim() || images.length > 0 || allowEmpty) && !tooLong && !busy && !shots.uploading && !shots.marking.length;
+  // more screenshots than a message takes (moved in from beside the microphone, say): it does not send
+  const tooMany = images.length > MAX_IMAGES;
+  const ready = (!!text.trim() || images.length > 0 || allowEmpty) && !tooLong && !tooMany && !busy && !shots.uploading && !shots.marking.length;
   const send = async () => {
     if (!ready) return;
     setBusy(true);
@@ -255,7 +257,7 @@ export function Composer({
           )}
         </div>
       </div>
-      {shots.error && <p className="p-error c-error">{shots.error}</p>}
+      {tooMany ? <p className="p-error c-error">{t.shots.overLimit(images.length, MAX_IMAGES)}</p> : shots.error && <p className="p-error c-error">{shots.error}</p>}
       {tooLong && (
         <div className="p-error c-error c-too-long">
           <span>{t.shots.tooLong(length, MAX_MESSAGE_CHARS)}</span>

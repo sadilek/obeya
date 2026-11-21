@@ -889,6 +889,8 @@ export interface Share {
 export const IMAGE_TYPES: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
 /** What the model takes per image (5 MB base64); the browser scales screenshots down to fit. */
 export const MAX_IMAGE_BYTES = 3_750_000;
+/** Screenshots per message: enough to show a flow, few enough to keep the agent's context small. */
+export const MAX_IMAGES = 6;
 /** The largest other file the owner may drop into what they write; its path goes to the agent. */
 export const MAX_FILE_BYTES = 100_000_000;
 /** The longest message the owner may write to an agent; a longer text goes to it as a file (by its path). */
@@ -1731,6 +1733,8 @@ export type ErrorCode =
   /** An uploaded screenshot is no image the agents read, or too large. */
   | 'imageType'
   | 'imageTooLarge'
+  /** A message with more screenshots than `MAX_IMAGES`. */
+  | 'tooManyImages'
   /** A dropped file is larger than Obeya keeps. */
   | 'fileTooLarge'
   /** Only a finished card of the owner's (or a stopped task, a parked or dropped idea) goes into the archive. */

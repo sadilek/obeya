@@ -10,9 +10,10 @@
 
 import { createContext, useEffect, useRef, useState } from 'react';
 import type { Place } from '../core/layout';
+import { MAX_IMAGES } from '../core/types';
 import { ApiError, api, type Heard, holdRestart, type Where, failText } from './api';
 import { confirmShownMs, undoShownMs } from './tell';
-import { beginDictation, dictate, draftOf, focusedDraft, insertFiles, insertPasted, MIC_DRAFT, moveFiles, moveImages, pastedIn, sendsWithEnter, takesImages, toObeya, updateDraft, useDraft, useFieldOn, uploaded, useFocusedDraft, withoutPasted, withoutWords, wordsOf } from './draft';
+import { beginDictation, dictate, draftOf, focusedDraft, insertFiles, insertPasted, MIC_DRAFT, moveFiles, moveImages, pastedIn, putBack, sendsWithEnter, takesImages, toObeya, updateDraft, useDraft, useFieldOn, uploaded, useFocusedDraft, withoutPasted, withoutWords, wordsOf } from './draft';
 import { Aside } from './aside';
 import { type Recording, record } from './recorder';
 import { AttachButton, ShotStrip, useShotInput } from './shots';
@@ -285,7 +286,7 @@ export function usePushToTalk(
         }
       });
       if (!h.unheard && !failed) return;
-      updateDraft(key, (d) => ({ text: [text, d.text].filter((x) => x.trim()).join(' '), images: [...images, ...d.images.filter((id) => !images.includes(id))] }));
+      putBack(key, text, images);
       if (reply && !replyOn(key)) setReply(key, reply);
     }).finally(() => setWriting((n) => n - 1));
   }
@@ -526,7 +527,7 @@ export function PushToTalk({ phase, level, flat, target, field, onDown }: { phas
           </div>
         )}
       </div>
-      {shots.error && key === MIC_DRAFT && <div className="ptt-error">{shots.error}</div>}
+      {key === MIC_DRAFT && (n > MAX_IMAGES ? <div className="ptt-error">{t.shots.overLimit(n, MAX_IMAGES)}</div> : shots.error && <div className="ptt-error">{shots.error}</div>)}
       {flat ? (
         <div id="target" className="flat">
           {t.voice.flat}

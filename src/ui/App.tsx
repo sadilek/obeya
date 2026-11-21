@@ -1618,7 +1618,7 @@ function Canvas({
             }}
           />
         )}
-        <CoordinatorSheet on={kOn} canvas={snapshot.canvas.id} items={items} preferences={snapshot.preferences} settings={snapshot.settingProposals ?? []} repos={snapshot.canvas.repos} talk={snapshot.talk} reshare={snapshot.reshare} onOpen={(i) => void openFresh(i)} onTell={(text, images, replyTo) => tellTyped(text, images, null, undefined, replyTo)} onConfig={(repo, setting) => {
+        <CoordinatorSheet on={kOn} canvas={snapshot.canvas.id} items={items} preferences={snapshot.preferences} settings={snapshot.settingProposals ?? []} repos={snapshot.canvas.repos} talk={snapshot.talk} reshare={snapshot.reshare} onOpen={(i) => void openFresh(i)} onTell={(text, images, replyTo, draft) => tellTyped(text, images, null, undefined, replyTo, draft)} onConfig={(repo, setting) => {
             showRepoClones({ canvas: snapshot.canvas.id, repo, field: 'settings', setting });
             setCOn(true);
           }} />

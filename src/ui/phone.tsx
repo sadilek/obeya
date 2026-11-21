@@ -378,7 +378,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
           putAside={putAside}
           bringBack={bringBack}
           onObeya={setObeyaCanvas}
-          onTell={(text, images, replyTo) => void tellTyped(text, images, null, undefined, replyTo)}
+          onTell={(text, images, replyTo, draft) => void tellTyped(text, images, null, undefined, replyTo, draft)}
         />
       )}
       {/* made afresh as a card opens or closes: what waits beside the microphone for Obeya stays in Obeya's draft */}
@@ -707,7 +707,7 @@ function PhoneHome({
   putAside: (i: Item) => void;
   bringBack: (i: Item) => void;
   onObeya: (canvas: string) => void;
-  onTell: (text: string, images: string[] | undefined, replyTo?: number | TalkRef) => void;
+  onTell: (text: string, images: string[] | undefined, replyTo?: number | TalkRef, draft?: string) => void;
 }) {
   const { talk, shown, openTalk, leaveTalk, banner } = panel;
   const homeRef = useRef<HTMLDivElement>(null);

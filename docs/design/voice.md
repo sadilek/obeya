@@ -40,6 +40,10 @@ A field's draft (text, screenshots, options picked for the questions above it, t
 lives outside the field, so the microphone reads and writes it and it outlives closing the card.
 Picks count only while the same questions stand. Drafts are kept per tab and canvas in session
 storage as they change, so they survive a canvas switch and a reload.
+Words Obeya refuses (too many screenshots, say) are not lost: a field whose words wait for the
+answer keeps them, and one that let them go at once (words for the Coordinator, which reads them a
+while) gets them back with their screenshots, before anything written there meanwhile; the refusal
+says why.
 
 #### The microphone
 

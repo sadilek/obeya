@@ -1,8 +1,9 @@
 import { expect, test } from 'bun:test';
-import { appended, cardDraft, pathWord, wordsOf, draftOf, draftsHome, dropDraft, giveBack, insert, insertFiles, insertPasted, keepDrafts, MIC_DRAFT, markupOf, moveFiles, moveImages, OBEYA_DRAFT, pastedIn, setMarkup, updateDraft, updateDraftAt, uploaded, withPasted, withoutPasted, withoutWords } from './draft';
+import { appended, cardDraft, pathWord, wordsOf, draftOf, draftsHome, dropDraft, giveBack, insert, insertFiles, insertPasted, keepDrafts, MIC_DRAFT, markupOf, moveFiles, moveImages, OBEYA_DRAFT, pastedIn, putBack, setMarkup, updateDraft, updateDraftAt, uploaded, withPasted, withoutPasted, withoutWords } from './draft';
 import { api } from './api';
 import { filesTo, textAsFile } from './shots';
 import { memoryStorage } from './testing';
+import { t } from './strings';
 
 
 // `keepDrafts` holds its store for the rest of the page
@@ -61,6 +62,41 @@ test('words taken back go into an empty field with their screenshots; a field wi
   giveBack(key, 'Und PDF.');
   expect(draftOf(key)).toMatchObject({ text: 'Etwas anderes.', images: [] });
   dropDraft(key);
+});
+
+test('words Obeya refused go back into the field before what was written there meanwhile, with their screenshots', () => {
+  const key = cardDraft('refused');
+  putBack(key, 'Bitte auch Excel.', ['a.png']);
+  expect(draftOf(key)).toMatchObject({ text: 'Bitte auch Excel.', images: ['a.png'] });
+  updateDraft(key, { text: 'Und PDF.', images: ['b.png'] });
+  putBack(key, 'Zeile eins\nZeile zwei', ['c.png', 'b.png']);
+  expect(draftOf(key)).toMatchObject({ text: 'Zeile eins\nZeile zwei\n\nUnd PDF.', images: ['c.png', 'b.png'] });
+  dropDraft(key);
+});
+
+test('screenshots beyond what a message takes stay out of the draft, which says so at once', async () => {
+  const key = cardDraft('many');
+  const was = api.uploadImage;
+  const bitmap = globalThis.createImageBitmap;
+  let n = 0;
+  api.uploadImage = async () => `${++n}.png`;
+  // not an image the test's runtime reads: it goes up as it is
+  globalThis.createImageBitmap = (() => Promise.reject(new Error('no bitmap'))) as typeof createImageBitmap;
+  try {
+    updateDraft(key, { images: ['a.png', 'b.png', 'c.png', 'd.png'] });
+    const shots = Array.from({ length: 3 }, (_, i) => new File(['x'], `shot${i}.png`, { type: 'image/png' }));
+    const arriving = filesTo(key, shots);
+    expect(draftOf(key).error).toBe(t.shots.tooMany(1, 6));
+    expect(await arriving).toBe(2);
+    expect(draftOf(key).images).toEqual(['a.png', 'b.png', 'c.png', 'd.png', '1.png', '2.png']);
+    expect(await filesTo(key, shots.slice(0, 2))).toBe(0);
+    expect(draftOf(key).error).toBe(t.shots.tooMany(2, 6));
+    expect(draftOf(key).images).toHaveLength(6);
+  } finally {
+    api.uploadImage = was;
+    globalThis.createImageBitmap = bitmap;
+    dropDraft(key);
+  }
 });
 
 test("the screenshots beside the microphone go into Obeya's field after those it has, the field's words untouched", () => {

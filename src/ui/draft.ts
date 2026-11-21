@@ -191,6 +191,17 @@ export function giveBack(key: string, text: string, images: string[] = []) {
   updateDraft(key, { text, images });
 }
 
+/**
+ * Words Obeya did not take go back into the draft with their screenshots, before what the owner
+ * wrote or added there meanwhile, so neither is lost.
+ */
+export function putBack(key: string, text: string, images: string[] = []) {
+  updateDraft(key, (d) => ({
+    text: [text, d.text].filter((x) => x.trim()).join(/\n/.test(text) ? '\n\n' : ' '),
+    images: [...images, ...d.images.filter((id) => !images.includes(id))],
+  }));
+}
+
 /** Whether the draft's field speaks to Obeya, as the microphone does without one: the sidebar's, the phone view's under Obeya's conversation. */
 export const toObeya = (key: string) => key === OBEYA_DRAFT || key.startsWith(`${OBEYA_DRAFT}:`);
 
