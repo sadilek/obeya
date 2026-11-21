@@ -271,7 +271,14 @@ export function Composer({
         (typeof obeya === 'string' ? (
           <div className="c-listener">→ {obeya}</div>
         ) : (
-          focused && !!skillList?.length && !knowsSkills() && <div className="c-listener c-skills-hint">{t.skills.hint}</div>
+          // its line stays while the field is left, only unseen: a button under the field must not
+          // move between the mousedown that takes the cursor out and the mouseup, or the click is lost
+          !!skillList?.length &&
+          !knowsSkills() && (
+            <div className={`c-listener c-skills-hint${focused ? '' : ' unseen'}`} aria-hidden={!focused}>
+              {t.skills.hint}
+            </div>
+          )
         ))}
     </div>
   );
