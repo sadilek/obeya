@@ -114,8 +114,8 @@ const TAKES_IMAGES: Command['do'][] = ['newCard', 'newIdea', 'start', 'force', '
 /** Actions whose text goes to an agent: a card's, or the one that reworks a proposal. */
 const TO_AGENT: Command['do'][] = ['note', 'answer', 'feedback', 'discuss', 'revise'];
 
-/** Actions that create (or file into) a card, whose id(s) `execute` returns for the reply to link to them. */
-const CREATES: Command['do'][] = ['newCard', 'newIdea', 'reviewPr', 'splitOff', 'prototype', 'remember'];
+/** What `execute` returns for a command that created (or filed into) cards: their ids; nothing otherwise. */
+export type Executed = string | string[] | undefined | void;
 
 export interface Heard {
   /** What the owner reads back. */
@@ -203,8 +203,8 @@ export interface CommanderOptions {
   cwd: string;
   /** Whether a session started now would run on the Coordinator's fallback, its harness being at its limit (`replacement`). */
   fallsBack?: () => boolean;
-  /** Runs a command; what it throws is logged on the card. */
-  execute: (c: Command) => unknown | Promise<unknown>;
+  /** Runs a command; what it throws is logged on the card. Returns the id(s) of any card(s) created (or filed into). */
+  execute: (c: Command) => Executed | Promise<Executed>;
   /** How long a command waits for "Undo". */
   delayMs?: number;
   /** Commands one session reads; the next one starts from the stored memory. */
@@ -606,17 +606,20 @@ export class Commander {
       const created: TalkCard[] = [];
       const seen = new Set<string>();
       for (const command of w.commands) {
+        let added = false;
         for (const c of await this.run(command, w.talk, made)) {
           if (command.do === 'newCard' && !made.has(command.title)) made.set(command.title, c.id);
           if (!seen.has(c.id)) {
             seen.add(c.id);
             created.push(c);
+            added = true;
           }
         }
-      }
-      if (created.length) {
-        this.o.board.sheet.created(w.talk, created);
-        if (w.card && w.event !== undefined) this.o.board.eventCreated(w.card, w.event, created);
+        // save after each action succeeds so an interruption on a later action never loses earlier links
+        if (added) {
+          this.o.board.sheet.created(w.talk, created);
+          if (w.card && w.event !== undefined) this.o.board.eventCreated(w.card, w.event, created);
+        }
       }
       this.waiting.delete(token);
     }, Math.max(0, due - Date.now()));
@@ -669,8 +672,8 @@ export class Commander {
         return [];
       }
       const r = await this.o.execute(command);
-      if (!CREATES.includes(command.do)) return [];
       const ids = typeof r === 'string' ? [r] : Array.isArray(r) ? r.filter((x): x is string => typeof x === 'string') : [];
+      if (!ids.length) return [];
       const otherCanvas = (command.do === 'newCard' || command.do === 'newIdea') && command.canvas && command.canvas !== this.o.board.canvas.id ? command.canvas : undefined;
       const fallback = 'title' in command ? command.title : '';
       return ids.flatMap((id): TalkCard[] => {

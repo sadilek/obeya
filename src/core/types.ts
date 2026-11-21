@@ -1316,8 +1316,12 @@ export interface TalkCard {
   id: string;
   /** Its title when it was created, which the reply names. */
   title: string;
-  /** Another canvas of this Obeya, where the card was created there instead of on this one. */
+  /** Another canvas of this Obeya, where the card currently lives. */
   canvas?: string;
+  /** Its short permalink code when on another canvas. */
+  short?: string;
+  /** The card has since been archived or deleted, so its link returns to plain text. */
+  gone?: true;
 }
 
 /** A card that moved to another canvas: its id and title, and that canvas. */

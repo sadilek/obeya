@@ -16,7 +16,9 @@ request, say). Everything else (tool calls, each with what it acts on: the file,
 web search's query, a fetched page's address; thoughts, status lines, Obeya's notes) folds away as "History" under the agent's next message. Obeya's reply to what
 the agent passed on (`to_obeya`) stands where it came: the agent's steps up to there, the passing-on
 the last of them, close above it as they do before the owner's words, and the agent's next message,
-which may build on the reply, stands below it. What Obeya reads to look a question up on a card (asked
+which may build on the reply, stands below it; Obeya's confirmation of a command spoken or typed on
+a card without an agent also stays visible instead of folding into "History" once it created cards,
+so their links remain reachable there. What Obeya reads to look a question up on a card (asked
 there by voice, or passed on by its agent) is not the agent's work: it stays out of the agent's
 "History" and its bubble at work, and folds under the answer Obeya looked up; while Obeya still
 looks, under its reply that it does, where that reply stands. On a Question card Obeya's agent is

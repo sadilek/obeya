@@ -115,11 +115,20 @@ export function CoordinatorSheet({ on, canvas, items, preferences, settings, rep
  * field's (the sidebar's, or the phone view's for this canvas). `on`: the conversation is in view,
  * so the answers waiting in it are read.
  */
-export function CoordinatorTalk({ on, talk, items, repos, onOpen, onTell, draft = OBEYA_DRAFT }: Pick<Props, 'on' | 'talk' | 'items' | 'repos' | 'onOpen' | 'onTell'> & { draft?: string }) {
+export function CoordinatorTalk({
+  on,
+  talk,
+  items,
+  allItems,
+  repos,
+  onOpen,
+  onTell,
+  draft = OBEYA_DRAFT,
+}: Pick<Props, 'on' | 'talk' | 'items' | 'repos' | 'onOpen' | 'onTell'> & { allItems?: Item[]; draft?: string }) {
   const fresh = useRead(on, talk, () => api.readTalk());
   return (
     <>
-      <Conversation talk={talk} fresh={fresh} items={items} onOpen={onOpen} draft={draft} />
+      <Conversation talk={talk} fresh={fresh} items={allItems ?? items} onOpen={onOpen} draft={draft} />
       {/* a command in writing, for when speaking is not possible; its screenshots go to the cards it creates or concerns */}
       <Composer className="tell" draft={draft} placeholder={t.voice.typePlaceholder} obeya onSend={(text, images, replyTo) => onTell(text, images, replyTo, draft)} />
       <ReviewHint items={items} repos={repos} />

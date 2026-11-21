@@ -829,6 +829,16 @@ function holdWorkspace(db: Database, ctx: Context, c: StageCard, i: number, bran
   return { workspace: path };
 }
 
+/** Resolves staged `created` card keys into stored `TalkCard` entries. */
+function resolveCreated(keys: string[], ctx: Context, where: string) {
+  return keys.map((k) => {
+    const cardId = ctx.ids[k] ?? fail(`${where}: created card ${k} does not exist`);
+    const card = ctx.stage.cards.find((s) => s.key === k);
+    const target = ctx.canvasOf[k] && ctx.canvasOf[k] !== ctx.canvas ? ctx.canvasOf[k] : undefined;
+    return { id: cardId, title: card?.title ?? k, ...(target ? { canvas: target } : {}) };
+  });
+}
+
 /** The card's conversation, with the demos of its handovers and the spots its comments name. */
 function writeEvents(db: Database, c: StageCard, id: string, demo: Record<string, unknown> | undefined, ctx: Context) {
   const reviews: { id: number; at: string }[] = [];
@@ -836,14 +846,7 @@ function writeEvents(db: Database, c: StageCard, id: string, demo: Record<string
   for (const e of c.events ?? []) {
     // only code that has mocks (an error's token) has their column
     const at = ago(e.ago ?? '0s');
-    const created = e.created?.length
-      ? e.created.map((k) => {
-          const cardId = ctx.ids[k] ?? fail(`event on ${c.key ?? id}: created card ${k} does not exist`);
-          const card = ctx.stage.cards.find((s) => s.key === k);
-          const target = ctx.canvasOf[k] && ctx.canvasOf[k] !== ctx.canvas ? ctx.canvasOf[k] : undefined;
-          return { id: cardId, title: card?.title ?? k, ...(target ? { canvas: target } : {}) };
-        })
-      : undefined;
+    const created = e.created?.length ? resolveCreated(e.created, ctx, `event on ${c.key ?? id}`) : undefined;
     const { lastInsertRowid } = db
       .query(
         `INSERT INTO events (card_id, at, kind, author, text${e.mocks ? ', mocks' : ''}${e.token ? ', token' : ''}${e.reply ? ', reply' : ''}${e.forwarded ? ', forwarded' : ''}${created ? ', created' : ''}) VALUES ($c, $at, $kind, $author, $text${e.mocks ? ', $mocks' : ''}${e.token ? ', 1' : ''}${e.reply ? ', 1' : ''}${e.forwarded ? ', 1' : ''}${created ? ', $created' : ''})`,
@@ -899,7 +902,8 @@ function writePreferences(db: Database, { stage, canvas, ids }: Context) {
   }
 }
 
-function writeTalk(db: Database, { stage, canvas, ids, canvasOf, home }: Context) {
+function writeTalk(db: Database, ctx: Context) {
+  const { stage, canvas, ids, home } = ctx;
   const talkIds: number[] = [];
   const threadOf = new Map<number, number>();
   for (const [i, x] of (stage.talk ?? []).entries()) {
@@ -916,15 +920,7 @@ function writeTalk(db: Database, { stage, canvas, ids, canvasOf, home }: Context
     if (x.unread) row.unread = 1;
     if (x.replyOnly) row.reply_only = 1;
     if (x.wish) row.wish = JSON.stringify(x.wish);
-    if (x.created?.length) {
-      const created = x.created.map((k) => {
-        const cardId = ids[k] ?? fail(`talk ${i}: created card ${k} does not exist`);
-        const c = stage.cards.find((s) => s.key === k);
-        const target = canvasOf[k] && canvasOf[k] !== canvas ? canvasOf[k] : undefined;
-        return { id: cardId, title: c?.title ?? k, ...(target ? { canvas: target } : {}) };
-      });
-      row.created = JSON.stringify(created);
-    }
+    if (x.created?.length) row.created = JSON.stringify(resolveCreated(x.created, ctx, `talk ${i}`));
     if (x.askedIn) row.asked_in = row.about = ids[x.askedIn] ?? fail(`talk ${i}: project ${x.askedIn} does not exist`);
     if (x.follows !== undefined) {
       const followed = talkIds[x.follows] ?? fail(`talk ${i}: follows ${x.follows}, which comes later or does not exist`);

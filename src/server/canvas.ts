@@ -26,7 +26,7 @@ import { DEMO_LOOK_MS } from './shared-pages';
 import { fromJson, toJson, type StoredContribution } from './row';
 import type { ChangeRoute } from '../core/types';
 import { MAX_MESSAGE_CHARS } from '../core/types';
-import { type Command, Commander, reaches } from './commands';
+import { type Command, Commander, type Executed, reaches } from './commands';
 import type { Config } from './config';
 import type { Store } from './db';
 import { Explorers } from './explorers';
@@ -577,10 +577,22 @@ export class CanvasRuntime {
     const uncount = board.onChange(() => this.countAgents());
     // a project that has just taken its idea's place settles the idea's prototypes, as does one that stood before Obeya started
     const unsettle = board.onChange(() => this.ideas.settleLater());
+    // when cards leave or join this canvas (archived, deleted, restored, moved), refresh any other canvas whose chat links them
+    let live = new Set(board.items().map((i) => i.id));
+    const unlinked = board.onChange(() => {
+      const next = new Set(board.items().map((i) => i.id));
+      const changed: string[] = [];
+      for (const id of live) if (!next.has(id)) changed.push(id);
+      for (const id of next) if (!live.has(id)) changed.push(id);
+      live = next;
+      if (!changed.length) return;
+      for (const other of deps.canvases?.() ?? []) if (other !== this) other.board.refreshLinked(changed);
+    });
     this.unwatch = () => {
       unwake();
       uncount();
       unsettle();
+      unlinked();
     };
     this.countAgents();
     this.ideas.settleLater();
@@ -2108,7 +2120,7 @@ export class CanvasRuntime {
    * copied over; a follow-up of a card here goes there in no group and names that card. Its id, for
    * a wait in the same command.
    */
-  private elsewhere(c: Extract<Command, { do: 'newCard' | 'newIdea' }>): unknown {
+  private elsewhere(c: Extract<Command, { do: 'newCard' | 'newIdea' }>): Executed | Promise<Executed> {
     const there = this.deps.canvases?.().find((x) => x.id === c.canvas);
     if (!there) throw new Error(`the canvas ${c.canvas} does not run`);
     if (c.images?.length) this.images.copyTo(there.images, c.images);
@@ -2134,8 +2146,9 @@ export class CanvasRuntime {
     return cardId;
   }
 
-  /** A voice (or typed) command, once its undo window has passed; a new card's id, for a wait on it in the same command. */
-  run(c: Command) {
+  /** A voice (or typed) command, once its undo window has passed; returns the id(s) of any card(s) created or filed into. */
+  run(c: Command): Executed | Promise<Executed> {
+    const done = (v: unknown): Executed | Promise<Executed> => (v instanceof Promise ? v.then(() => undefined) : undefined);
     switch (c.do) {
       case 'newCard': {
         if (c.canvas && c.canvas !== this.id) return this.elsewhere(c);
@@ -2174,7 +2187,7 @@ export class CanvasRuntime {
         const card = this.board.item(c.card);
         if (!card) throw new BadRequest('unknownCard', 'unknown card');
         this.board.setNewRepo(c.card, { path: c.path, canvas: c.canvas, ...(c.from ? { from: c.from } : {}), by: 'owner' });
-        return this.act(c.card, { action: card.state === 'idea' ? 'build' : 'start' });
+        return done(this.act(c.card, { action: card.state === 'idea' ? 'build' : 'start' }));
       }
       case 'reviewPr':
         return this.reviewPr(c);
@@ -2183,19 +2196,20 @@ export class CanvasRuntime {
       case 'feedback':
       case 'answer':
       case 'revise':
-        return this.act(c.card, { action: c.do === 'note' || c.do === 'feedback' ? 'message' : c.do, text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
+        return done(this.act(c.card, { action: c.do === 'note' || c.do === 'feedback' ? 'message' : c.do, text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) }));
       case 'prototype':
-        return this.act(c.card, { action: 'prototype', text: c.text });
+        return this.act(c.card, { action: 'prototype', text: c.text }) as string[] | undefined;
+      case 'splitOff':
+        return this.act(c.card, { action: 'splitOff' }) as string | undefined;
       case 'accept':
-        return this.act(c.card, { action: 'accept', ...(c.idea ? { idea: true } : {}) });
+        return done(this.act(c.card, { action: 'accept', ...(c.idea ? { idea: true } : {}) }));
       case 'snooze':
-        return this.act(c.card, { action: 'snooze', until: c.until });
+        return done(this.act(c.card, { action: 'snooze', until: c.until }));
       case 'start':
       case 'force':
       case 'buildPrototype':
       case 'discard':
       case 'build':
-      case 'splitOff':
       case 'planDoc':
       case 'park':
       case 'drop':
@@ -2210,24 +2224,24 @@ export class CanvasRuntime {
       case 'awaitContributor':
         // screenshots said with the start belong to the task, so the worker gets them with it
         if ((c.do === 'start' || c.do === 'force') && c.images?.length) this.ideas.addTaskImages(c.card, c.images);
-        return this.act(c.card, { action: c.do });
+        return done(this.act(c.card, { action: c.do }));
       case 'configure':
-        return this.deps.config?.save(c.canvases);
+        return done(this.deps.config?.save(c.canvases));
       case 'remember':
         return this.remember(c.text, c);
       case 'workRetro':
-        return this.workRetro.now(c.repo);
+        return done(this.workRetro.now(c.repo));
       case 'group':
         return void this.board.createGroup(c.name, c.cards);
       case 'ungroup':
-        return this.board.group(c.cards, null);
+        return void this.board.group(c.cards, null);
       case 'renameGroup':
-        return this.board.renameGroup(c.group, c.name);
+        return void this.board.renameGroup(c.group, c.name);
       case 'merge':
-        return this.merge(c.card, c.others, c.title);
+        return void this.merge(c.card, c.others, c.title);
       case 'delete':
         this.untouched(c.card);
-        return this.remove(c.card);
+        return void this.remove(c.card);
     }
   }
 

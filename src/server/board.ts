@@ -443,7 +443,33 @@ export class Board {
   /** Attaches cards the Coordinator created to its reply line in `cardId`'s log and updates open views. */
   eventCreated(cardId: string, id: number, created: TalkCard[]) {
     const e = this.store.setEventCreated(cardId, id, created);
-    if (e) for (const fn of this.eventListeners) fn(e);
+    if (!e) return;
+    const resolved = this.resolveEvents([e])[0]!;
+    for (const fn of this.eventListeners) fn(resolved);
+  }
+
+  /** Resolves `created` card references against the live store so archived, deleted, or moved cards (on any canvas) reflect their current state. */
+  private resolveCreated(cards: TalkCard[], locs: Map<string, { canvasId: string; short: string | null; archivedAt: string | null; deletedAt: string | null }>): TalkCard[] {
+    return cards.map((c) => {
+      const loc = locs.get(c.id);
+      if (!loc || loc.deletedAt || loc.archivedAt) return { id: c.id, title: c.title, gone: true as const };
+      if (loc.canvasId !== this.canvas.id) return { id: c.id, title: c.title, canvas: loc.canvasId, ...(loc.short ? { short: loc.short } : {}) };
+      return { id: c.id, title: c.title };
+    });
+  }
+
+  private resolveEvents(events: CardEvent[]): CardEvent[] {
+    const ids = [...new Set(events.flatMap((e) => e.created?.map((c) => c.id) ?? []))];
+    if (!ids.length) return events;
+    const locs = this.store.cardLocations(ids);
+    return events.map((e) => (e.created?.length ? { ...e, created: this.resolveCreated(e.created, locs) } : e));
+  }
+
+  /** Invalidates the cached snapshot when any card linked from this canvas's chat changed on another canvas (archived, deleted, restored, moved). */
+  refreshLinked(cardIds: string[]) {
+    if (!cardIds.length || !this.cache) return;
+    const set = new Set(cardIds);
+    if (this.cache.talk.some((x) => x.created?.some((c) => set.has(c.id)))) this.changed();
   }
 
   /**
@@ -485,7 +511,7 @@ export class Board {
 
   events(cardId: string): CardEvent[] {
     this.own(cardId);
-    return this.store.events(cardId);
+    return this.resolveEvents(this.store.events(cardId));
   }
 
   row(id: string): CardRow {
@@ -1301,7 +1327,10 @@ export class Board {
   snapshot(): CanvasSnapshot {
     const items = this.items();
     if (this.cache) return this.cache;
-    const talk = this.sheet.latest(SHEET_TALK, true);
+    const rawTalk = this.sheet.latest(SHEET_TALK, true);
+    const createdIds = [...new Set(rawTalk.flatMap((x) => x.created?.map((c) => c.id) ?? []))];
+    const locs = createdIds.length ? this.store.cardLocations(createdIds) : null;
+    const talk = locs ? rawTalk.map((x) => (x.created?.length ? { ...x, created: this.resolveCreated(x.created, locs) } : x)) : rawTalk;
     const reshare = this.pages.reshare();
     const pools = this.clonePools();
     const planDirs = this.planDirs(this.docs!, this.rows!);

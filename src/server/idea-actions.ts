@@ -652,6 +652,10 @@ export class IdeaActions {
           void this.repoOf(prototype).workers.start(prototype.id).catch((e: unknown) => this.board.log(prototype.id, 'error', 'obeya', messageOf(e)));
         } catch (e) {
           this.board.remove(prototype.id);
+          if (createdIds.length) {
+            this.board.log(cardId, 'error', 'obeya', messageOf(e));
+            break;
+          }
           throw e;
         }
         started.push(title);

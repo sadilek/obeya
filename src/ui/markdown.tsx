@@ -20,10 +20,10 @@ export { excerpt, plain } from '../core/plain';
 export const DocImages = createContext<((src: string) => string | null) | null>(null);
 
 /**
- * React nodes substituted for sentinel marks (`\u0000<n>\u0000`) in inline markdown text, used by
- * `ReplyBody` to turn named cards into links without touching markdown syntax.
+ * Transforms plain text slices inside inline markdown (outside code, images, links and web
+ * addresses), e.g. to turn named cards into links after parsing.
  */
-export const CardMentions = createContext<ReactNode[] | null>(null);
+export const WordLinks = createContext<((text: string) => ReactNode) | null>(null);
 
 /**
  * A bare address without what the sentence put after it: closing punctuation, and a parenthesis
@@ -40,38 +40,26 @@ function bareUrl(s: string): string {
 }
 
 export function Inline({ md }: { md: string }) {
-  return <>{render(md, false, useContext(DocImages), useContext(CardMentions))}</>;
+  return <>{render(md, false, useContext(DocImages), useContext(WordLinks))}</>;
 }
 
-/** `inLink`: the text of a link, where an address is only words, since a link holds no other; `image`: where images are served; `mentions`: nodes for `\u0000<n>\u0000` sentinels. */
-function render(md: string, inLink = false, image: ((src: string) => string | null) | null = null, mentions: ReactNode[] | null = null): ReactNode[] {
+/** `inLink`: the text of a link, where an address is only words, since a link holds no other; `image`: where images are served; `wordLinks`: transforms plain text outside code and links. */
+function render(md: string, inLink = false, image: ((src: string) => string | null) | null = null, wordLinks: ((text: string) => ReactNode) | null = null): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
   let k = 0;
   const push = (slice: string) => {
     if (!slice) return;
-    if (!mentions || inLink || !slice.includes('\u0000')) {
-      out.push(slice);
-      return;
-    }
-    const parts = slice.split(/\u0000(\d+)\u0000/);
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i]!;
-      if (i % 2 === 0) {
-        if (part) out.push(part);
-      } else {
-        out.push(<Fragment key={k++}>{mentions[Number(part)]}</Fragment>);
-      }
-    }
+    out.push(!inLink && wordLinks ? <Fragment key={k++}>{wordLinks(slice)}</Fragment> : slice);
   };
   for (const m of md.matchAll(TOKEN)) {
     if (m.index > last) push(md.slice(last, m.index));
     const [, code, bold, strike, em, star, text, href, bare, alt, src] = m;
     let end = m.index + m[0].length;
     if (code !== undefined) out.push(<code key={k++}>{code}</code>);
-    else if (bold !== undefined) out.push(<b key={k++}>{render(bold, inLink, image, mentions)}</b>);
-    else if (strike !== undefined) out.push(<s key={k++}>{render(strike, inLink, image, mentions)}</s>);
-    else if (em !== undefined || star !== undefined) out.push(<em key={k++}>{render(em ?? star!, inLink, image, mentions)}</em>);
+    else if (bold !== undefined) out.push(<b key={k++}>{render(bold, inLink, image, wordLinks)}</b>);
+    else if (strike !== undefined) out.push(<s key={k++}>{render(strike, inLink, image, wordLinks)}</s>);
+    else if (em !== undefined || star !== undefined) out.push(<em key={k++}>{render(em ?? star!, inLink, image, wordLinks)}</em>);
     else if (src !== undefined) {
       const url = image?.(src);
       out.push(url ? <img key={k++} className="doc-img" src={url} alt={alt} title={alt || undefined} /> : <span key={k++}>{alt}</span>);
@@ -80,11 +68,53 @@ function render(md: string, inLink = false, image: ((src: string) => string | nu
       end = m.index + url.length;
       // shown without its scheme, which says nothing in a sentence
       out.push(inLink ? url : <a key={k++} className="link" href={url} target="_blank" rel="noreferrer">{url.replace(/^https?:\/\/(www\.)?/, '')}</a>);
-    } else if (/^https?:/.test(href!) && !inLink) out.push(<a key={k++} className="link" href={href} target="_blank" rel="noreferrer">{render(text!, true, image, mentions)}</a>);
-    else out.push(<span key={k++}>{render(text!, inLink, image, mentions)}</span>);
+    } else if (/^https?:/.test(href!) && !inLink) out.push(<a key={k++} className="link" href={href} target="_blank" rel="noreferrer">{render(text!, true, image, wordLinks)}</a>);
+    else out.push(<span key={k++}>{render(text!, inLink, image, wordLinks)}</span>);
     last = end;
   }
   if (last < md.length) push(md.slice(last));
+  return out;
+}
+
+/** Collects the plain text slices `Inline` passes to `WordLinks` (excluding code, images, web addresses and links). */
+function inlineSlices(md: string, out: string[]) {
+  let last = 0;
+  for (const m of md.matchAll(TOKEN)) {
+    if (m.index > last) out.push(md.slice(last, m.index));
+    const [, code, bold, strike, em, star, text, href, bare, , src] = m;
+    let end = m.index + m[0].length;
+    if (code !== undefined || src !== undefined) {
+      // code spans and images are never linked
+    } else if (bold !== undefined) inlineSlices(bold, out);
+    else if (strike !== undefined) inlineSlices(strike, out);
+    else if (em !== undefined || star !== undefined) inlineSlices(em ?? star!, out);
+    else if (bare !== undefined) end = m.index + bareUrl(bare).length;
+    else if (!/^https?:/.test(href!)) inlineSlices(text!, out);
+    last = end;
+  }
+  if (last < md.length) out.push(md.slice(last));
+}
+
+/** Every plain text slice of `Body` that `WordLinks` will see, in document order. */
+export function linkableSlices(md: string): string[] {
+  const out: string[] = [];
+  const walkList = (l: List) => {
+    for (const it of l.items) {
+      inlineSlices(it.text, out);
+      for (const c of it.children) walkList(c);
+    }
+  };
+  const walk = (bs: Block[]) => {
+    for (const b of bs) {
+      if (b.t === 'p' || b.t === 'h') inlineSlices(b.text, out);
+      else if (b.t === 'list') walkList(b.list);
+      else if (b.t === 'table') {
+        for (const c of b.head) inlineSlices(c, out);
+        for (const r of b.rows) for (const c of r) inlineSlices(c, out);
+      } else if (b.t === 'quote') walk(b.blocks);
+    }
+  };
+  walk(blocks(md, { breaks: true }));
   return out;
 }
 

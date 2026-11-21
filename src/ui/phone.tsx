@@ -350,6 +350,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
           open={open}
           opened={opened}
           items={opened ? snaps[opened.canvas.id]!.items : []}
+          allItems={all.map((x) => x.item)}
           repos={opened ? snaps[opened.canvas.id]!.canvas.repos : []}
           // the snapshots are still on their way, or the card went (archived, deleted)
           gone={Object.keys(snaps).length === canvases.length}
@@ -571,6 +572,7 @@ function PhoneCardPage({
   open,
   opened,
   items,
+  allItems,
   repos,
   gone,
   several,
@@ -583,6 +585,8 @@ function PhoneCardPage({
   opened: { item: Item; canvas: CanvasInfo } | undefined;
   /** The cards of its canvas. */
   items: Item[];
+  /** Every live card across all canvases, so cross-canvas links open in place without reloading. */
+  allItems: Item[];
   repos: RepoRef[];
   /** Every canvas's snapshot is there: a card that is not went. */
   gone: boolean;
@@ -644,7 +648,7 @@ function PhoneCardPage({
         {banner}
         <div className="card-sheet ph-sheet">
           {i ? (
-            <Cards.Provider value={{ items, open: onOpen }}>
+            <Cards.Provider value={{ items: allItems, open: onOpen }}>
               <TalkElsewhere.Provider value={elsewhere}>
                 <Detail
                   key={i.id}
@@ -811,7 +815,7 @@ function PhoneHome({
         <TalkPanel title={t.coordinator.title} label={t.phone.talkTitle} banner={banner} leaving={panel.leaving} onLeave={leaveTalk}>
           {obeyaSnap && (
             <div className="ph-talk" key={obeyaId}>
-              <CoordinatorTalk on talk={obeyaSnap.talk} items={obeyaSnap.items} repos={obeyaSnap.canvas.repos} onOpen={onOpen} onTell={onTell} draft={obeyaDraft(obeyaId)} />
+              <CoordinatorTalk on talk={obeyaSnap.talk} items={obeyaSnap.items} allItems={all.map((x) => x.item)} repos={obeyaSnap.canvas.repos} onOpen={onOpen} onTell={onTell} draft={obeyaDraft(obeyaId)} />
             </div>
           )}
         </TalkPanel>

@@ -1736,7 +1736,10 @@ describe('card numbers', () => {
 });
 
 describe('created card links in replies', () => {
-  test('records cards created in the sheet and in an open card log once the undo window passes, and not when undone', async () => {
+  test('records cards created in the sheet and in an open card log once the undo window passes, resolves remote card lifecycle, and skips undone', async () => {
+    store.ensureCanvas('site', 'Website');
+    let remoteId = '';
+    let remoteShort = '';
     const k = new Commander({
       board,
       runtime,
@@ -1744,7 +1747,12 @@ describe('created card links in replies', () => {
       delayMs: 15,
       canvases: () => [{ id: 'site', name: 'Website' }],
       execute: (c) => {
-        if (c.do === 'newCard' && c.canvas) return 'remote-1';
+        if (c.do === 'newCard' && c.canvas) {
+          const [row] = store.insert([{ canvas_id: c.canvas, kind: 'task', title: c.title, body: c.body, x: 0, y: 0 }]);
+          remoteId = row!.id;
+          remoteShort = row!.short!;
+          return remoteId;
+        }
         if (c.do === 'newCard') return board.create({ title: c.title, body: c.body, x: 0, y: 0 }).id;
         if (c.do === 'newIdea') return board.create({ idea: true, title: c.title, body: c.body, x: 0, y: 0 }).id;
       },
@@ -1767,8 +1775,13 @@ describe('created card links in replies', () => {
     expect(board.snapshot().talk[0]!.created).toEqual([
       { id: task.id, title: 'Kontrast auf dem Handy' },
       { id: idea.id, title: 'Dark Mode' },
-      { id: 'remote-1', title: 'Startseite', canvas: 'site' },
+      { id: remoteId, title: 'Startseite', canvas: 'site', short: remoteShort },
     ]);
+
+    // archiving the remote card on the other canvas marks its link gone after refreshLinked
+    store.update(remoteId, { archived_at: new Date().toISOString() });
+    board.refreshLinked([remoteId]);
+    expect(board.snapshot().talk[0]!.created![2]).toEqual({ id: remoteId, title: 'Startseite', gone: true });
 
     // taken back: nothing created and no links recorded
     const undone = await say(k, 'noch eine', 'act', {
@@ -1795,5 +1808,29 @@ describe('created card links in replies', () => {
     const exportCard = board.items().find((i) => i.title === 'Export')!;
     const replyEv = board.events(task.id).find((e) => e.author === 'coordinator' && e.kind === 'say');
     expect(replyEv?.created).toEqual([{ id: exportCard.id, title: 'Export' }]);
+  });
+
+  test('persists created card links incrementally even if a later action in the same command fails', async () => {
+    const k = new Commander({
+      board,
+      runtime,
+      cwd: '/r',
+      delayMs: 15,
+      execute: (c) => {
+        if (c.do === 'newCard' && c.title === 'Erste') return board.create({ title: c.title, body: '', x: 0, y: 0 }).id;
+        throw new Error('boom on second');
+      },
+    });
+    const { heard } = await say(k, 'zwei Aufgaben', 'act', {
+      actions: [
+        { do: 'new_card', title: 'Erste', body: '' },
+        { do: 'new_card', title: 'Zweite', body: '' },
+      ],
+      confirm: 'Neue Aufgaben „Erste“ und „Zweite“.',
+    });
+    k.arm(heard.token!);
+    await until(() => board.snapshot().talk[0]!.created?.length === 1);
+    const first = board.items().find((i) => i.title === 'Erste')!;
+    expect(board.snapshot().talk[0]!.created).toEqual([{ id: first.id, title: 'Erste' }]);
   });
 });

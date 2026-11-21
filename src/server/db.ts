@@ -1196,6 +1196,17 @@ export class Store {
     return this.event(cardId, id);
   }
 
+  /** Where each of `ids` currently lives across all canvases, and whether it is archived or deleted. */
+  cardLocations(ids: string[]): Map<string, { canvasId: string; short: string | null; archivedAt: string | null; deletedAt: string | null }> {
+    const out = new Map<string, { canvasId: string; short: string | null; archivedAt: string | null; deletedAt: string | null }>();
+    if (!ids.length) return out;
+    const rows = this.db
+      .query('SELECT id, canvas_id, short, archived_at, deleted_at FROM cards WHERE id IN (SELECT value FROM json_each($ids))')
+      .all({ ids: JSON.stringify(ids) }) as { id: string; canvas_id: string; short: string | null; archived_at: string | null; deleted_at: string | null }[];
+    for (const r of rows) out.set(r.id, { canvasId: r.canvas_id, short: r.short, archivedAt: r.archived_at, deletedAt: r.deleted_at });
+    return out;
+  }
+
   /** One event of the card's log. */
   event(cardId: string, id: number): CardEvent | undefined {
     const row = this.db.query(`SELECT ${EVENT_COLUMNS} FROM events WHERE card_id = $c AND id = $id`).get({ c: cardId, id }) as EventRow | null;
