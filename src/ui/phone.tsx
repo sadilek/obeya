@@ -361,7 +361,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
           flush={flushEdit}
           onDelete={() => void deleteOpen()}
           onDone={onDone}
-          onTell={(text, images, field, replyTo) => void tellTyped(text, images, { card: opened!.item.id }, field, replyTo)}
+          onTell={(text, images, field, replyTo) => tellTyped(text, images, { card: opened!.item.id }, field, replyTo)}
         />
       ) : (
         <PhoneHome

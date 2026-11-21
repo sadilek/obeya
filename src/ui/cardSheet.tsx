@@ -19,7 +19,10 @@ import { clock as time, snoozeWhen, stateLabel, t } from './strings';
  * With `pending`, the card folds at once, before the server has answered, and says so until it has.
  * `ackFor`: with `pending`, the confirmation as the server's answer has it, where that differs from `ack`.
  */
-export type ActDone = { close: true; ack: string; ackFor?: (result: unknown) => string | undefined; undo?: () => unknown; pending?: string } | { close: false };
+export type ActDone =
+  | { close: true; ack: string; ackFor?: (result: unknown) => string | undefined; undo?: () => unknown; pending?: string }
+  /** `rejects`: the call rejects once Obeya's refusal shows, so a field that sent words with it keeps them. */
+  | { close: false; rejects?: true };
 
 /** An action the server is still at, after its card has folded: the answer confirms it or tells why not. */
 export type Pending = { card: string; title: string; answered: Promise<unknown> };
@@ -31,7 +34,7 @@ export type Act = (a: CardAction, done: ActDone) => Promise<void>;
 export type Run = (fn: () => Promise<unknown>, done: ActDone) => Promise<void>;
 
 /** Words typed into a field of the card: straight to its agent where one listens, else the Coordinator reads them like spoken ones; the panel does not wait. */
-export type Tell = (text: string, images: string[] | undefined, field: Field, replyTo?: number) => void;
+export type Tell = (text: string, images: string[] | undefined, field: Field, replyTo?: number) => void | Promise<void>;
 
 /** The head of an open card: what kind it is (a plain task says nothing of its kind), and its title, a field to type it into where `onEdit`. */
 export function CardHead({ item, kind, onEdit }: { item: Item; kind: string; onEdit?: false | ((p: CardPatch) => void) }) {

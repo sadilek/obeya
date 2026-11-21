@@ -126,6 +126,7 @@ export function tellers(byId: (id: string) => Item | undefined, told: ReturnType
    * Words typed on a card, in its idea or in the Coordinator's conversation: on a card an agent listens on
    * they go straight to it, else the Coordinator reads them like spoken ones. The conversation shows
    * them at once either way; above the mic only the Coordinator's confirmation shows, with "Undo".
+   * Words Obeya refused for the card's agent reject, after the refusal shows, so the field keeps them.
    */
   const tellTyped = async (text: string, images: string[] | undefined, target: Where, field?: Field, replyTo?: number | TalkRef) => {
     if (listening(target))
@@ -136,6 +137,8 @@ export function tellers(byId: (id: string) => Item | undefined, told: ReturnType
         await api.command(text, target, { images, field, replyTo, spot: await sent(taken) });
       } catch (e) {
         fail(e);
+        // refused: the agent did not get the words; anything else may have come after they arrived
+        if (e instanceof ApiError && e.code) throw e;
       }
     else {
       const at = place();

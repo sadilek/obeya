@@ -16,9 +16,9 @@ import { setHeight, textHeight, useFitHeight } from './fitHeight';
 import { Quote } from './message';
 import { type Reply, replyOn, setReply, useReply } from './reply';
 import { knowsSkills, matching, type Slash, skillWord, slashAt, useSkills, usedSkills } from './skills';
-import { AttachButton, ShotStrip, useShotInput } from './shots';
+import { AttachButton, ShotStrip, textAsFile, useShotInput } from './shots';
 import { t } from './strings';
-import type { Skill } from '../core/types';
+import { MAX_MESSAGE_CHARS, type Skill } from '../core/types';
 import { useLatest } from './latest';
 
 /** Whether Enter sends what is written (Shift+Enter breaks the line), as at the desk. */
@@ -152,12 +152,23 @@ export function Composer({
     quoted.current = reply?.quote.ev;
   }, [reply?.quote.ev]);
   const space = useSpaceToTalk(field);
-  const ready = (!!text.trim() || images.length > 0 || allowEmpty) && !busy && !shots.uploading && !shots.marking.length;
+  // longer than a message may be: it does not send, and the line under the field offers to move it into a file
+  const length = text.trim().length;
+  const tooLong = length > MAX_MESSAGE_CHARS;
+  // a paste too long for a message went in as a file: while its path stands in the words, the line under the field says why
+  const pastedAsFile = !!d.pastedAsFile && text.includes(d.pastedAsFile);
+  const ready = (!!text.trim() || images.length > 0 || allowEmpty) && !tooLong && !busy && !shots.uploading && !shots.marking.length;
   const send = async () => {
     if (!ready) return;
     setBusy(true);
-    await onSend(text.trim(), images.length ? images : undefined, reply?.to);
-    setBusy(false);
+    try {
+      await onSend(text.trim(), images.length ? images : undefined, reply?.to);
+    } catch {
+      // refused: the words stay in the field for another try (the refusal shows where onSend puts it)
+      return;
+    } finally {
+      setBusy(false);
+    }
     setText('');
     shots.clear();
     // a reply chosen meanwhile stays for the next words
@@ -188,7 +199,17 @@ export function Composer({
           }}
           onChange={(e) => setText(e.target.value)}
           onSelect={atCursor}
-          onPaste={shots.onPaste}
+          onPaste={(e) => {
+            const el = e.currentTarget;
+            const pasted = e.clipboardData.files.length ? '' : e.clipboardData.getData('text/plain');
+            // text that would make the message too long goes in as a file, by its path
+            if (pasted && el.value.length - (el.selectionEnd - el.selectionStart) + pasted.length > MAX_MESSAGE_CHARS) {
+              e.preventDefault();
+              void textAsFile(key, pasted);
+              return;
+            }
+            shots.onPaste(e);
+          }}
           onBlur={() => {
             setFocused(false);
             space.blur();
@@ -235,6 +256,15 @@ export function Composer({
         </div>
       </div>
       {shots.error && <p className="p-error c-error">{shots.error}</p>}
+      {tooLong && (
+        <div className="p-error c-error c-too-long">
+          <span>{t.shots.tooLong(length, MAX_MESSAGE_CHARS)}</span>
+          <button className="btn small" disabled={shots.uploading > 0} onMouseDown={keepFocus} onClick={() => void textAsFile(key, text.trim(), { name: 'message.txt', replaces: text.trim() })}>
+            {t.shots.intoFile}
+          </button>
+        </div>
+      )}
+      {pastedAsFile && !tooLong && <div className="c-listener">{t.shots.pastedAsFile}</div>}
       {dictationLine(d, key) ??
         (typeof obeya === 'string' ? (
           <div className="c-listener">→ {obeya}</div>

@@ -884,6 +884,8 @@ export const IMAGE_TYPES: Record<string, string> = { 'image/png': 'png', 'image/
 export const MAX_IMAGE_BYTES = 3_750_000;
 /** The largest other file the owner may drop into what they write; its path goes to the agent. */
 export const MAX_FILE_BYTES = 100_000_000;
+/** The longest message the owner may write to an agent; a longer text goes to it as a file (by its path). */
+export const MAX_MESSAGE_CHARS = 20_000;
 
 /** One line in a card's log. */
 export interface CardEvent {
@@ -1710,6 +1712,8 @@ export type ErrorCode =
   | 'noSlot'
   | 'workspace'
   | 'emptyText'
+  /** A message longer than `MAX_MESSAGE_CHARS`. */
+  | 'textTooLong'
   /** The cloud service for voice in failed or refused the check's sentence (the detail says what it said). */
   | 'voiceCloud'
   | 'unknownPreference'

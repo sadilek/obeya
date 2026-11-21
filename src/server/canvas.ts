@@ -25,6 +25,7 @@ import { pathOfRef, repoOfRef } from './plan-ref';
 import { DEMO_LOOK_MS } from './shared-pages';
 import { fromJson, toJson, type StoredContribution } from './row';
 import type { ChangeRoute } from '../core/types';
+import { MAX_MESSAGE_CHARS } from '../core/types';
 import { type Command, Commander, reaches } from './commands';
 import type { Config } from './config';
 import type { Store } from './db';
@@ -1778,8 +1779,9 @@ export class CanvasRuntime {
     // a prototype may leave it to the idea's brief what it shows; a screenshot or an option picked may speak for itself
     const picks = a.action === 'answer' && Array.isArray(a.picks) ? a.picks.filter((o): o is string => typeof o === 'string') : [];
     const decided = a.action === 'message' && !!a.findings && typeof a.findings === 'object' && Object.keys(a.findings).length > 0;
-    if ('text' in a && (typeof text !== 'string' || (!text.trim() && a.action !== 'prototype' && !images.length && !picks.length && !decided) || text.length > 20000))
+    if ('text' in a && (typeof text !== 'string' || (!text.trim() && a.action !== 'prototype' && !images.length && !picks.length && !decided)))
       throw new BadRequest('emptyText', 'text must be a non-empty string');
+    if (text.length > MAX_MESSAGE_CHARS) throw new BadRequest('textTooLong', `text may have at most ${MAX_MESSAGE_CHARS} characters`);
     switch (a.action) {
       case 'start':
         if (card?.newRepo) return this.ideas.intoNewRepo(cardId);

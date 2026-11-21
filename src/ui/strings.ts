@@ -770,6 +770,7 @@ const de = {
     noSlot: 'Kein Slot frei: Auf jedem Rechner mit freiem Workspace arbeiten so viele Agenten, wie er Slots hat.',
     workspace: 'Der Workspace für den Agenten ließ sich nicht vorbereiten (git-Fehler).',
     emptyText: 'Bitte zuerst einen Text eingeben.',
+    textTooLong: 'Die Nachricht ist zu lang (höchstens 20.000 Zeichen).',
     unknownPreference: 'Diese Präferenz gibt es nicht mehr.',
     unknownSetting: 'Über diesen Vorschlag ist schon entschieden.',
     imageType: 'Das ist kein Bild, das der Agent lesen kann (PNG, JPEG, GIF oder WebP).',
@@ -2433,6 +2434,9 @@ const de = {
     winShiftS: 'Win+Umschalt+S',
     pasteHint: (k: { paste: string; grab?: string }) =>
       `Screenshots fügst du auch mit ${k.paste} aus der Zwischenablage ein, ohne sie erst als Datei zu speichern.${k.grab ? ` ${k.grab} legt einen Screenshot direkt dort ab.` : ''}`,
+    tooLong: (n: number, max: number) => `Zu lang zum Senden (${n.toLocaleString('de-DE')} von höchstens ${max.toLocaleString('de-DE')} Zeichen). Kürze den Text oder lagere ihn in eine Datei aus; dann steht ihr Pfad im Feld.`,
+    intoFile: 'In Datei auslagern',
+    pastedAsFile: 'Der eingefügte Text war zu lang für eine Nachricht; er steht jetzt in einer Datei, ihr Pfad im Feld.',
   },
   /** The menu of the agent's skills that `/` opens in a field whose words go to a card's agent. */
   skills: {
@@ -3111,6 +3115,7 @@ const en: Strings = {
     noSlot: 'No slot free: every machine with a free workspace has as many agents at work as it has slots.',
     workspace: 'The workspace for the agent could not be prepared (git error).',
     emptyText: 'Please enter some text first.',
+    textTooLong: 'The message is too long (20,000 characters at most).',
     unknownPreference: 'This preference no longer exists.',
     unknownSetting: 'This proposal has been decided already.',
     imageType: 'This is not an image the agent can read (PNG, JPEG, GIF or WebP).',
@@ -4663,6 +4668,9 @@ const en: Strings = {
     winShiftS: 'Win+Shift+S',
     pasteHint: (k: { paste: string; grab?: string }) =>
       `You can also paste screenshots from the clipboard with ${k.paste}, without saving them as a file first.${k.grab ? ` ${k.grab} puts a screenshot straight there.` : ''}`,
+    tooLong: (n: number, max: number) => `Too long to send (${n.toLocaleString('en-US')} of ${max.toLocaleString('en-US')} characters at most). Shorten the text or move it into a file; its path then stands in the field.`,
+    intoFile: 'Move into a file',
+    pastedAsFile: 'The pasted text was too long for a message, so it went into a file; its path stands in the field.',
   },
   /** The menu of the agent's skills that `/` opens in a field whose words go to a card's agent. */
   skills: {
