@@ -606,6 +606,45 @@ describe('a site Obeya keeps', () => {
     expect(readFileSync(join(deployed(), 'filter', 'index.html'), 'utf8')).not.toContain('class="sections"');
   });
 
+  test('videos encoded anew go out in place: each page keeps its date and its page, and sharing it again with the same video keeps them too', async () => {
+    const later = videoDemo(join(dir, 'later'));
+    writeFileSync(join(later, 'demo.mp4'), 'later video');
+    await target.publish(page('a-111111', { more: [{ title: 'Später', text: 'Ein Detail.', kind: 'video', chapters: [[0, 'Danach']], dir: later }] }));
+    await target.publish(page('b-222222', { shared: ['a-111111'] }));
+    const before = { meta: meta('a-111111'), html: readFileSync(join(siteDir(), 'a-111111/index.html'), 'utf8'), rev: manifest().pages['a-111111']!.rev };
+    const encoded = join(dir, 'encoded');
+    mkdirSync(encoded);
+    writeFileSync(join(encoded, 'first.mp4'), 'video in range');
+    writeFileSync(join(encoded, 'later.mp4'), 'later video in range');
+    const files = { 'demo.mp4': join(encoded, 'first.mp4'), '2/demo.mp4': join(encoded, 'later.mp4') };
+    // a failed deploy leaves the page as it was
+    writeFileSync(join(dir, 'fail'), '');
+    expect(await target.replace([{ slug: 'a-111111', files }], ['a-111111', 'b-222222'])).toMatchObject({ why: 'The site’s deploy failed (exit code 3).' });
+    expect(readFileSync(join(siteDir(), 'a-111111/demo.mp4'), 'utf8')).toBe('video');
+    expect(readFileSync(join(siteDir(), 'a-111111/2/demo.mp4'), 'utf8')).toBe('later video');
+    expect(meta('a-111111')).toEqual(before.meta);
+    rmSync(join(dir, 'fail'));
+    expect(await target.replace([{ slug: 'a-111111', files }], ['a-111111', 'b-222222'])).toMatchObject({ said: expect.stringContaining('Uploaded') });
+    expect(readFileSync(join(deployed(), 'a-111111/demo.mp4'), 'utf8')).toBe('video in range');
+    expect(readFileSync(join(deployed(), 'a-111111/2/demo.mp4'), 'utf8')).toBe('later video in range');
+    expect(readFileSync(join(deployed(), 'a-111111/index.html'), 'utf8')).toBe(before.html);
+    const now = meta('a-111111') as ReturnType<typeof meta> & { source: string; more: { source: string; at: string }[] };
+    expect({ ...now, source: '', more: now.more.map((m) => ({ ...m, source: '' })) }).toEqual({ ...before.meta, source: '', more: (before.meta as typeof now).more.map((m) => ({ ...m, source: '' })) });
+    expect(now.source).not.toBe((before.meta as typeof now).source);
+    expect(manifest().pages['a-111111']!.rev).toBe(before.rev + 1);
+    expect(overview().indexOf('Titel b-222222')).toBeLessThan(overview().indexOf('Titel a-111111'));
+    expect(readdirSync(join(siteDir(), '../backup'))).toEqual([]);
+    // the card's demos replaced the same way: shared again, the page keeps its date
+    writeFileSync(join(demo, 'demo.mp4'), 'video in range');
+    writeFileSync(join(later, 'demo.mp4'), 'later video in range');
+    await target.publish(page('a-111111', { shared: ['b-222222'], more: [{ title: 'Später', text: 'Ein Detail.', kind: 'video', chapters: [[0, 'Danach']], dir: later }] }));
+    expect(meta('a-111111').at).toBe(before.meta.at);
+    expect(overview().indexOf('Titel b-222222')).toBeLessThan(overview().indexOf('Titel a-111111'));
+    // a file the page lacks, or larger than the site takes, is refused
+    expect(await target.replace([{ slug: 'b-222222', files: { '2/demo.mp4': join(encoded, 'later.mp4') } }], ['a-111111', 'b-222222'])).toMatchObject({ why: expect.stringContaining('2/demo.mp4 is missing in') });
+    expect(await make(SITE({ maxFile: 4 })).replace([{ slug: 'b-222222', files }], ['a-111111', 'b-222222'])).toMatchObject({ why: expect.stringContaining('the site takes at most') });
+  });
+
   test('a site is named by its URL', () => {
     expect(siteKey('https://demos.example.dev/')).toBe('demos.example.dev');
     expect(siteKey('https://example.com/team/demos')).toBe('example.com-team-demos');

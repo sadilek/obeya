@@ -143,6 +143,14 @@ export interface ShareTarget {
    * `shared`: every page shared through the target, those included.
    */
   retag(pages: { slug: string; tags: PageTags }[], shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
+  /**
+   * Puts new files in place of files the pages have, in one deploy (a video encoded anew, say):
+   * `files` maps a file of the page's directory to the file that replaces it. Each page keeps its
+   * text, tags, date and the page around its files; a version whose video is replaced takes the
+   * new video's hash as its demo's (`source`), so it keeps its date when the card's demo, replaced
+   * as well, is published again. `shared`: every page shared through the target, those included.
+   */
+  replace(pages: { slug: string; files: Record<string, string> }[], shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
 }
 
 /**
@@ -699,8 +707,8 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
    * machine has as shared that the live site lacks, and checks those. A change another machine's
    * deployment came in between with (seen before the deploy, or after it without the change) is
    * undone here and made once more; a failed deploy is undone too. Each page's directory is set
-   * aside meanwhile (`wholeBackup`); with `inPlace`, only the files `apply` rewrites are
-   * (`inPlaceBackup`).
+   * aside meanwhile (`wholeBackup`); with `inPlace`, only the files of a page it names, those
+   * `apply` rewrites (`inPlaceBackup`).
    */
   const change = async ({
     slugs,
@@ -708,17 +716,17 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
     apply,
     log,
     gone,
-    inPlace = false,
+    inPlace,
   }: {
     slugs: string[];
     shared: string[];
     apply?: (slug: string, rev: number, before: Entry | undefined) => Promise<Entry>;
     log: (text: string) => void;
     gone: Gone[];
-    inPlace?: boolean;
+    inPlace?: (slug: string) => string[];
   }): Promise<string> => {
     const env = await deployEnv();
-    const backup = inPlace ? inPlaceBackup : wholeBackup;
+    const backup = inPlace ? inPlaceBackup(inPlace) : wholeBackup;
     for (let round = 1; ; round++) {
       const live = await readLive(env);
       const local = await readLocal();
@@ -804,21 +812,25 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
       if (backup) await rename(backup, join(dir, slug));
     },
   };
-  /** A page retagged in place: only the files that rewrites copied, the page's own files (its video, its artifact) staying where they are. */
-  const inPlaceBackup: Backup = {
+  /** A page changed in place: only the files the change rewrites (`files`) copied, the others (its video, its artifact, where they stay) staying where they are. */
+  const inPlaceBackup = (files: (slug: string) => string[]): Backup => ({
     setAside: async (slug) => {
       const backup = await backupFor(slug);
       if (!backup) return null;
+      for (const f of files(slug))
+        if (await exists(join(dir, slug, f))) {
+          await mkdir(dirname(join(backup, f)), { recursive: true });
+          await copyFile(join(dir, slug, f), join(backup, f));
+        }
       await mkdir(backup, { recursive: true });
-      for (const f of REWRITTEN) if (await exists(join(dir, slug, f))) await copyFile(join(dir, slug, f), join(backup, f));
       return backup;
     },
     restore: async (slug, backup) => {
       if (!backup) return;
-      for (const f of await readdir(backup)) await copyFile(join(backup, f), join(dir, slug, f));
+      for (const f of await filesUnder(backup)) await copyFile(join(backup, f), join(dir, slug, f));
       await rm(backup, { recursive: true, force: true });
     },
-  };
+  });
 
   /** Runs a change of the site, its reason in Obeya's words where it was refused, with the pages another machine withdrew. */
   const attempt = async <T>(fn: (gone: Gone[]) => Promise<T>): Promise<(T | { why: string; said: string }) & { gone: Gone[] }> => {
@@ -954,7 +966,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
           shared,
           log,
           gone,
-          inPlace: true,
+          inPlace: () => REWRITTEN,
           apply: async (slug, rev) => {
             const target = join(dir, slug);
             let text: string;
@@ -970,6 +982,48 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
             // the page around its files in today's template, with the theme it went out with
             const theme = await readFile(join(target, PAGE_THEME), 'utf8').catch(() => undefined);
             await writeFile(join(target, 'index.html'), pageHtml(site, slug, meta, await versionsFiles(target, meta), { unlisted, ...(theme ? { theme } : {}) }));
+            return { ...(await entryOf(slug)), rev };
+          },
+        });
+        return { said };
+      }),
+    replace: (pages, shared, log = () => {}) =>
+      attempt(async (gone) => {
+        const want = new Map(pages.map((p) => [checkSlug(p.slug, unlisted), p.files]));
+        const max = site.maxFile ?? MAX_FILE;
+        for (const [slug, files] of want)
+          for (const [f, from] of Object.entries(files)) {
+            if (!isPath(f) || f === 'meta.json') throw new Refused(`not a file of the demo: ${slug}/${f}`);
+            const size = (await stat(from)).size;
+            if (size > max) throw new Refused(t.fileTooLarge(`${slug}/${f}`, (size / 1024 / 1024).toFixed(1), String(Math.round((max / 1024 / 1024) * 10) / 10)));
+          }
+        const said = await change({
+          slugs: [...want.keys()],
+          shared,
+          log,
+          gone,
+          inPlace: (slug) => ['meta.json', ...Object.keys(want.get(slug)!)],
+          apply: async (slug, rev) => {
+            const target = join(dir, slug);
+            const files = want.get(slug)!;
+            let meta: Meta;
+            try {
+              meta = JSON.parse(await readFile(join(target, 'meta.json'), 'utf8')) as Meta;
+            } catch {
+              throw new Refused(t.siteLacks(dir, [slug]));
+            }
+            for (const [f, from] of Object.entries(files)) {
+              if (!(await exists(join(target, f)))) throw new Refused(t.fileMissing(f, target));
+              await copyFile(from, join(target, f));
+            }
+            // a version whose video is new: the demo's hash follows it
+            const source = async (sub: string, was: string) => (files[sub ? `${sub}/demo.mp4` : 'demo.mp4'] ? sourceHash(join(target, sub), ['demo.mp4']) : was);
+            const next: Meta = {
+              ...meta,
+              source: await source('', meta.source),
+              ...(meta.more ? { more: await Promise.all(meta.more.map(async (m) => ({ ...m, source: await source(m.dir, m.source) }))) } : {}),
+            };
+            await writeFile(join(target, 'meta.json'), JSON.stringify(next, null, 2));
             return { ...(await entryOf(slug)), rev };
           },
         });
