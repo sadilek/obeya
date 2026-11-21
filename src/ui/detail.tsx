@@ -1063,7 +1063,7 @@ function TaskActions({ v, worked, proto, approve }: { v: View; worked: boolean; 
   // a stopped task whose workspace holds work shows the button, which says why it stays
   const refusal = archiveRefusal(item);
   const archive = worked && (!refusal || refusal === 'holdsWork' || refusal === 'marked');
-  // a task an agent worked on may be marked to check something by hand; once marked, its box takes the mark off
+  // a task whose work the owner approved may be marked to check something by hand; once marked, its box takes the mark off
   const mark = worked && markable(item) && item.check === undefined;
   if (!unworked && !(running || archive || halted || onPrototype || rest || mark || snoozable(item) || item.revocable)) return null;
   return (

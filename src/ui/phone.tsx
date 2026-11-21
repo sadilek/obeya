@@ -8,7 +8,7 @@
 
 import { type ComponentProps, Fragment, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CanvasInfo, CanvasSnapshot, Item, RepoRef, TalkRef, Usage } from '../core/types';
-import { finishedArchivable, needsYou, openQuestions, unreadAnswers } from '../core/card';
+import { finishedArchivable, forYou, needsYou, openQuestions, toCheck, unreadAnswers } from '../core/card';
 import { api, cardsOn, onNotice, phoneInUse, setCanvas, useEveryCanvas, type Where } from './api';
 import { enterBreaksLines } from './composer';
 import { forYouCount, forYouOf, ForYouRows, forYouTotal, PhoneCard, type Swipe } from './forYou';
@@ -741,12 +741,12 @@ function PhoneHome({
   const running = all.filter(({ item }) => active(item) && !held(item) && !setAside.has(item.id));
   const holding = all.filter(({ item }) => active(item) && held(item) && !setAside.has(item.id));
   // what would stand in "Needs you" or "Running" but for being set aside
-  const putAway = all.filter(({ item }) => setAside.has(item.id) && (needsYou(item) || active(item)));
+  const putAway = all.filter(({ item }) => setAside.has(item.id) && (needsYou(item) || toCheck(item) || active(item)));
   // the tasks nobody has started yet (stopped ones and those set to start at a time among them), but nothing the lists above show already
   const planned = all.filter(({ item }) => plannedLater(item) && !runs(item) && !isUnderway(item.id));
   // what the canvas's "Archive finished cards" would take, but nothing the lists above show already
   const waitsHere = forYouTotal(ordered, snaps, leftOut);
-  const done = all.filter(({ item }) => finishedArchivable(item) && !needsYou(item) && !item.snoozed?.waiting && !runs(item) && !isUnderway(item.id));
+  const done = all.filter(({ item }) => finishedArchivable(item) && !forYou(item) && !item.snoozed?.waiting && !runs(item) && !isUnderway(item.id));
   // until the owner has swiped a card aside once, the first one in sight nudges, with a line above it saying how
   const inSight = (list: string, c: CanvasInfo) => !several || !folded.includes(`${list}:${c.id}`);
   const firstWaiting = ordered.filter((c) => inSight('forYou', c)).flatMap((c) => forYouOf(snaps[c.id]!, leftOut).cards)[0];
@@ -780,7 +780,7 @@ function PhoneHome({
             )}
           </h2>
           {/* nothing known yet (the server has not answered since the page loaded): no claim that nothing waits */}
-          {ordered.length > 0 && !waitsHere && <p className="ph-none">{putAway.some(({ item }) => needsYou(item)) ? t.phone.nothingElseWaits : t.phone.nothingWaits}</p>}
+          {ordered.length > 0 && !waitsHere && <p className="ph-none">{putAway.some(({ item }) => forYou(item)) ? t.phone.nothingElseWaits : t.phone.nothingWaits}</p>}
           {hintIn === 'forYou' && <p className="ph-hint">{t.phone.swipeHint}</p>}
           <ByCanvas list="forYou" canvases={ordered} several={several} waits count={(c) => forYouCount(snaps[c.id]!, leftOut)}>
             {(c) => (

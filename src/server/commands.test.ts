@@ -109,6 +109,18 @@ describe('the Coordinator remembers', () => {
     expect(second.brief).not.toContain('You have not talked');
   });
 
+  test('a finished card marked to check by hand stands among the cards with its note; other finished ones do not', async () => {
+    const a = board.create({ title: 'Server move', x: 0, y: 0 });
+    const b = board.create({ title: 'Footer links', x: 0, y: 0 });
+    for (const c of [a, b]) board.patch(c.id, { state: 'live' });
+    board.patch(a.id, { check: 'the old webhooks are quiet' });
+    const k = commander();
+    const said = await say(k, 'which cards are left to check?', 'reply', { confirm: 'Server move.' });
+    const cards = said.brief.split('Cards on the canvas now:')[1]!.split('\n\n')[0]!;
+    expect(cards).toContain(`${tag(a)} [live] "Server move" — marked by the owner to check by hand: the old webhooks are quiet`);
+    expect(cards).not.toContain('"Footer links"');
+  });
+
   test('what happens in the millisecond of a command, or after the clock went back, comes with the next one', async () => {
     const at = new Date('2026-10-21T12:40:07.650Z');
     setSystemTime(at);

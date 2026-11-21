@@ -302,7 +302,7 @@ const de = {
   /** A task the owner marks to check something by hand (after its landing, say): it stands out and stays out of the archive until they remove the mark. */
   check: {
     mark: 'Zum Prüfen markieren',
-    markHint: 'Die Karte bleibt hervorgehoben auf der Leinwand, mit einer Notiz, was du noch von Hand prüfen willst. Für ihren Agenten ist sie erledigt; ins Archiv geht sie erst, wenn du die Markierung entfernst.',
+    markHint: 'Die Karte bleibt hervorgehoben auf der Leinwand und unter „Braucht dich“, mit einer Notiz, was du noch von Hand prüfen willst. Ins Archiv geht sie erst, wenn du die Markierung entfernst. Ihr Agent erfährt davon nichts.',
     title: 'Noch von Hand prüfen',
     placeholder: 'Was willst du noch prüfen? Eine Notiz für dich, der Agent liest sie nicht.',
     done: 'Geprüft, Markierung entfernen',
@@ -2794,7 +2794,7 @@ const en: Strings = {
   startAgainHint: 'A new agent starts with a new session on the task’s branch; committed work there stays.',
   check: {
     mark: 'Mark to check',
-    markHint: 'Keeps the card on the canvas, highlighted, with a note on what you still want to check by hand. Its agent counts it as done; it goes into the archive only once you remove the mark.',
+    markHint: 'Keeps the card highlighted on the canvas and under “Needs you”, with a note on what you still want to check by hand. It goes into the archive only once you remove the mark. Its agent is not told.',
     title: 'To check by hand',
     placeholder: 'What do you still want to check? A note for yourself; the agent does not read it.',
     done: 'Checked, remove mark',

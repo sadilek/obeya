@@ -1475,7 +1475,8 @@ export class Commander {
   private brief(s: Session, transcript: string, focus: Focus, input: Input, shots = 0): string {
     const { items, groups: groupList } = this.o.board.snapshot();
     const groups = new Map(groupList.map((g) => [g.id, g.name]));
-    const relevant = items.filter((i) => i.kind !== 'project' && (!finished(i.state) || i.finishing || i.kind === 'question' || i.id === focus.card));
+    // a finished card the owner marked to check by hand among them, so they can ask which are left to check
+    const relevant = items.filter((i) => i.kind !== 'project' && (!finished(i.state) || i.finishing || i.kind === 'question' || i.check !== undefined || i.id === focus.card));
     const numbers = new Map(items.map((i) => [i.id, i.number]));
     const tag = (id: string) => {
       const n = numbers.get(id);

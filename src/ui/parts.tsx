@@ -160,14 +160,6 @@ export const cardClass = (item: Item, underway?: string) =>
     .filter(Boolean)
     .join(' ');
 
-/**
- * What a card says on its face, on the canvas and in the phone view's lists alike: its kind (after
- * `where` it is, its repository or canvas), its title, a line of its text, its state line in its
- * state's colour after its number (`since` after it) and the pin while it needs the owner. A `chip`, a delivered
- * workstream, shows only its title, after its label, so it still reads as its workstream. A face
- * `inButton` (a list's entry that opens the card) shows the number without copying it (its sheet does), in its top
- * right corner, so the state line starts with the state.
- */
 /** A card marked to check by hand, on its face: that it is, and the owner's note. */
 const CheckMeta = ({ note }: { note: string }) => (
   <>
@@ -176,6 +168,14 @@ const CheckMeta = ({ note }: { note: string }) => (
   </>
 );
 
+/**
+ * What a card says on its face, on the canvas and in the phone view's lists alike: its kind (after
+ * `where` it is, its repository or canvas), its title, a line of its text, its state line in its
+ * state's colour after its number (`since` after it) and the pin while it needs the owner. A `chip`, a delivered
+ * workstream, shows only its title, after its label, so it still reads as its workstream. A face
+ * `inButton` (a list's entry that opens the card) shows the number without copying it (its sheet does), in its top
+ * right corner, so the state line starts with the state.
+ */
 export function CardFace({ item, where, underway, since, chip, inButton }: { item: Item; where?: string; underway?: string; since?: string; chip?: boolean; inButton?: boolean }) {
   const kind =
     item.label ??

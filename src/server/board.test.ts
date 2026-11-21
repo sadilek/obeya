@@ -429,6 +429,20 @@ describe('the archive of projects', () => {
     expect(board.item(task.id)).toBeUndefined();
     expect(board.events(task.id).at(-1)!.text).toBe('Das Projekt steht jetzt an der Stelle der Aufgabe; die Aufgabe liegt im Archiv.');
   });
+
+  test('a task planned as a project and marked to check by hand stays where it is, beside its project', () => {
+    const task = board.create({ title: 'Aufgabe B', x: 900, y: 40 });
+    board.work(task.id, { becomes_project: 1, state: 'live' });
+    board.patch(task.id, { check: 'the plan reads right' });
+    board.planDocsLanded(task.id, ['docs/plan/b.md']);
+    docs = [docA, docB];
+    board.docsChanged();
+    const project = board.snapshot().items.find((i) => i.title === 'B')!;
+    expect(project.origin).toBe(task.id);
+    expect(project).not.toMatchObject({ x: 900, y: 40 });
+    board.workDone(task.id);
+    expect(board.item(task.id)).toMatchObject({ x: 900, y: 40, check: 'the plan reads right' });
+  });
 });
 
 describe('manual cards', () => {
@@ -711,6 +725,21 @@ describe('archive', () => {
     board.patch(a.id, { check: null });
     expect(board.snapshot().items.find((i) => i.id === a.id)?.check).toBeUndefined();
     expect(board.archiveDone()).toEqual([a.id]);
+  });
+
+  test('a task is marked to check by hand once its work is approved; its note changes and the mark goes in any state since', () => {
+    const c = board.create({ title: 'C', x: 0, y: 0 });
+    expect(() => board.patch(c.id, { check: '' })).toThrow(expect.objectContaining({ code: 'invalid' }));
+    board.patch(c.id, { state: 'working' });
+    expect(() => board.patch(c.id, { check: '' })).toThrow(expect.objectContaining({ code: 'invalid' }));
+    board.patch(c.id, { state: 'approved' });
+    board.patch(c.id, { check: '' });
+    // the approval taken back: the mark stays, its note can be changed and the mark removed
+    board.patch(c.id, { state: 'waiting' });
+    board.patch(c.id, { check: 'DNS' });
+    expect(board.item(c.id)?.check).toBe('DNS');
+    board.patch(c.id, { check: null });
+    expect(board.item(c.id)?.check).toBeUndefined();
   });
 
   test('the button counts exactly what archiving everything finished takes', () => {

@@ -285,16 +285,21 @@ canvas; an archived card or project open then is read again too, and closes if i
 #### Marked to check by hand
 
 Some work needs the owner after it landed: something to check by hand on a server, a note to
-themselves. A task of the owner's an agent worked on, in any state, offers "Mark to check" among its
-decisions; it puts a box at the top of the open card, "To check by hand", with a field for the note
-(saved as typed) and "Checked, remove mark". While marked, the card stands out on the canvas however
-finished it is: not pushed back like other finished cards, a top bar and stock of their own colour,
-and "⚑ To check" with the note in place of its text line (in the minimap too). The archive does not
-take it: its "Archive" is greyed and says why, its archive button on the canvas is gone, and "Archive
-n finished cards" leaves it out and does not count it. Nothing else changes: the card's state, its
-landing and its agent go on as without the mark, and the agent never hears of it or its note. The
-Coordinator's list of cards names the mark and the note, so the owner can ask which cards are left
-to check.
+themselves. A task of the owner's whose work they approved (approved, in its pull request, live or
+done) offers "Mark to check" among its decisions; before that the card has decisions enough, and the
+server refuses a mark. It puts a box at the top of the open card, "To check by hand", with a field
+for the note (saved as typed) and "Checked, remove mark"; a mark once set keeps its box in any state
+the card goes to (its approval taken back, say). While marked, the card stands out on the canvas
+however finished it is: not pushed back like other finished cards, a top bar and stock of their own
+colour, and "⚑ To check" with the note in place of its text line (in the minimap too). It stands in
+"Needs you" (the phone's, and the navigation's), after the cards that need the owner, and counts
+there like them. The archive does not take it: its "Archive" is greyed and says why where the archive
+would take it otherwise, its archive button on the canvas is gone, "Archive n finished cards" leaves
+it out and does not count it, and nothing archives it by itself (a task planned as a project stays
+where it is, and its project stands where a new one does). Nothing else changes: the card's state,
+its landing and its agent go on as without the mark, and the agent never hears of it or its note.
+The Coordinator's list of cards holds a marked card however finished it is, with the mark and the
+note, so the owner can ask which cards are left to check.
 
 ### Projects end
 
@@ -388,7 +393,10 @@ sheet), lists its decisions and links the idea or task its plan doc came from (s
   hold on the archive, outside the card's states, so the work counts as done for everything that
   waits on it and its agent is not kept or woken. Rejected: a state of its own after `live` (every
   rule that reads finished cards would have to know it), and keeping the card out of the archive by
-  leaving it unapproved (its work would not land, and what waits for it would not start).
+  leaving it unapproved (its work would not land, and what waits for it would not start). Offered
+  only once the work is approved (owner, 2026-11-21): before that the card waits for the owner
+  anyway, and one more button there is clutter. A marked card stands in "Needs you" (owner,
+  2026-11-21): it waits for the owner, and on the phone the "Done" list would fold it away.
 - **The archive's list keeps only the rows in view on the page** (2026-11-03): with 800 archived
   cards it held about 4,700 elements, and every change on the canvas (an agent's status line) read
   the whole archive again (2 MB) and drew every row anew, about 150 ms each while the list was open.

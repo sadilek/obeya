@@ -328,7 +328,8 @@ export class PlanFollower {
   private leave(row: CardRow, project: CardRow, w: Pick<Workstream, 'label' | 'title' | 'body'>, why: string) {
     // a workstream planned again after part of it landed is done now that the doc asks no more of it
     const state = row.state === 'planned' && row.shipped ? 'live' : stateOf(row);
-    const done = finished(state) && !atWork(row);
+    // one the owner marked to check by hand stays on the canvas, as the archive's rules keep it
+    const done = finished(state) && !atWork(row) && (row.check_note ?? null) === null;
     const at = done ? { x: row.x, y: row.y } : this.besideProject(project);
     this.store.replan(row.id, null, null);
     this.store.update(row.id, {
