@@ -289,7 +289,7 @@ async function later(text: string) {
     `I can't create a repository myself; Obeya can only put a canvas on one that already exists. Run \`mkdir -p ${place} && cd ${place} && git init -b main && git commit --allow-empty -m "Start"\`. Tell me once it's there, and I'll add the canvas “Recipes”.`,
   );
   const view = { file: '/h/canvases.json', source: 'file', canvases: [{ name: 'Obeya', repos: [{ path: '/r' }] }], running: ['obeya'] } as unknown as ConfigView;
-  const config = { view: () => view, check: async (canvases: unknown) => ({ canvases: canvases as CanvasConfig[], resolved: [], problems: [] }), checkSaved: async () => ({ canvases: view.canvases, resolved: [], problems: [] }) };
+  const config = { view: () => view, check: async (canvases: unknown) => ({ canvases: canvases as CanvasConfig[], resolved: [], problems: [] }), checkSaved: async () => ({ canvases: view.canvases, resolved: [], problems: [] }), leftOut: async () => [] };
   const executed: Command[] = [];
   const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.coordinator);
   const k = new Commander({

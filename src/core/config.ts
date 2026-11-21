@@ -466,6 +466,29 @@ export interface ConfigView {
   restarting: boolean;
 }
 
+/**
+ * What deleting a canvas takes with it, as the server counts it for the panel under the canvas's
+ * title (design: Deleting a canvas): never guessed from cards' states on the page.
+ */
+export interface CanvasDeletion {
+  id: string;
+  name: string;
+  /** Its cards, archived ones included: they go with their conversations and workspaces. */
+  cards: number;
+  /** Of those, the ones in the archive. */
+  archived: number;
+  /** Cards whose workspace holds work that never landed: it is lost. */
+  unlanded: number;
+  /** Cards with a pull request still open: it stays open on the forge, no longer followed. */
+  prs: number;
+  /** The cards whose agent is at work now (starting, working, landing): while there are any, the canvas is not deleted. */
+  running: { id: string; short?: string; title: string; statusLine?: string; /** A question being looked up in the Coordinator's sheet, not a card. */ lookUp?: true }[];
+  /** It has a folder without git: the folder keeps whatever the agents changed in it. */
+  folder: boolean;
+  /** It is the only canvas, and Obeya needs one: it is not deleted. */
+  last: boolean;
+}
+
 /** A configuration checked: what it amounts to and what keeps it from working. */
 export interface ConfigChecked {
   /** As saved, tidied. */

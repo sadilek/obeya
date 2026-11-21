@@ -314,7 +314,7 @@ Card faces on the canvas link nothing, since a click there opens the card itself
 ### Card numbers
 
 Every card has a number (`K42`): counting across all canvases of this Obeya, given once when the
-card is made and never again, also once a card is deleted. A card keeps it when it moves to another
+card is made and never again, also once a card or its whole canvas is deleted. A card keeps it when it moves to another
 canvas. The number stands at the start of the card's state line on the canvas (its end is where
 the card's buttons show under the pointer), at the top right of an entry in the phone's lists
 (where the state line, wrapping on the narrow screen, has no room to set it apart), at the end of a

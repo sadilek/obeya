@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { CLONES, type ResolvedCanvas } from '../core/config';
-import { type FilledClones, keepConfigDraft, keptConfigDraft, withClones } from './configDraft';
+import { type CanvasConfig, CLONES, type ResolvedCanvas } from '../core/config';
+import { type FilledClones, keepConfigDraft, keptConfigDraft, leave, reconciled, withClones, withoutDeleted } from './configDraft';
 import { memoryStorage } from './testing';
 
 
@@ -77,5 +77,53 @@ describe('withClones', () => {
   test('leaves worktrees, counts of its own and repositories not checked yet', () => {
     const draft = [{ repos: [{ path: '/w' }, { path: '/n', clones: 0 }, { path: '/l', workspaces: ['/x'] }, { path: '' }] }, { repos: [{ path: '/u' }] }];
     expect(withClones(draft, [], [at('worktrees', 'clones', 'clones', 'clones'), null], new Map())).toBeNull();
+  });
+});
+
+describe('deleting a canvas apart from the draft', () => {
+  type R = { origin: string | null; canvas: CanvasConfig };
+  const row = (name: string, origin: string | null): R => ({ origin, canvas: { name, repos: [{ path: `/r/${name}` }] } });
+
+  test('the other unsaved changes of the draft stay, waiting for Save', () => {
+    // Docs renamed, Wiki added, neither saved: Shop is deleted
+    const rows = [row('Shop', 'shop'), row('Developer docs', 'docs'), row('Wiki', null)];
+    expect(withoutDeleted(rows, 'shop')).toEqual([rows[1]!, rows[2]!]);
+  });
+
+  test('a canvas deleted elsewhere leaves the draft; one the draft left out comes back at its place, since Save removes none', () => {
+    const saved: CanvasConfig[] = [{ name: 'Shop', repos: [{ path: '/r/Shop' }] }, { name: 'Docs', repos: [{ path: '/r/Docs' }] }];
+    const make = (canvas: CanvasConfig, origin: string): R => ({ origin, canvas });
+    // Blog went in another tab; Shop was left out of this draft by the bin as it was before
+    const rows = [row('Developer docs', 'docs'), row('Blog', 'blog'), row('Wiki', null)];
+    expect(reconciled(rows, saved, ['shop', 'docs'], make)).toEqual([make(saved[0]!, 'shop'), rows[0]!, rows[2]!]);
+    expect(reconciled([row('Shop', 'shop'), row('Docs', 'docs')], saved, ['shop', 'docs'], make)).toBeNull();
+    // a saved canvas that does not resolve may be any of them: none leaves the draft, the one that resolves comes back
+    expect(reconciled(rows, saved, ['shop', null], make)).toEqual([make(saved[0]!, 'shop'), ...rows]);
+    expect(reconciled(rows, saved, [null, null], make)).toBeNull();
+  });
+});
+
+describe('closing Configuration with changes not saved', () => {
+  const run = async (choice: 'stay' | 'discard' | 'save', saves = true) => {
+    const did: string[] = [];
+    const closed = await leave(choice, {
+      save: async () => (did.push('save'), saves),
+      discard: () => void did.push('discard'),
+      close: () => void did.push('close'),
+    });
+    return { closed, did };
+  };
+
+  test('Stay returns to the dialog as it was', async () => {
+    expect(await run('stay')).toEqual({ closed: false, did: [] });
+  });
+
+  test('Discard changes resets the drafts and closes', async () => {
+    expect(await run('discard')).toEqual({ closed: true, did: ['discard', 'close'] });
+  });
+
+  test('Save saves and closes, but stays open where saving showed problems', async () => {
+    expect(await run('save')).toEqual({ closed: true, did: ['save', 'close'] });
+    expect(await run('save', false)).toEqual({ closed: false, did: ['save'] });
   });
 });

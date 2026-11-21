@@ -6,15 +6,14 @@
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoVoiceCheck, type Language, type NarrationLanguage, type PageTags, type SetupCheck, type Theme, THEMES, type VoiceKind, type VoiceSetupView } from '../core/types';
 import { AGENT_ROLES, type AgentRole, HARNESSES } from '../core/agents';
-import { blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSite, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type HostConfig, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, START_FAILED } from '../core/config';
+import { blocksSaving, type CanvasConfig, type CanvasDeletion, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSite, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type HostConfig, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, START_FAILED } from '../core/config';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { knownLanguage, LANGUAGES } from '../core/locale';
 import { AccessSection } from './access';
 import { HarnessUpdate, ModelMenu, ModelPicker, onModelLabel } from './agentPick';
-import { api, reload, type SiteHow, failText } from './api';
+import { api, ApiError, reload, type SiteHow, failText } from './api';
 import { useAct, useLoaded, usePoll } from './act';
-import { useLatest } from './latest';
-import { type FilledClones, keepConfigDraft, keptConfigDraft, restartsAgents, withClones } from './configDraft';
+import { type FilledClones, keepConfigDraft, keptConfigDraft, leave, type LeaveChoice, reconciled, restartsAgents, withClones, withoutDeleted } from './configDraft';
 import { keep } from './keep';
 import { plain } from './markdown';
 import { FolderPick } from './folderPick';
@@ -26,7 +25,7 @@ import { fileSize, snoozeWhen, t } from './strings';
 import { applyTheme } from './theme';
 import { WishLink } from './wish';
 import { canvasPath } from './address';
-import { flag, read, session, setFlag, takeJson, write, writeJson } from './stored';
+import { flag, read, session, setFlag, take, takeJson, write, writeJson } from './stored';
 
 declare global {
   interface Window {
@@ -53,6 +52,18 @@ const SECTION_KEY = 'obeya-config-section';
 
 // the canvas shown in Canvases, per tab, by its place in the list
 const CANVAS_KEY = 'obeya-config-canvas';
+
+// set while the page goes to another canvas because the one it showed was deleted from the dialog: the dialog opens again there
+const REOPEN_KEY = 'obeya-config-reopen';
+
+/** The name of the page's own canvas the dialog deleted, as the dialog says once it opens again on the page it went to; read once per page load. */
+let deletedHere: string | null | undefined;
+
+/** Whether the dialog was open when the page's own canvas was deleted from it: it opens again once the page shows another. */
+export const reopensConfig = () => {
+  if (deletedHere === undefined) deletedHere = take(session, REOPEN_KEY);
+  return deletedHere !== null;
+};
 
 /** Opens the dialog at the canvases next time, at the one the page shows, as from the note on a plan directory. */
 export const showCanvasesSection = () => {
@@ -118,12 +129,12 @@ const rowsOf = (canvases: CanvasConfig[], origin: (string | null)[] = []): Row[]
 
 /**
  * The rows with the ids of their canvases once the check of the configuration as `loaded` resolved
- * them: a canvas without one yet gets the id of the loaded canvas with its repositories, and a
- * running one the owner renamed meanwhile keeps it, as a rename does once the id is known; one they
- * added has none.
+ * them: a canvas without one yet gets the id of the loaded canvas with its repositories, and one
+ * the owner renamed meanwhile keeps it, as a rename does once the id is known; one they added has none.
  */
-function pinned(rows: Row[], loaded: CanvasConfig[], resolved: Checked['resolved'], running: string[]): Row[] {
-  const taken = new Set<number>();
+function pinned(rows: Row[], loaded: CanvasConfig[], resolved: Checked['resolved']): Row[] {
+  // a saved canvas a row has already is no other row's
+  const taken = new Set<number>(resolved.flatMap((r, j) => (r && rows.some((x) => x.origin === r.id) ? [j] : [])));
   return rows.map((r) => {
     if (r.origin) return r;
     const c = r.canvas;
@@ -131,7 +142,8 @@ function pinned(rows: Row[], loaded: CanvasConfig[], resolved: Checked['resolved
     if (j < 0) return r;
     taken.add(j);
     const id = resolved[j]?.id ?? null;
-    return { ...r, origin: id, canvas: id && running.includes(id) && !c.id && c.name !== loaded[j]!.name ? { ...c, id } : c };
+    // a saved one renamed keeps its id, running or not: Save removes no saved canvas
+    return { ...r, origin: id, canvas: id && !c.id && c.name !== loaded[j]!.name ? { ...c, id } : c };
   });
 }
 
@@ -151,7 +163,28 @@ function checkedMoved(c: Checked, n: number, from: number, to: number): Checked 
   };
 }
 
-export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProblems, onConnect, revs }: { on: boolean; /** The canvas the page shows: the one Canvases shows first. */ page?: string; onClose: () => void; onSetup: () => void; onAsk: Ask; onTalk: () => void; onProblems: (n: number) => void; onConnect: () => void; revs: string }) {
+/** A draft of the dialog saved with a button of its own, as the dialog that asks before closing reaches it. */
+interface DraftHandle {
+  changed: boolean;
+  /** Saves it; says whether it was saved. */
+  save: () => Promise<boolean>;
+  discard: () => void;
+}
+
+export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProblems, onConnect, revs, closeRef }: {
+  on: boolean;
+  /** The canvas the page shows: the one Canvases shows first. */
+  page?: string;
+  onClose: () => void;
+  onSetup: () => void;
+  onAsk: Ask;
+  onTalk: () => void;
+  onProblems: (n: number) => void;
+  onConnect: () => void;
+  revs: string;
+  /** Set to what closing the dialog does from outside it (Esc): it asks first where a draft is not saved. */
+  closeRef?: { current: () => void };
+}) {
   const [view, setView] = useState<ConfigView | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   // the canvases of the rows: the same list until one of them changes (not with an id pinned), so the draft is checked once per change
@@ -178,7 +211,6 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
     setRows(rowsOf(v.canvases, c?.resolved.map((r) => r?.id ?? null)));
     unpinned.current = c ? null : v.canvases;
   };
-  const running = useLatest(view?.running ?? []);
   const savedSeq = useRef(0);
   const checkSaved = () => {
     const n = ++savedSeq.current;
@@ -186,10 +218,16 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
       if (n !== savedSeq.current) return;
       setSaved(c);
       onProblems(c.problems.length);
-      const loaded = unpinned.current;
       unpinned.current = null;
-      if (!loaded) return;
-      setRows((rows) => pinned(rows, loaded, c.resolved, running.current));
+      const ids = c.resolved.map((r) => r?.id ?? null);
+      // rows without an id yet (loaded before the check, or saved new just now) take the saved canvas's with their
+      // repositories; the draft then follows canvases deleted meanwhile (another tab, the Coordinator), and Save removes none
+      setRows((rows) => {
+        const pins = pinned(rows, c.canvases, c.resolved);
+        return reconciled(pins, c.canvases, ids, (canvas, origin) => ({ key: rowKeys++, origin, canvas })) ?? pins;
+      });
+      // what is saved is what was checked: Discard goes back to it, by the ids it resolved to
+      setView((v) => (v && JSON.stringify(v.canvases) !== JSON.stringify(c.canvases) ? { ...v, canvases: c.canvases } : v));
     }, console.error);
   };
 
@@ -241,7 +279,8 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
         setRows(rowsOf(kept.draft, kept.origin));
         unpinned.current = v.canvases;
       } else if (!changedRef.current) load(v, null);
-      setStatus(v.restarting ? t.config.saved : '');
+      setStatus(v.restarting ? t.config.saved : deletedHere ? t.config.deletion.deleted(deletedHere) : '');
+      deletedHere = null;
       checkSaved();
     }, console.error);
   }, [on]);
@@ -305,6 +344,116 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
     // the next one takes its place; after the last, the one before it
     setPick(Math.max(0, Math.min(i, rows.length - 2)));
   };
+  // deletes a saved canvas at once, on its own: the draft's other changes stay, waiting for Save
+  // while a canvas is being deleted, Save waits: the draft still holds it until the delete is through
+  const [deleting, setDeleting] = useState(false);
+  const deleteCanvas = async (i: number) => {
+    const id = rows[i]?.origin;
+    if (!id) return;
+    const name = canvasName(rows[i]!.canvas, i);
+    // the page shows it: it goes to the first canvas, and the dialog comes back there with the draft
+    if (page === id) write(session, REOPEN_KEY, name);
+    setDeleting(true);
+    try {
+      await api.deleteCanvas(id);
+    } catch (e) {
+      // refused: the page stays (a request cut off as the page goes to the first canvas is no refusal)
+      if (e instanceof ApiError) write(session, REOPEN_KEY, null);
+      throw e;
+    } finally {
+      setDeleting(false);
+    }
+    const v = await api.config();
+    savedSeq.current++;
+    setView(v);
+    setRows((rows) => withoutDeleted(rows, id));
+    setPick(Math.max(0, Math.min(i, rows.length - 2)));
+    setSaved(null);
+    checkSaved();
+    setStatus(c.deletion.deleted(name));
+  };
+  const saveCanvases = async () => {
+    let applies = false;
+    // the rows as saved, by their keys: one moved meanwhile still gets the id of its own canvas
+    const keys = rows.map((r) => r.key);
+    const ok = await act(async () => {
+      const { restarting, applied } = await api.saveConfig(draft);
+      // what is saved now is the draft as last checked; settings applied at once change what the
+      // repositories amount to (where "For everyone" goes, say), so it is read and checked again
+      const fresh = applied ? await api.config() : null;
+      // the ids the saved list resolves to, in the order it was saved: what pins a canvas saved new
+      const after = await api.configCheck().catch(() => null);
+      savedSeq.current++;
+      setSaved(checked);
+      // a canvas new in the draft takes the id it was saved under, by its place in the list: never by its
+      // text, which saving may have tidied (a path's spaces trimmed, say), so it never shows twice
+      const pins = after;
+      if (pins && pins.resolved.length === keys.length)
+        setRows((rows) =>
+          rows.map((r) => {
+            const i = keys.indexOf(r.key);
+            return r.origin || i < 0 ? r : { ...r, origin: pins.resolved[i]?.id ?? null };
+          }),
+        );
+      setView({ ...(fresh ?? view!), canvases: draft, restarting });
+      checkSaved();
+      setStatus(restarting ? c.saved : applied ? (restartsAgents(view!.canvases, draft) ? c.savedRestarts : c.savedApplied) : c.savedOnly);
+      applies = !restarting;
+    });
+    return { ok, applies };
+  };
+  // the demo settings' draft, saved with a button of its own
+  const demoDraft = useRef<DraftHandle | null>(null);
+  // what is not saved, named for the dialog that asks before closing: the canvases changed, else their order; the demo settings
+  const unsaved = () => {
+    if (!view) return [];
+    // by the saved canvas with its id, wherever it stands now: a move alone changes the order, not the canvas
+    const at = (i: number) => {
+      const id = rows[i]!.origin;
+      return id && saved ? saved.resolved.findIndex((r) => r?.id === id) : i;
+    };
+    const names = changed ? rows.flatMap((r, i) => (at(i) < 0 || JSON.stringify(draft[i]) !== JSON.stringify(view.canvases[at(i)]) ? [canvasName(r.canvas, i)] : [])) : [];
+    const moved = changed && rows.some((_, i) => at(i) >= 0 && at(i) !== i);
+    const what = [...names, ...(moved ? [c.leave.order] : [])];
+    return [...(changed ? (what.length ? what : [c.leave.canvases]) : []), ...(demoDraft.current?.changed ? [c.leave.demos] : [])];
+  };
+  const [leaving, setLeaving] = useState(false);
+  // ×, Esc and a press on the margin close the dialog, asking first where something is not saved; Esc while it asks stays
+  const requestClose = () => {
+    if (leaving) return choosing ? undefined : setLeaving(false);
+    if (unsaved().length) return setLeaving(true);
+    onClose();
+  };
+  if (closeRef) closeRef.current = requestClose;
+  // while the choice is carried out (Save saving the canvases or the demo settings), the dialog's buttons wait
+  const [choosing, setChoosing] = useState(false);
+  const choose = async (choice: LeaveChoice) => {
+    if (choosing) return false;
+    setChoosing(true);
+    const closed = await leave(choice, {
+      save: async () => {
+        if (changed) {
+          // problems keep the draft from being saved: the dialog stays, showing them
+          const bad = problems.find(blocksSaving);
+          if (bad) {
+            if (bad.canvas !== undefined) showCanvas(bad.canvas);
+            else setSection('canvases');
+            return false;
+          }
+          if (!(await saveCanvases()).ok) return (setSection('canvases'), false);
+        }
+        if (demoDraft.current?.changed && !(await demoDraft.current.save())) return (setSection('demos'), false);
+        return true;
+      },
+      discard: () => {
+        if (view) load(view, saved);
+        demoDraft.current?.discard();
+      },
+      close: onClose,
+    }).finally(() => setChoosing(false));
+    setLeaving(false);
+    return closed;
+  };
   const moveCanvas = (from: number, to: number) => {
     setRows(moved(rows, from, to));
     if (checked) setChecked(checkedMoved(checked, rows.length, from, to));
@@ -312,7 +461,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   };
   return (
     // a press on the dim around the dialog closes it; a press that starts inside does not
-    <div id="config" className={on ? 'on' : undefined} onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div id="config" className={on ? 'on' : undefined} onPointerDown={(e) => e.target === e.currentTarget && requestClose()}>
       <div className="cfg-box" role="dialog" aria-modal="true" aria-label={c.title}>
         <nav className="cfg-nav">
           <div className="p-kind">{c.kind}</div>
@@ -381,7 +530,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
           </div>
         </nav>
         {/* on the box, not in the scrolling column, so it stays in view however far that scrolls */}
-        <button className="cfg-close" title={t.close} onClick={onClose}>
+        <button className="cfg-close" title={t.close} onClick={requestClose}>
           ✕
         </button>
         <div className="cfg-main">
@@ -398,28 +547,14 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
                 n={shown}
                 checked={checked}
                 changed={changed}
-                busy={busy}
+                busy={busy || deleting}
                 focus={focus}
                 onAsk={onAsk}
                 onRecheck={recheck}
                 onCanvas={setCanvas}
                 onMove={moveCanvas}
-                onSave={async () => {
-                  let applies = false;
-                  await act(async () => {
-                    const { restarting, applied } = await api.saveConfig(draft);
-                    // what is saved now is the draft as last checked; settings applied at once change what the
-                    // repositories amount to (where "For everyone" goes, say), so it is read and checked again
-                    const fresh = applied ? await api.config() : null;
-                    savedSeq.current++;
-                    setSaved(checked);
-                    setView({ ...(fresh ?? view), canvases: draft, restarting });
-                    checkSaved();
-                    setStatus(restarting ? c.saved : applied ? (restartsAgents(view.canvases, draft) ? c.savedRestarts : c.savedApplied) : c.savedOnly);
-                    applies = !restarting;
-                  });
-                  return applies;
-                }}
+                onDelete={deleteCanvas}
+                onSave={async () => (await saveCanvases()).applies}
                 onReset={() => load(view, saved)}
                 onReload={async () => {
                   const v = await api.config();
@@ -442,7 +577,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
             <VoiceBlock on={on} />
           </section>
           <section className="cfg-sec" hidden={section !== 'demos'}>
-            <DemoBlock on={on} />
+            <DemoBlock on={on} handle={demoDraft} />
             <PersonalSiteBlock on={on && section === 'demos'} />
           </section>
           <section className="cfg-sec" hidden={section !== 'devices'}>
@@ -454,6 +589,33 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
             <ThemeBlock on={on} />
             {view && <ServerBlock server={view.server} />}
           </section>
+        </div>
+      </div>
+      {on && leaving && <LeaveDialog what={unsaved()} busy={busy || choosing} onChoose={(choice) => void choose(choice)} />}
+    </div>
+  );
+}
+
+/** Asks before Configuration closes with changes not saved: what they are, and Stay, Discard changes or Save. */
+function LeaveDialog({ what, busy, onChoose }: { what: string[]; busy: boolean; onChoose: (choice: LeaveChoice) => void }) {
+  const l = t.config.leave;
+  const id = useId();
+  return (
+    <div className="cfg-leave" onPointerDown={(e) => e.target === e.currentTarget && onChoose('stay')}>
+      <div className="cfg-leave-box" role="alertdialog" aria-modal="true" aria-labelledby={`${id}-t`} aria-describedby={`${id}-d`}>
+        <h3 id={`${id}-t`}>{l.title}</h3>
+        <p id={`${id}-d`}>{l.text(what.join(', '))}</p>
+        <div className="cfg-leave-actions">
+          <button className="btn" disabled={busy} onClick={() => onChoose('discard')}>
+            {l.discard}
+          </button>
+          <span className="cfg-leave-gap" />
+          <button className="btn" disabled={busy} onClick={() => onChoose('stay')}>
+            {l.stay}
+          </button>
+          <button className="btn primary" disabled={busy} autoFocus onClick={() => onChoose('save')}>
+            {l.save}
+          </button>
         </div>
       </div>
     </div>
@@ -581,6 +743,8 @@ interface CanvasesProps {
   onCanvas: (i: number, c: CanvasConfig | null) => void;
   /** Moves the canvas at `from` to `to`: the order every list of canvases shows (the switcher, the phone). */
   onMove: (from: number, to: number) => void;
+  /** Deletes the saved canvas at `i` at once, apart from the draft. */
+  onDelete: (i: number) => Promise<void>;
   /** Saves the draft; says whether it was saved and applies without a restart. */
   onSave: () => Promise<boolean>;
   onReset: () => void;
@@ -592,14 +756,11 @@ interface CanvasesProps {
 }
 
 /** One canvas of the configuration with its repositories; all canvases are saved together, with the bar at the bottom. */
-function Canvases({ view, rows, n, checked, changed, busy, focus, onAsk, onRecheck, onCanvas, onMove, onSave, onReset, onReload, status, json, onJson }: CanvasesProps) {
+function Canvases({ view, rows, n, checked, changed, busy, focus, onAsk, onRecheck, onCanvas, onMove, onDelete, onSave, onReset, onReload, status, json, onJson }: CanvasesProps) {
   const c = t.config;
   const problems = checked?.problems ?? [];
   // "For everyone" takes over what is saved: with changes in the dialog it saves them first, where that applies without a restart
   const prepare = changed && view.source === 'file' && !view.restarting && !problems.some(blocksSaving) ? onSave : undefined;
-  // a canvas with a problem has no id yet: which running canvas goes is only known once all resolve
-  const resolved = checked?.resolved ?? [];
-  const gone = resolved.every(Boolean) ? view.running.filter((id) => !resolved.some((r) => r?.id === id)) : [];
   // from the command line, saving creates the file: that is worth saying out loud
   const file = view.source === 'file' ? { file: view.file } : { notice: c.fromArgs(view.file) };
   const row = rows[n];
@@ -616,7 +777,7 @@ function Canvases({ view, rows, n, checked, changed, busy, focus, onAsk, onReche
           checking={!checked}
           resolved={checked?.resolved[n] ?? null}
           running={view.running}
-          pin={pin && view.running.includes(pin) ? pin : undefined}
+          pin={pin ?? undefined}
           saved={!changed}
           problems={problems.filter((p) => p.canvas === n)}
           focus={focus}
@@ -625,6 +786,7 @@ function Canvases({ view, rows, n, checked, changed, busy, focus, onAsk, onReche
           onReload={onReload}
           {...(prepare ? { prepare } : {})}
           onChange={(y) => onCanvas(n, y)}
+          {...(pin ? { deletes: pin, onDelete: () => onDelete(n), othersChanged: changed } : {})}
         />
       ) : (
         <Head title={c.sections.canvases} {...(file.file ? { file: file.file } : { hint: file.notice })} />
@@ -634,7 +796,6 @@ function Canvases({ view, rows, n, checked, changed, busy, focus, onAsk, onReche
         .map((p, k) => (
           <Problem key={k} problem={p} where="" ask={changed ? undefined : onAsk} />
         ))}
-      {changed && gone.length > 0 && <p className="hint warn">{c.gone(gone.join(', '))}</p>}
       {json && <pre className="c-json">{JSON.stringify(rows.map((r) => r.canvas), null, 2)}</pre>}
       <div className="cfg-actions">
         <button className="btn primary" disabled={!changed || busy || problems.some(blocksSaving)} onClick={() => void onSave()}>
@@ -894,7 +1055,7 @@ function AgentsBlock({ on }: { on: boolean }) {
 }
 
 /** How demos are narrated: saved on their own, read by the next render, so nothing restarts. */
-function DemoBlock({ on }: { on: boolean }) {
+function DemoBlock({ on, handle }: { on: boolean; /** Set to its draft, for the dialog that asks before closing. */ handle?: { current: DraftHandle | null } }) {
   const [view, setView] = useState<DemoSettingsView | null>(null);
   const [draft, setDraft] = useState<DemoSettings | null>(null);
   const [check, setCheck] = useState<DemoVoiceCheck | null>(null);
@@ -938,14 +1099,24 @@ function DemoBlock({ on }: { on: boolean }) {
   const job = view.job?.voice === draft.voice ? view.job : undefined;
   const unknownCodes = (draft.subtitles ?? []).filter((c) => !knownLanguage(c));
   const save = async () => {
-    if (await act(async () => {
+    const ok = await act(async () => {
       const v = await api.saveDemoSettings(draft);
       setView(v);
       setDraft(v.settings);
       setSubtitlesText(null);
-    }))
-      setStatus(d.saved);
+    });
+    if (ok) setStatus(d.saved);
+    return ok;
   };
+  if (handle)
+    handle.current = {
+      changed,
+      save,
+      discard: () => {
+        setDraft(view.settings);
+        setSubtitlesText(null);
+      },
+    };
   // installing and sampling leave Save as it is: the status line alone is theirs too
   const install = () => {
     setStatus('');
@@ -1525,10 +1696,18 @@ interface CanvasProps {
   onMove?: (earlier: boolean) => void;
   /** It is the last canvas: it cannot move down. */
   last?: boolean;
+  /** The id it is saved under, which deleting it goes by. */
+  deletes?: string;
+  /** Deletes it at once, apart from the draft; none for a canvas not saved yet, which its bin just takes out of the draft. */
+  onDelete?: () => Promise<void>;
+  /** The draft holds changes, which stay waiting for Save when it is deleted. */
+  othersChanged?: boolean;
 }
 
 /** A canvas as its own page: its title with id, order and removal, its name, then each repository with its settings. */
-function CanvasBlock({ n, canvas, file, notice, checking, resolved, running, pin, saved, problems, focus, ask, onRecheck, onReload, prepare, onChange, onMove, last }: CanvasProps) {
+function CanvasBlock({ n, canvas, file, notice, checking, resolved, running, pin, saved, problems, focus, ask, onRecheck, onReload, prepare, onChange, onMove, last, deletes, onDelete, othersChanged }: CanvasProps) {
+  // the panel that deletes it, under its title line
+  const [deleting, setDeleting] = useState(false);
   const fresh = resolved && !running.includes(resolved.id);
   // the Coordinator of the canvas with the problem, where it runs: a card for it goes there
   const askHere = ask && ((text: string) => ask(text, resolved && running.includes(resolved.id) ? resolved.id : undefined));
@@ -1568,8 +1747,11 @@ function CanvasBlock({ n, canvas, file, notice, checking, resolved, running, pin
               })}
             </span>
           )}
-          <RemoveButton label={t.config.removeCanvas} onClick={() => onChange(null)} />
+          <RemoveButton label={onDelete ? t.config.deleteCanvas : t.config.removeCanvas} pressed={onDelete ? deleting : undefined} onClick={() => (onDelete ? setDeleting(!deleting) : onChange(null))} />
         </div>
+        {deletes && onDelete && deleting && (
+          <DeletePanel id={deletes} name={canvas.name?.trim() || resolved?.name || here} repos={canvas.repos.length} othersChanged={!!othersChanged} onDelete={onDelete} onCancel={() => setDeleting(false)} />
+        )}
         {notice && <p className="hint">{notice}</p>}
         <p className="hint">{t.config.settings.hint}</p>
       </header>
@@ -2371,12 +2553,98 @@ function slotsOf(value: string): number | undefined {
 }
 
 /**
+ * What deleting a canvas takes with it, as the server counts it now, and "Delete <name>" beside
+ * "Cancel"; while an agent works on it, the cards at work instead, with a button that pauses them.
+ * Read again every few seconds while open, so the button comes once the agents are done.
+ */
+function DeletePanel({ id, name, repos, othersChanged, onDelete, onCancel }: { id: string; name: string; repos: number; othersChanged: boolean; onDelete: () => Promise<void>; onCancel: () => void }) {
+  const d = t.config.deletion;
+  const [facts, setFacts] = useState<CanvasDeletion | null>(null);
+  const { status, busy, act, failed } = useAct();
+  const [pausing, setPausing] = useState(false);
+  // once none is at work, a pause asked for is over: one that starts later gets the button again
+  const idle = facts !== null && facts.running.length === 0;
+  useEffect(() => {
+    if (idle) setPausing(false);
+  }, [idle]);
+  const look = () => api.canvasDeletion(id).then(setFacts);
+  useEffect(() => void look().catch(failed), [id]);
+  usePoll(true, look, 2000);
+  if (!facts) return <div className="cfg-delete">{status ? <p className="hint err">{status}</p> : <p className="hint">{d.counting(name)}</p>}</div>;
+  const actions = (main?: ReactNode) => (
+    <div className="cfg-delete-actions">
+      {main}
+      <button className="btn" disabled={busy} onClick={onCancel}>
+        {main ? d.cancel : d.close}
+      </button>
+    </div>
+  );
+  if (facts.last)
+    return (
+      <div className="cfg-delete busy" role="region" aria-label={d.ask(name)}>
+        <p>{d.last(name)}</p>
+        {actions()}
+      </div>
+    );
+  const cards = facts.running.filter((x) => !x.lookUp).length;
+  if (facts.running.length)
+    return (
+      <div className="cfg-delete busy" role="region" aria-label={d.ask(name)}>
+        <p>
+          <b>{d.atWork(name)}</b>
+        </p>
+        <ul>
+          {facts.running.map((x) => (
+            <li key={x.id}>
+              {x.lookUp ? x.title : <a href={`${canvasPath(id)}/card/${x.short ?? x.id}`}>{x.title}</a>}
+              {(x.lookUp || x.statusLine) && <span className="hint"> · {x.lookUp ? d.lookingUp : x.statusLine}</span>}
+            </li>
+          ))}
+        </ul>
+        <p className="hint">{pausing ? d.pausing : d.atWorkHint}</p>
+        {status && <p className="hint err">{status}</p>}
+        {actions(
+          // a look-up in the sheet has no pause: it is waited for
+          !pausing && cards > 0 && (
+            <button className="btn" disabled={busy} onClick={() => void act(() => api.pauseAgents(id)).then((ok) => ok && setPausing(true))}>
+              {d.pause(cards)}
+            </button>
+          ),
+        )}
+      </div>
+    );
+  return (
+    <div className="cfg-delete" role="region" aria-label={d.ask(name)}>
+      <p>
+        <b>{d.ask(name)}</b> {d.cards(facts.cards, facts.archived)} {facts.unlanded > 0 && <span className="warn">{d.unlanded(facts.unlanded)} </span>}
+        {facts.prs > 0 && <span className="warn">{d.prs(facts.prs)} </span>}
+        {d.repoStays(repos)} {facts.folder && d.folderStays}
+      </p>
+      {othersChanged && <p className="hint">{d.othersStay}</p>}
+      {status && <p className="hint err">{status}</p>}
+      {actions(
+        <button
+          className="btn destructive"
+          disabled={busy}
+          onClick={() =>
+            // refused (an agent started meanwhile, say): the panel reads again what holds the canvas
+            void act(onDelete).then((ok) => void (ok || look().catch(() => {})))
+          }
+        >
+          {d.delete(name)}
+        </button>,
+      )}
+    </div>
+  );
+}
+
+/**
  * Removes an entry of the configuration (a canvas, a repository, a host): a waste bin, so that it
  * does not pass for the dialog's close button, shown while the pointer or focus is on its entry.
  */
-function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
+function RemoveButton({ label, onClick, pressed }: { label: string; onClick: () => void; /** It opens a panel, open now or not. */ pressed?: boolean }) {
   return (
-    <button className="c-del c-remove" title={label} aria-label={label} onClick={onClick}>
+    <button className={pressed ? 'c-del c-remove on' : 'c-del c-remove'} title={label} aria-label={label} aria-expanded={pressed} onClick={onClick}>
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10.5 11v5.5M13.5 11v5.5" />
       </svg>

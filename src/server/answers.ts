@@ -113,11 +113,28 @@ export class Answers {
   /** Exchanges whose look-up the owner let go on after stopping it: it goes on in its session, which hears so. */
   private goingOn = new Set<number>();
 
+  /** Its canvas stopped for good (`shutdown`): nothing more is looked up. */
+  private closed = false;
+
   constructor(private o: AnswerOptions) {}
+
+  /** The exchanges whose question is being looked up now, or waits for its turn: their agents are at work. */
+  lookingUp(): { id: number; question: string }[] {
+    return [...this.busy].flatMap((id) => {
+      const q = this.o.board.sheet.exchange(id)?.question;
+      return q ? [{ id, question: q }] : [];
+    });
+  }
+
+  /** The canvas is deleted: the look-ups under way end at once, in the middle of a step if need be, and none waiting starts. */
+  shutdown() {
+    this.closed = true;
+    for (const run of this.running.values()) run.end.abort();
+  }
 
   /** Looks up the question of an exchange with the Coordinator; a follow-up goes on in its thread. */
   lookUp(talkId: number) {
-    if (this.busy.has(talkId)) return;
+    if (this.closed || this.busy.has(talkId)) return;
     const t = this.o.board.sheet.exchange(talkId);
     // words joined to a later look-up are answered with it
     if (!t?.question || t.answer !== undefined || t.joinedInto || t.stopped) return;
@@ -164,8 +181,8 @@ export class Answers {
     const run: Running = { talks: [talkId], files: [], end: new AbortController() };
     const last = () => run.talks.at(-1)!;
     this.queue(thread, () => {
-      // stopped while it waited for its turn
-      if (this.o.board.sheet.exchange(last())?.stopped) return Promise.resolve();
+      // stopped while it waited for its turn, or its canvas was deleted meanwhile
+      if (this.closed || this.o.board.sheet.exchange(last())?.stopped) return Promise.resolve();
       this.running.set(thread, run);
       return this.consult({
         thread,

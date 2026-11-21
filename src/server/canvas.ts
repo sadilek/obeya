@@ -7,18 +7,19 @@ import { mkdirSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { defaultsFor } from '../adapters';
 import { Answers, answersDir, answerTag, questionTask } from './answers';
+import type { CanvasRemains } from './canvas-delete';
 import { type DefaultRead, keepCanvasId, keepRepoIds, listedClones, machineSettings, namesClones, originUrl, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, upstreamOf, visibilityKey } from './canvas-config';
 import type { Voicing } from './walkthrough';
-import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
+import { demoDirectory, expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { demoFile } from './demo-files';
 import { openWithSystem } from './machine';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
 import type { Awaited, CardAction, CardPatch, Item, PendingRestart, RepoRef, ProposedSetting, Skill, SpotInput } from '../core/types';
-import { agentListens, awaited, awaitsContributorNext, deletable, untouched, finished, nameless, needsYou, pausable, halted, snoozable, laterTime, plannedToStart } from '../core/card';
+import { agentListens, awaited, awaitsContributorNext, deletable, untouched, finished, nameless, needsYou, pausable, pausableNow, halted, snoozable, laterTime, plannedToStart } from '../core/card';
 import { AGENT_DEFAULTS, agentDefault, type AgentRole, type AgentSetting, type Harness, HARNESSES, replacement } from '../core/agents';
-import { type CanvasConfig, layerSettings, type RepoConfig, repoShape, type RepoSettings, type SettingsShared, SHARED_FIELDS, type DemoSite } from '../core/config';
+import { type CanvasConfig, type CanvasDeletion, layerSettings, type RepoConfig, repoShape, type RepoSettings, type SettingsShared, SHARED_FIELDS, type DemoSite } from '../core/config';
 import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, TITLE_MAX, replyNote } from './board';
 import { pathOfRef, repoOfRef } from './plan-ref';
@@ -58,7 +59,7 @@ import { dimensions } from '../core/page-tags';
 import { type DueRestart, finishedRow, PLANNED_AGAIN, releaseHeld, Workers } from './workers';
 import { type CardWorkspaces, type FileAt, type Landed, Workspaces } from './workspaces';
 import { useBranchSetting } from './branches';
-import { githubToken, gitRun, NO_PROMPT, useGitLogin } from './git';
+import { githubToken, gitRun, gitTry, NO_PROMPT, useGitLogin } from './git';
 import { FolderWorkspaces } from './folder';
 import { claudeToken, hostName, registerHost } from './hosts';
 import { messageOf } from '../core/text';
@@ -2232,7 +2233,8 @@ export class CanvasRuntime {
         if ((c.do === 'start' || c.do === 'force') && c.images?.length) this.ideas.addTaskImages(c.card, c.images);
         return done(this.act(c.card, { action: c.do }));
       case 'configure':
-        return done(this.deps.config?.save(c.canvases));
+        // the canvases it names and leaves out are deleted, as with their bin in the dialog; any other missing now keeps it from saving
+        return done(this.deps.config?.save(c.canvases, { deletes: c.deletes ?? [] }));
       case 'remember':
         return this.remember(c.text, c);
       case 'workRetro':
@@ -2372,6 +2374,120 @@ export class CanvasRuntime {
   /** The cards whose worker is in the middle of a turn, which a restart would cut off. */
   busy(): string[] {
     return this.repos.flatMap((r) => r.workers.busyCards());
+  }
+
+  /**
+   * The cards whose agent is at work now, which keep the canvas from being deleted (design:
+   * Deleting a canvas): starting (its workspace being made ready), in a turn, landing or being
+   * approved; an idea's or a Question card's agent replying. A card waiting for the owner, in a
+   * pull request, queued, paused or snoozed is not among them, even with a background task of its
+   * worker's still running.
+   */
+  atWork(): Item[] {
+    const busy = new Set(this.busy());
+    const git = new Set(this.repos.flatMap((r) => r.workers.gitBusy()));
+    // a turn that ended and only waits for background work holds nothing where the card waits for the owner;
+    // git at work in its workspace (made ready, landing, freed) holds it whatever its state
+    return this.board.items().filter((i) => git.has(i.id) || (busy.has(i.id) && (i.inTurn || !needsYou(i))) || pausableNow(i) || !!i.proposal?.revising);
+  }
+
+  /**
+   * What keeps the canvas from being deleted, by title: its cards at work (`atWork`) and the
+   * questions being looked up in the Coordinator's sheet, whose agents are at work too.
+   */
+  atWorkTitles(): string[] {
+    return [...this.atWork().map((i) => i.title), ...this.answers.lookingUp().map((l) => l.question)];
+  }
+
+  /** The repositories it runs and the clones they list: what deleting another canvas never touches. */
+  ownPaths(): string[] {
+    return this.repos.flatMap((r) => [r.info.path, ...(r.config.workspaces ?? [])].map((p) => resolve(expandHome(p))));
+  }
+
+  /**
+   * Whether the clone at `kept` holds work on `branch` that `main` lacks and goes with the canvas: a
+   * clone Obeya made in its own folder for it, here; one the owner listed, or on another machine, stays.
+   */
+  private async keptWork(kept: string, branch: string, main: string): Promise<boolean> {
+    const own = resolve(this.deps.home, 'workspaces', this.id);
+    if (/^ssh:\/\//.test(kept) || !resolve(kept).startsWith(own + sep)) return false;
+    if (this.repos.some((r) => (r.config.workspaces ?? []).some((w) => resolve(expandHome(w)) === resolve(kept)))) return false;
+    return this.ahead(kept, branch, main);
+  }
+
+  /**
+   * Whether `branch` in the repository at `path` has commits main lacks: main as its origin has it
+   * (merged pull requests land there first), else as here. Where git cannot tell, it has: what the
+   * owner is told goes is rather too much than too little.
+   */
+  private async ahead(path: string, branch: string, main: string): Promise<boolean> {
+    for (const base of [`origin/${main}`, main]) {
+      const n = await gitTry(path, 'rev-list', '--count', '--cherry-pick', '--right-only', `${base}...${branch}`);
+      if (n !== null) return n !== '0';
+    }
+    return true;
+  }
+
+  /** What deleting the canvas takes with it, counted now (`CanvasDeletion`), but for what the configuration says of it. */
+  async deletion(): Promise<Omit<CanvasDeletion, 'id' | 'name' | 'last'>> {
+    const rows = this.deps.store.everyCard(this.id).filter((r) => !r.deleted_at);
+    const items = this.board.items();
+    // the cards' branches in each repository, which deleting the canvas deletes: asked once per repository
+    const branches = new Map(
+      await Promise.all(this.repos.filter((r) => !r.info.folder).map(async (r) => [r.ref.id, new Set((await gitTry(r.info.path, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/'))?.split('\n') ?? [])] as const)),
+    );
+    // what git finds in the workspaces they hold and on their branches, not what their states suggest
+    const holds = await Promise.all(
+      rows.map(async (r) => {
+        const repo = this.repo(r.repo ?? this.repos[0]?.ref.id);
+        if (!repo || repo.workspaces.mode === 'folder') return false;
+        if (await repo.workspaces.hasWork(r.id).catch(() => true)) return true;
+        // work set aside in a clone (archived, or the clone given to another card) stays on its branch there:
+        // lost where that clone is one Obeya made for the canvas on this machine, which goes with it
+        if (r.kept_in) return r.branch ? this.keptWork(r.kept_in, r.branch, repo.info.branch) : false;
+        // a branch without a workspace (its worktree gone) with commits main does not have
+        if (!r.branch || r.adopted || !branches.get(repo.ref.id)?.has(r.branch)) return false;
+        return this.ahead(repo.info.path, r.branch, repo.info.branch);
+      }),
+    );
+    return {
+      cards: rows.length,
+      archived: rows.filter((r) => r.archived_at).length,
+      unlanded: holds.filter(Boolean).length,
+      prs: items.filter((i) => !finished(i.state) && [i.pr, ...(i.morePrs ?? [])].some((p) => p && !p.merged && !p.closed)).length,
+      running: [
+        ...this.atWork().map((i) => ({ id: i.id, title: i.title, ...(i.short ? { short: i.short } : {}), ...(i.statusLine ? { statusLine: i.statusLine } : {}) })),
+        ...this.answers.lookingUp().map((l) => ({ id: `look-up-${l.id}`, title: l.question, lookUp: true as const })),
+      ],
+      folder: this.repos.some((r) => r.workspaces.mode === 'folder'),
+    };
+  }
+
+  /**
+   * The canvas is being deleted: it stops at once, its agents with it, and nothing of it runs or
+   * starts again. Returns what is left of it on disk, for `removeCanvasRemains` once its rows are gone.
+   */
+  stopForDeletion(keep: string[]): CanvasRemains {
+    const cards = this.deps.store.everyCard(this.id);
+    const remains: CanvasRemains = {
+      canvas: this.id,
+      home: this.deps.home,
+      keep,
+      repos: this.repos.map((r) => ({
+        path: r.info.path,
+        git: !r.info.folder,
+        listed: (r.config.workspaces ?? []).map((w) => resolve(expandHome(w))),
+        branches: [...new Set(cards.filter((c) => c.branch && !c.adopted && (c.repo ?? this.repos[0]!.ref.id) === r.ref.id).map((c) => c.branch!))],
+        quiet: r.workspaces instanceof Workspaces ? r.workspaces.quietOwn((r.config.workspaces ?? []).map((w) => resolve(expandHome(w)))) : () => Promise.resolve(),
+      })),
+    };
+    this.retiring = null;
+    this.stopped = true;
+    this.shutdown();
+    // its look-ups too, which a canvas that only stops leaves to finish
+    this.answers.shutdown();
+    console.log(`Obeya: the canvas ${this.id} is deleted; it stopped`);
+    return remains;
   }
 
   /** The owner came back to a page of this canvas: its open pull requests are looked at now, and its demo sites. */
