@@ -56,6 +56,11 @@ describe('a workspace on a host', () => {
     expect(hostName('ssh://gone/x')).toBe('gone');
   });
 
+  test('a command with a forward ends where the forward cannot be made, rather than run without it', () => {
+    expect(host.argv('true', { forward: ['127.0.0.1:40000:127.0.0.1:4000'] })).toContain('ExitOnForwardFailure=yes');
+    expect(host.argv('true')).not.toContain('ExitOnForwardFailure=yes');
+  });
+
   overSsh('runs git there, with the GitHub login on stdin rather than on the command line', async () => {
     const repo = gitRepo(join(dir, 'repo'));
     host.tokenFor(repo, () => 'ghp_secret');

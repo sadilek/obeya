@@ -964,8 +964,10 @@ class GeminiSession implements AgentSession {
     const spec = this.spec;
     const there = this.there;
     const started = there ? await this.startThere(there) : await this.startHere();
-    if (!started || this.closed) return;
+    if (!started) return;
     const acp = (this.acp = started.acp);
+    // closed while it started: what it started goes with it
+    if (this.closed) return acp.close();
     acp.onNotification = (method, params) => this.heard(method, params);
     acp.onRequest = (method, params) => this.asked(method, params);
     await acp.initialize();

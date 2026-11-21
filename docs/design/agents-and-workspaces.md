@@ -754,7 +754,9 @@ directory gone from the profile goes; what it says goes after the installers' di
 what ssh gives. A shell that says nothing leaves the `PATH` read before; only the `PATH` is taken,
 for the same reason as here (a token in an rc file would change the logins there). One shared connection where `ControlMaster` exists (not Windows), its sockets in
 `/tmp/obeya-ssh-<uid>` for the owner alone, since whoever reaches a socket uses its connection;
-`BatchMode`; keep-alives that notice a dropped link within 45 s. The server never waits on a call
+`BatchMode`; keep-alives that notice a dropped link within 45 s. A port forwarded for a session
+that cannot be had there (taken) ends the session as a dropped connection does, rather than let it
+run without what reaches Obeya: hooks that fail let every call run, a read-only agent's writes too. The server never waits on a call
 there: each runs beside its other work. A host whose connection failed counts as unreachable until a
 call there answers again (the pool's next look at its free clones, a minute on, say); then waiting cards look
 again.

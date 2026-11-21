@@ -184,8 +184,10 @@ export class SshHost {
     ]
       .filter(Boolean)
       .join(' ');
-    // a forward from here goes on a connection of its own, which ends with it rather than with the shared one
-    const forwards = [...(o.forward ?? []).flatMap((f) => ['-R', f]), ...(o.local ? ['-o', 'ExitOnForwardFailure=yes', '-L', o.local] : [])];
+    // a forward from here goes on a connection of its own, which ends with it rather than with the shared one;
+    // a forward that cannot be made (its port taken there) ends the command as a lost connection would,
+    // rather than leave it running without what reaches Obeya (a session's hooks would let every call run)
+    const forwards = [...(o.forward?.length || o.local ? ['-o', 'ExitOnForwardFailure=yes'] : []), ...(o.forward ?? []).flatMap((f) => ['-R', f]), ...(o.local ? ['-L', o.local] : [])];
     return [this.o.program ?? process.env.OBEYA_SSH ?? 'ssh', ...this.options(!!o.local), ...forwards, this.o.ssh, `exec sh -c ${sh(script)}`];
   }
 
