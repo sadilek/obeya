@@ -6,13 +6,13 @@ import type { CardDiff } from '../core/diff';
 import { LANGUAGES } from '../core/locale';
 import { MESSAGES, type Messages, type Pause } from '../core/messages';
 import { changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
-import { type Awaited, type MoveTo, type WorkerTurn, type ChangeSize, type Item, type Question, type RestartReason, type Share, type Snooze, type Spot, type SpotInput, type ChangeRoute, type UpstreamRef, type AdoptedPr } from '../core/types';
+import { type Awaited, type MoveTo, type WorkerTurn, type ChangeSize, type Item, type Question, type RestartReason, type Share, type Snooze, type Spot, type SpotInput, type ChangeRoute, type UpstreamRef, type AdoptedPr, type ApproveResult } from '../core/types';
 import { answering, askable, pausable, pausableNow, formatQuestion, handedOver, needsYou } from '../core/card';
-import { AGENT_EFFORTS, agentName, type AgentSetting, type CardAgent, cardAgentOf, type Harness, HARNESS_NAMES, modelFits, storedModel } from '../core/agents';
+import { AGENT_EFFORTS, agentName, type AgentSetting, type CardAgent, cardAgentOf, type Harness, HARNESS_NAMES, HARNESSES, modelFits, storedModel } from '../core/agents';
 import { findTranscript } from './transcript';
 import type { CardLanding } from '../core/config';
 import { BadRequest, type Board, notPaused, pauseRefused, replyNote } from './board';
-import { fromJson, type AskedPermission, type Json, type HeldComment, type LandedState, type PageHeard, type PausedState, type PrState, type Resolving, type Shipped, type Unheard, toJson } from './row';
+import { fromJson, type ApproveAfter, type Detail, type AskedPermission, type Json, type HeldComment, type LandedState, type PageHeard, type PausedState, type PrState, type Resolving, type Shipped, type Unheard, toJson } from './row';
 import { decisionLog } from './advisor';
 import { OBEYA_PLUGIN, placeIn } from './demo';
 import { imageNote } from './images';
@@ -30,6 +30,7 @@ import type { CardRow, RowUpdate } from './db';
 import { clip, messageOf } from '../core/text';
 import { within } from '../core/late';
 import { holdsNotes } from '../core/queue';
+import { awaitsClone, goesOnElsewhere } from './items';
 import { CardApps } from './card-app';
 import { CardTimers } from './card-timers';
 import { ReviewCards } from './review-cards';
@@ -40,7 +41,7 @@ import { WorkerTools } from './worker-tools';
 import { folderOf, sharesOf, type WorkerOptions } from './worker-options';
 import { describeTool, permissionWhat, SPOKEN } from './agent-lines';
 import { mergeBranch, mergeConflictHelp, takeoverNote } from './worker-texts';
-import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, FOLLOW_UP, FOLLOW_UP_FOLDER, ASK_FOR_LINK, failureText, hostResumed, IN_WORKTREE, LINK_DEMO, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTART_OFF, RESTARTED, RESUMED, restartNotice, restartWaits, ROUND_DEMO, RUNS_YOUR_CHANGE, sentence, SESSION_ENDED, spotNote, stillDue, wokeNote } from './worker-texts';
+import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, regainedNote, UNPUSHED_LINK, FOLLOW_UP, FOLLOW_UP_FOLDER, ASK_FOR_LINK, failureText, hostResumed, IN_WORKTREE, LINK_DEMO, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTART_OFF, RESTARTED, RESUMED, restartNotice, restartWaits, ROUND_DEMO, RUNS_YOUR_CHANGE, sentence, SESSION_ENDED, spotNote, stillDue, wokeNote } from './worker-texts';
 
 export type { WorkerOptions } from './worker-options';
 
@@ -71,7 +72,7 @@ function landedAt(row: CardRow): { base: string; commit: string } | undefined {
 }
 
 /** What the card's row becomes when it is planned again, its worker stopped (`Workers.stop`, also where its repository does not run). */
-export const PLANNED_AGAIN = { state: 'planned', need: null, detail: null, pr: null, approved_at: null, paused: null, pausing: null, snoozed: null, app: null } satisfies RowUpdate;
+export const PLANNED_AGAIN = { state: 'planned', need: null, detail: null, pr: null, approved_at: null, approve_after: null, paused: null, pausing: null, snoozed: null, app: null, awaits_clone: null } satisfies RowUpdate;
 
 /** What the card's row becomes once landed work's worker is done (`Workers.finish`, also where its repository does not run). */
 export const finishedRow = (row: CardRow): RowUpdate => ({
@@ -88,6 +89,9 @@ export const finishedRow = (row: CardRow): RowUpdate => ({
 
 /** What the card's row becomes where the owner's approval holds while its worker fixes what stands in the way of landing it. */
 export const approvalKept = (row: CardRow): RowUpdate => ({ state: 'working', need: null, detail: null, status_line: null, approved_at: row.approved_at ?? new Date().toISOString() });
+
+/** Which of the owner's approvals waits for the worker's reply, as its lines in the conversation name it. */
+const approvalHow = (how: ApproveAfter) => (how.push ? 'push' : how.direct ? 'direct' : 'approve');
 
 /** What the card's row becomes where its work is the owner's to approve again. */
 export const ownersAgain = (row: CardRow): RowUpdate => ({ state: 'waiting', need: row.demo ? 'demo' : 'review', status_line: null, approved_at: null });
@@ -184,9 +188,10 @@ const HOLD_GRACE = 10 * 60_000;
 const RELEASE_DELAY = 1500;
 /** Whether the card's status line is the one it shows while its worker waits for a usage limit or an outage, in either language. */
 /** The model and effort the owner picked for "Continue with …" (`AgentSetting` from the page), on the harness `on` it moves to. */
-function pickedOn(pick: unknown, on: Harness): AgentSetting {
+function pickedOn(pick: unknown, from: Harness): AgentSetting {
   const p = (pick && typeof pick === 'object' ? pick : {}) as Record<string, unknown>;
-  if (p.harness !== on) throw new BadRequest('invalid', `the agent that takes over runs on ${on}`);
+  const on = HARNESSES.find((h) => h === p.harness && h !== from);
+  if (!on) throw new BadRequest('invalid', `the agent that takes over runs on another harness than ${from}`);
   if (typeof p.model !== 'string' || !modelFits(on, p.model)) throw new BadRequest('invalid', 'model is not one that harness takes');
   const effort = AGENT_EFFORTS.find((e) => e === p.effort);
   if (!effort) throw new BadRequest('invalid', `effort must be one of ${AGENT_EFFORTS.join(', ')}`);
@@ -397,7 +402,7 @@ export class Workers {
     const contribution = fromJson(row.contribution);
     const pr = contribution ? toJson<PrState>({ url: contribution.url, number: contribution.number, seen: [], reported: [] }) : null;
     // a fresh session knows of no app that was stopped
-    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr, approved_at: null, parked: null, paused: null, pausing: null, snoozed: null, app: null });
+    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr, approved_at: null, approve_after: null, parked: null, paused: null, pausing: null, snoozed: null, app: null, awaits_clone: null });
     const t = this.o.board.t.worker;
     this.o.board.log(card.id, 'state', 'obeya', this.folder ? t.startedInFolder : contribution ? t.reviewStarted(contribution.number, contribution.author) : t.started(branch));
     const launch = (headProblem?: string | null) =>
@@ -506,7 +511,8 @@ export class Workers {
     // the words end the watching, and go at once with the comments held back where there are any
     const send = (header: string, kind: 'feedback' | 'note', ends = false) => {
       const held = this.takeHeld(cardId);
-      const later = !(ends && held);
+      // no session takes them in now (one that starts later, `startsLater`): they wait for it, unread
+      const later = !(ends && held) || this.startsLater(cardId);
       const said = log(later);
       if (text) this.o.onOwnerInput?.(card, kind, text);
       const m = heldFirst(held, words, seen);
@@ -648,6 +654,7 @@ export class Workers {
    * slots, and its worker goes on there. Returns whether it did; the Coordinator asks again as the board changes.
    */
   takeClone(cardId: string): boolean {
+    if (awaitsClone(this.o.board.row(cardId))) return this.regain(cardId);
     if (!this.waitsForClone(cardId)) return false;
     const row = this.o.board.row(cardId);
     let lease: Lease;
@@ -932,19 +939,22 @@ export class Workers {
   /**
    * `direct`: the work goes onto the default branch at once instead of into a pull request, where
    * the repository's settings allow it. `findings`: on a review card, what the owner decided for its
-   * findings and had not sent yet, which goes with the approval (`mergeContribution`).
+   * findings and had not sent yet, which goes with the approval (`mergeContribution`). Clicked while
+   * the worker is still at work on the owner's words, the approval waits for its reply (`approveAfterReply`).
    */
-  async approve(cardId: string, { direct = false, findings, upstream }: { direct?: boolean; findings?: Record<number, ChangeRoute> | undefined; upstream?: boolean } = {}) {
+  async approve(cardId: string, { direct = false, findings, upstream }: { direct?: boolean; findings?: Record<number, ChangeRoute> | undefined; upstream?: boolean } = {}): Promise<ApproveResult | void> {
     const card = this.card(cardId);
     if (!handedOver(card) || this.landing.has(cardId) || this.approving.has(cardId)) throw new BadRequest('notReady', 'the card is not ready for review');
-    if (card.contribution) {
-      if (direct) throw new BadRequest('noDirect', 'a review card merges its pull request');
-      return this.reviews.mergeContribution(cardId, findings && Object.keys(findings).length ? { findings } : {});
+    const decided = findings && Object.keys(findings).length ? findings : undefined;
+    if (card.contribution && direct) throw new BadRequest('noDirect', 'a review card merges its pull request');
+    if (!card.contribution) {
+      if (decided) throw new BadRequest('notReview', 'only a review card has findings to decide on');
+      if (upstream && (!this.o.upstream?.() || direct || card.prototypeOf || this.folder)) throw new BadRequest('noUpstream', 'this repository is no fork whose work lands on its main branch, with an original repository to send a pull request to');
+      if (direct && card.prototypeOf) throw new BadRequest('noDirect', 'a prototype never lands');
+      if (direct && card.adopted?.pr) throw new BadRequest('branchPr', `the branch ${card.adopted.branch} has an open pull request, which the work goes onto`);
     }
-    if (findings && Object.keys(findings).length) throw new BadRequest('notReview', 'only a review card has findings to decide on');
-    if (upstream && (!this.o.upstream?.() || direct || card.prototypeOf || this.folder)) throw new BadRequest('noUpstream', 'this repository is no fork whose work lands on its main branch, with an original repository to send a pull request to');
-    if (direct && card.prototypeOf) throw new BadRequest('noDirect', 'a prototype never lands');
-    if (direct && card.adopted?.pr) throw new BadRequest('branchPr', `the branch ${card.adopted.branch} has an open pull request, which the work goes onto`);
+    if (this.atWorkOn(cardId, card)) return this.approveAfterReply(cardId, card, { ...(direct ? { direct } : {}), ...(decided ? { findings: decided } : {}), ...(upstream !== undefined ? { upstream } : {}) });
+    if (card.contribution) return this.reviews.mergeContribution(cardId, decided ? { findings: decided } : {});
     // a prototype never lands: approving it is having seen enough
     if (card.prototypeOf) {
       this.takeHeld(cardId);
@@ -1017,12 +1027,21 @@ export class Workers {
     // a demo shared later gets its line from Obeya once the pull request is open
     const shared = card.share?.url;
     if (shared) this.pageHeard(cardId);
+    // a remote without the main branch yet (a clone of an empty one) gets it, so the pull request has a base
+    const base = await this.o.workspaces.baseOnOrigin?.().catch(() => null);
+    // Obeya shut down or the card went while origin was asked: no worker starts for it now
+    if (this.shut || !this.o.board.item(cardId)) return;
+    const t = this.o.board.t.worker;
+    if (base && 'pushed' in base) this.o.board.log(cardId, 'state', 'obeya', t.pushedBase(base.pushed));
+    if (base && 'problem' in base) this.o.board.log(cardId, 'error', 'obeya', t.baseRefused(base.branch, base.problem));
     this.deliver(
       cardId,
       [
         `The owner approved your work. In this repository it goes out as a pull request, opened the way the repository does it (its own skills and conventions): from now on you may push this branch. Whoever reads the pull request has not seen Obeya, the card or the plan doc. Do not merge it: ${this.o.adapter.autoMerge === false ? 'the people on the forge merge it' : 'Obeya merges it'} once its checks have passed and its review is through.`,
         card.adopted ? `Your branch ${card.adopted.branch} is the owner's and existed before this card: open the pull request from it under that name${card.adopted.remote ? `, pushing onto ${card.adopted.branch}${this.o.remote ? ` at ${this.o.remote}` : ''} fast-forward only (never force: what is there is published)` : ''}.` : '',
         shared ? `Your demo video is shared with the team on a page of its own: ${shared}. Link it in the pull request's description.` : '',
+        base && 'pushed' in base ? `\`origin\` had no ${base.pushed} branch yet: Obeya pushed the local ${base.pushed} there, as the pull request's base.` : '',
+        base && 'problem' in base ? `\`origin\` has no ${base.branch} branch yet, which the pull request needs as its base, and Obeya's push of the local ${base.branch} there was refused: ${base.problem}` : '',
         'Once you report its URL with pr_opened, Obeya watches it and passes you review comments, failed checks and conflicts; you handle them the way the repository does (its skill for review comments, if it has one). A comment that questions a decision, or a conflict that needs a product call, is the owner’s (ask). Where the work also needs a pull request in another repository, report that one with pr_opened too: Obeya watches each, and the card is live once all are merged.',
         ROUND_DEMO,
         comments?.text ?? '',
@@ -1044,6 +1063,8 @@ export class Workers {
     const card = this.card(cardId);
     if (!this.folder) throw new BadRequest('notFolder', 'only the changes of a card in a folder without git are undone');
     if (!handedOver(card) || this.landing.has(cardId)) throw new BadRequest('notReady', 'only a card waiting for approval has its changes discarded');
+    // what the worker still changes in the folder would come after the undo
+    if (this.atWorkOn(cardId, card)) throw new BadRequest('agentAtWork', 'the agent is still at work on the owner’s words: its changes are discarded once it has replied');
     const report = await this.folder.undo(cardId);
     const t = this.o.board.t.worker;
     const files = (list: string[]) => list.join(', ');
@@ -1271,7 +1292,8 @@ export class Workers {
           ? `${by === 'owner' ? 'The owner approved your work to go directly onto main, and Obeya' : 'Obeya'} pushed it there without a pull request (${result.to.slice(0, 7)}); the card is live.`
           : `${by === 'owner' ? 'The owner approved your work, and it' : 'Your work'} is on main now (${result.to.slice(0, 7)}); the card is live.` +
             (pushed && !pushed.problem ? ` Obeya pushed ${pushed.branch} to origin as well.` : '') +
-            (pushed?.problem ? ` Obeya could not push ${pushed.branch} to origin, so origin does not have your work yet (${pushed.moved ? `origin's ${pushed.branch} has commits the local one lacks` : pushed.problem}); the owner sees why on the card. Link no commit of it where people outside this machine would follow the link.` : ''),
+            (pushed?.problem ? ` Obeya could not push ${pushed.branch} to origin, so origin does not have your work yet (${pushed.moved ? `origin's ${pushed.branch} has commits the local one lacks` : pushed.problem}); the owner sees why on the card. ${UNPUSHED_LINK}` : '') +
+            (!pushed && this.o.remote ? ` Origin does not have it yet: main goes there later, and a pull of origin's main before then gives your commit a new hash. ${UNPUSHED_LINK}` : ''),
         sw
           ? `The Obeya checkout was on ${sw.branch ? `the branch ${sw.branch}` : `a detached HEAD at ${sw.commit}`}, not on main: Obeya switched it to main to land your work.` +
             (sw.commits
@@ -1728,9 +1750,106 @@ export class Workers {
     this.revocations.keep(cardId);
   }
 
-  /** "Push only" on a review card (`ReviewCards.pushContribution`). */
-  pushContribution(cardId: string) {
+  /** "Push only" on a review card (`ReviewCards.pushContribution`); clicked while its worker is still at work on the owner's words, it waits for the reply. */
+  pushContribution(cardId: string): Promise<ApproveResult | void> {
+    const card = this.card(cardId);
+    if (card.contribution && handedOver(card) && !this.approving.has(cardId) && this.atWorkOn(cardId, card)) return this.approveAfterReply(cardId, card, { push: true });
     return this.reviews.pushContribution(cardId);
+  }
+
+  /**
+   * Whether the worker of the handed-over card is still at work on it: taking in the owner's words
+   * (the card says so), or in a turn of its own that has not handed over (yet). Its work may still
+   * change meanwhile; a turn that handed over only ends.
+   */
+  private atWorkOn(cardId: string, card: Item): boolean {
+    return answering(card) || (this.takesLater(cardId) && !this.live.get(cardId)?.turn.handedOver);
+  }
+
+  /**
+   * The owner approved (or pushed a review card's changes) while the worker is still at work on
+   * their words: the approval waits for its reply (`afterReply`), which may change the work, the way
+   * "Build it like this" waits for an idea's. The worker hears of it with its next step. A second
+   * click while it waits says how instead of the first. A review card's approval goes out with the
+   * PR's head its worker handed over, so it notes the handover it saw and the workspace's head then:
+   * work changed since without a new handover would not go out with it.
+   */
+  private async approveAfterReply(cardId: string, card: Item, how: ApproveAfter): Promise<ApproveResult> {
+    const row = this.o.board.row(cardId);
+    const handover = this.o.board.events(cardId).findLast((e) => e.kind === 'review' && e.author === 'worker')?.id;
+    const head = card.contribution && row.workspace && !hostName(row.workspace) ? await gitAsync(row.workspace, 'rev-parse', 'HEAD').catch(() => undefined) : undefined;
+    const before = this.o.board.row(cardId).approve_after;
+    this.o.board.work(cardId, { approve_after: toJson({ ...how, ...(handover !== undefined ? { handover } : {}), ...(head ? { head } : {}) }) });
+    if (!before) {
+      this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.approveAfterReply(approvalHow(how)));
+      const live = this.live.get(cardId);
+      if (live) live.toldApproval = false;
+    }
+    // the turn may have ended while git read the head
+    this.afterReply(cardId, true);
+    return { afterReply: true };
+  }
+
+  /** The worker asks the owner something while an approval waits for its reply: the approval lapses, and the card waits for them. */
+  private lapseApproval(cardId: string) {
+    const how = fromJson(this.o.board.row(cardId).approve_after);
+    if (!how) return;
+    this.o.board.work(cardId, { approve_after: null });
+    this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.notApproved(approvalHow(how), 'question'));
+  }
+
+  /** "Don't approve after all": the approval that waited for the worker's reply is taken back, and the card waits for the owner once it replies. */
+  unapprove(cardId: string) {
+    const how = fromJson(this.o.board.row(cardId).approve_after);
+    if (!how) return;
+    this.o.board.work(cardId, { approve_after: null });
+    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.unapproved(!!how.push));
+    const live = this.live.get(cardId);
+    if (live?.toldApproval) this.tellLater(cardId, 'The owner took back the approval they gave while you were at work: once your turn is over, the card waits for them again, as after any handover.');
+  }
+
+  /** The owner's approval that waits for the worker's reply, passed once with its next tool result. */
+  private approvalNote(cardId: string, live: Live): string | undefined {
+    if (live.toldApproval || this.live.get(cardId) !== live || !this.o.board.row(cardId).approve_after) return;
+    live.toldApproval = true;
+    return 'The owner approved your work while you are still at it on their words. Once you have replied and your turn is over, Obeya carries out their approval with your work as it stands then (your new handover, if you hand over again), without asking them again. Should you ask them something instead, it lapses, and the card waits for them.';
+  }
+
+  /**
+   * The worker may be done with the owner's words (`replied`: with words for them or a new handover;
+   * not: its turn broke off, its session ended): an approval that waited for that is carried out now,
+   * after the code that ended the turn has run, unless the worker is still at work or asks the owner
+   * something. What refuses it then (a landing turned away) shows on the card, which waits for the owner.
+   */
+  private afterReply(cardId: string, replied: boolean) {
+    queueMicrotask(() => void this.approveAfterAll(cardId, replied));
+  }
+
+  /** Whether the worker handed over again after the handover `id` (none: after none). */
+  private handedOverSince(cardId: string, id: number | undefined): boolean {
+    return this.o.board.events(cardId).some((e) => e.kind === 'review' && e.author === 'worker' && (id === undefined || e.id > id));
+  }
+
+  private async approveAfterAll(cardId: string, replied: boolean) {
+    const card = this.o.board.item(cardId);
+    const how = card && fromJson(this.o.board.row(cardId).approve_after);
+    if (!card || !how) return;
+    if (card.state === 'waiting' && card.need !== 'question' && this.atWorkOn(cardId, card)) return;
+    this.o.board.work(cardId, { approve_after: null });
+    const t = this.o.board.t.worker;
+    // a question of its own, also one in a new demo report, is the owner's to answer first
+    const asks = card.need === 'question' || (handedOver(card) && !!card.question);
+    if (!handedOver(card) || asks || !replied) return this.o.board.log(cardId, 'state', 'obeya', t.notApproved(approvalHow(how), asks ? 'question' : 'noReply'));
+    if (card.contribution && how.head && !this.handedOverSince(cardId, how.handover)) {
+      const ws = this.o.board.row(cardId).workspace;
+      const now = ws ? await gitAsync(ws, 'rev-parse', 'HEAD').catch(() => undefined) : undefined;
+      if (now !== how.head) return this.o.board.log(cardId, 'state', 'obeya', t.notApproved(approvalHow(how), 'unhanded'));
+    }
+    try {
+      await (how.push ? this.reviews.pushContribution(cardId) : this.approve(cardId, how));
+    } catch (e) {
+      this.o.board.log(cardId, 'error', 'obeya', messageOf(e), e instanceof BadRequest ? { code: e.code } : {});
+    }
   }
 
   /** The owner's own wording of the text that goes onto the PR with the worker's held changes (`ReviewCards.editHeld`). */
@@ -2178,6 +2297,8 @@ export class Workers {
         this.resumeLanded(i, landed, row.session_id, repo);
         continue;
       }
+      // an approval that waited for a turn the restart cut off after its handover: that turn is over
+      if (row.approve_after && !answering(i)) this.afterReply(i.id, true);
       // a worker taking in the owner's words on its handover was in the middle of a turn too
       if (answering(i)) {
         if (row.workspace && row.session_id) this.launch(i.id, restarted, row.session_id);
@@ -2357,7 +2478,8 @@ export class Workers {
 
   /**
    * A deleted card is restored: it takes back the workspace it had, where it can, on its own branch;
-   * else its next start takes another, with its branch from that clone where it is still there.
+   * else its session, still open in its pull request, ends, and its next start (or what comes next for
+   * its worker, `regain`) takes another, with its branch from that clone where it is still there.
    */
   restored(cardId: string) {
     const row = this.o.board.row(cardId);
@@ -2366,8 +2488,13 @@ export class Workers {
     this.kept.delete(path);
     const retaken = row.branch ? this.o.workspaces.retake(cardId, path, row.branch) : null;
     if (!retaken) {
-      // another card works in that clone now: the card's branch stays there, for its next start to take from it
+      // another card works in that clone now: the card's branch stays there, for its next start to take from it,
+      // or for the fresh workspace its session goes on in once something comes for it (`regain`), not in that clone
       const taken = this.o.workspaces.mode === 'clones' && this.o.workspaces.list().some((w) => w.path === path && w.card_id);
+      if (this.live.has(cardId)) {
+        this.end(cardId);
+        this.bump(cardId);
+      }
       return void this.o.board.work(cardId, { workspace: null, app: null, parked: null, ...(taken ? { kept_in: path } : {}) });
     }
     this.o.board.changed();
@@ -2449,7 +2576,7 @@ export class Workers {
 
   /**
    * "Continue with …" on a card whose worker waits for its harness's limit: its session ends, and a
-   * new one on the other harness (`moveTo`) takes over the card's work, told what the one before did
+   * new one on another harness (`moveTo`, or the one picked) takes over the card's work, told what the one before did
    * (its conversation on the card, its transcript, the branch). The card runs there from then on,
    * after a restart too: its own harness and model become that one's.
    */
@@ -2459,7 +2586,10 @@ export class Workers {
     const move = this.moveTo(cardId, live);
     if (!move) throw new BadRequest('notLimited', "the card's agent does not wait for a limit, or the other harness cannot take over now");
     const { from } = move;
-    const to = pick === undefined || pick === null ? move.to : pickedOn(pick, move.to.harness);
+    const picked = pick === undefined || pick === null ? undefined : pickedOn(pick, from);
+    // a harness picked that cannot take over now (not ready, at its own limit) is refused
+    if (picked && picked.harness !== move.to.harness && !this.o.moveTo?.(from, live.on?.effort, picked.harness)) throw new BadRequest('notLimited', `${HARNESS_NAMES[picked.harness]} cannot take over now`);
+    const to = picked ?? move.to;
     const card = this.card(cardId);
     const row = this.o.board.row(cardId);
     const until = live.limited!;
@@ -2626,7 +2756,7 @@ export class Workers {
       plugins: [OBEYA_PLUGIN],
       ...(env ? { env } : {}),
       contextUpdate: () =>
-        [this.restartStillDue(cardId, live), this.pauseStillDue(live), this.pageNewsNow(cardId, live), this.unheardNow(cardId, live), this.preferencesUpdate(live), this.decisionsUpdate(cardId, live)].filter(Boolean).join('\n\n') || undefined,
+        [this.restartStillDue(cardId, live), this.pauseStillDue(live), this.pageNewsNow(cardId, live), this.unheardNow(cardId, live), this.approvalNote(cardId, live), this.preferencesUpdate(live), this.decisionsUpdate(cardId, live)].filter(Boolean).join('\n\n') || undefined,
       askOwner: (request, signal) => this.askOwner(cardId, live, request, signal),
       ...(this.folder ? { watch: this.folder.watch(cardId) } : {}),
       ...(resume ? { resume } : {}),
@@ -2738,9 +2868,11 @@ export class Workers {
       });
       return;
     }
-    // its worker starts once its workspace is ready and hears them then, or, should git fail, the next start's does
-    if ((said.length && this.takesLater(cardId)) || this.preparingFor(cardId)) {
+    // its worker starts once its workspace is ready and hears them then, or, should git fail, the next start's does;
+    // one whose workspace went takes a fresh one first
+    if ((said.length && this.takesLater(cardId)) || this.startsLater(cardId)) {
       this.tellLater(cardId, text, { said, images });
+      this.regain(cardId);
       return;
     }
     this.o.board.readNow(cardId, said);
@@ -2767,7 +2899,7 @@ export class Workers {
 
   /** Whether the worker is in the middle of a turn, so that the owner's words wait for its next step. */
   private takesLater(cardId: string): boolean {
-    if (this.preparingFor(cardId)) return true;
+    if (this.startsLater(cardId)) return true;
     const live = this.live.get(cardId);
     return !!live && live.busy && !live.work.waiting && !this.apps.stopping.has(cardId) && !this.pausedOf(cardId);
   }
@@ -2775,6 +2907,85 @@ export class Workers {
   /** Whether the card's worker waits for git to make its workspace ready, without a session yet. */
   private preparingFor(cardId: string): boolean {
     return this.preparing.has(cardId) && !this.live.has(cardId);
+  }
+
+  /**
+   * Whether what comes for the card waits for a worker that starts later, as no session can take it
+   * in now: git still makes its workspace ready; or the card has none and no session: with idle
+   * workers (one a scratch Obeya staged at work) no session can start, else its worker goes on in a
+   * fresh workspace (`regain`), where the card's state lets it.
+   */
+  private startsLater(cardId: string): boolean {
+    if (this.preparingFor(cardId)) return true;
+    if (this.live.has(cardId)) return false;
+    const row = this.o.board.row(cardId);
+    return !row.workspace && (!!this.o.idleWorkers || goesOnElsewhere(row));
+  }
+
+  /**
+   * Something came for the worker of a card that has no workspace any more and no session (its
+   * folder gone, or a restored card's clone taken by another card), and waits for it (`unheard`):
+   * the card takes a fresh workspace on its branch, on any machine whatever its slots, as the owner's
+   * question to a finished card does, and the worker's session goes on there and hears it. Where no
+   * clone is free, the card waits for the next (`awaits_clone`; the Coordinator asks `takeClone` as
+   * the board changes). Returns whether the card took one or needs none any more.
+   */
+  private regain(cardId: string): boolean {
+    if (this.o.idleWorkers || this.live.has(cardId) || this.preparing.has(cardId)) return true;
+    const row = this.o.board.row(cardId);
+    if (!goesOnElsewhere(row)) return true;
+    let lease: Lease;
+    try {
+      lease = this.o.workspaces.lease(cardId, row.branch!, { overSlots: true, from: row.kept_in, keep: true });
+    } catch (e) {
+      if (e instanceof WorkspaceError && shortageOf(e.code)) {
+        if (!row.awaits_clone) {
+          this.o.board.work(cardId, { awaits_clone: 1, status_line: this.o.board.t.worker.waitsForWorkspace });
+          this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.awaitsClone);
+        }
+        return false;
+      }
+      // what came waits on; the next that comes tries again
+      this.o.board.work(cardId, { awaits_clone: null, status_line: null, detail: this.notAnswering(cardId) });
+      this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.worker.workspaceFailed(messageOf(e)));
+      return true;
+    }
+    this.bump(cardId);
+    this.o.board.work(cardId, { workspace: lease.path, awaits_clone: null, status_line: null, app: null, parked: null });
+    this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.workspaceRegained(lease.path));
+    // its session lies on the machine it ran on: the clone that keeps its branch, else this one (a folder gone is one here)
+    const sessionHost = hostName(row.kept_in ?? '');
+    void this.whenReady(
+      cardId,
+      lease.ready,
+      () => {
+        if (row.kept_in) this.o.board.work(cardId, { kept_in: null });
+        const now = this.o.board.row(cardId);
+        const text = regainedNote(now.workspace!, row.branch!);
+        if (now.session_id && hostName(now.workspace!) === sessionHost) return this.launch(cardId, text, now.session_id);
+        // a card that never reported a session, or whose session is on another machine: a new one needs the card first
+        const card = this.card(cardId);
+        this.launch(cardId, `${this.brief.briefing(card, row.branch!, true)}\n\n${text}`, undefined, this.brief.taskImages(card));
+      },
+      // without a workspace again, what came waits on for the next try; nothing works on the owner's words meanwhile
+      () => this.o.board.work(cardId, { workspace: null, detail: this.notAnswering(cardId) }),
+      true,
+    ).catch((e: unknown) => {
+      // the clone found free turned out dirty, and no other is left: the card waits for the next
+      if (!(e instanceof BadRequest && shortageOf(e.code)) || this.o.board.row(cardId).workspace) return;
+      this.o.board.work(cardId, { awaits_clone: 1, status_line: this.o.board.t.worker.waitsForWorkspace });
+      this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.awaitsClone);
+    });
+    return true;
+  }
+
+  /** The card's handover as stored, no longer at work on the owner's words (`takingIn`). */
+  private notAnswering(cardId: string): Json<Detail> | null {
+    const detail = this.o.board.row(cardId).detail;
+    const parsed = fromJson(detail);
+    if (!parsed?.answering) return detail;
+    const { answering: _, ...rest } = parsed;
+    return toJson(rest);
   }
 
   /** What waits for the worker, without what starts with `prefix` (news an event since has made stale). */
@@ -3041,6 +3252,8 @@ export class Workers {
         live.work.running = e.background ?? 0;
         if (!live.work.running) live.tasks.clear();
         this.turnEnded(cardId, live, live.work.running, false, this.unheardStarts(cardId, live) || e.more);
+        // a turn that broke off with an error brought no reply
+        this.afterReply(cardId, !live.failed);
         this.apps.parkLater(cardId);
         break;
     }
@@ -3274,6 +3487,7 @@ export class Workers {
     const answered = spoke || !!before;
     this.o.board.work(cardId, { detail: toJson({ ...rest, ...(answered ? { answered: true } : {}) }) });
     if (!answered) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.unanswered);
+    this.afterReply(cardId, answered);
   }
 
   /** The worker's ended turn waits no more: neither for its background work to wake it, nor for the usage limit to lift. */
@@ -3298,6 +3512,7 @@ export class Workers {
     this.setBusy(live, false);
     if (this.live.get(cardId) !== live) return;
     this.turnEnded(cardId, live, 0, true);
+    this.afterReply(cardId, false);
     this.apps.parkLater(cardId);
   }
 
@@ -3442,6 +3657,7 @@ export class Workers {
     this.o.board.log(cardId, 'question', 'worker', formatQuestion(q, this.o.board.language()));
     this.wokenForOwner(cardId);
     this.o.board.work(cardId, { state: 'waiting', need: 'question', detail: toJson({ question: q, permission: asked }) });
+    this.lapseApproval(cardId);
     this.setBusy(live, false);
     return new Promise((resolve) => {
       live.permission = (answer) => {

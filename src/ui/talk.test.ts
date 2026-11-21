@@ -905,3 +905,12 @@ test("a review card's merge, also one Obeya makes on an approval kept through a 
     ]);
   }
 });
+
+test("Obeya's reply on a card that created new cards stays visible with its links instead of folding away", () => {
+  const said = ev('say', 'owner', 'Mach eine Folgeaufgabe Export.');
+  const reply = { ...ev('say', 'coordinator', 'Neue Aufgabe „Export“, der Agent startet.'), created: [{ id: 'c2', title: 'Export' }] };
+  expect(talkTurns([said, reply], { over: true }).shown).toEqual([
+    { e: said, steps: [] },
+    { e: reply, steps: [] },
+  ]);
+});

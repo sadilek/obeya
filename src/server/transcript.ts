@@ -1,6 +1,7 @@
 // The excerpt of a worker's run for the work retrospective, drawn without a model from the Agent
-// SDK's transcript (`<projects>/<workspace path>/<session id>.jsonl`) or from Codex's thread
-// (`<CODEX_HOME>/sessions/<yyyy>/<mm>/<dd>/rollout-<time>-<thread id>.jsonl`): where the worker went
+// SDK's transcript (`<projects>/<workspace path>/<session id>.jsonl`), from Codex's thread
+// (`<CODEX_HOME>/sessions/<yyyy>/<mm>/<dd>/rollout-<time>-<thread id>.jsonl`) or from agy's
+// transcript of a Gemini session (in Obeya's Gemini directory, gemini.ts): where the worker went
 // wrong and corrected itself. The formats are the harnesses' own and may change: whatever cannot be
 // read is left out, and a transcript that cannot be read at all gives no excerpt rather than an error.
 
@@ -10,7 +11,8 @@ import { join } from 'node:path';
 import { clip } from '../core/text';
 import { bareArgv, fileCall, mcpTool } from './codex';
 import type { ToolCall } from './folder';
-import { CODEX_SESSION } from './runtime';
+import { geminiCall, geminiTranscripts } from './gemini';
+import { CODEX_SESSION, GEMINI_SESSION } from './runtime';
 
 /** One tool call of the run, with what came of it and the agent's words around it. */
 export interface Call {
@@ -54,6 +56,7 @@ export function transcriptsDir(): string {
  */
 export function findTranscript(sessionId: string, cwd?: string | null, dir = transcriptsDir()): string | null {
   if (sessionId.startsWith(CODEX_SESSION)) return findThread(sessionId.slice(CODEX_SESSION.length));
+  if (sessionId.startsWith(GEMINI_SESSION)) return geminiTranscripts(sessionId).find((f) => existsSync(f)) ?? null;
   if (!/^[\w-]+$/.test(sessionId)) return null;
   const name = `${sessionId}.jsonl`;
   if (cwd) {
@@ -159,7 +162,7 @@ export function excerpt(jsonl: string): Excerpt | null {
       lines.push(JSON.parse(line));
     } catch {}
   }
-  const run = lines.some((d) => isObject(d) && d.type === 'session_meta') ? codexRun(lines) : claudeRun(lines);
+  const run = lines.some((d) => isObject(d) && d.type === 'session_meta') ? codexRun(lines) : lines.some((d) => isObject(d) && d.type === 'PLANNER_RESPONSE' && 'step_index' in d) ? geminiRun(lines) : claudeRun(lines);
   return run && analyse(run);
 }
 
@@ -235,6 +238,47 @@ function codexRun(lines: unknown[]): Run | null {
     }
   }
   return recognised ? { entries, results } : null;
+}
+
+/**
+ * A Gemini session's run, from agy's transcript: a step per line, the model's (`PLANNER_RESPONSE`)
+ * with its words and tool calls (each argument a JSON text), each call's result in the steps that
+ * follow it, in order, named as the card's log names the live session's (gemini.ts). A call failed
+ * when its step ended in an error.
+ */
+function geminiRun(lines: unknown[]): Run | null {
+  const entries: Entry[] = [];
+  const results = new Map<string, { failed: boolean; output: string }>();
+  const open: string[] = [];
+  let recognised = false;
+  for (const d of lines) {
+    if (!isObject(d) || typeof d.type !== 'string') continue;
+    if (d.type === 'PLANNER_RESPONSE') {
+      recognised = true;
+      const text = str(d.content).trim();
+      if (text) entries.push({ kind: 'text', text });
+      (Array.isArray(d.tool_calls) ? d.tool_calls : []).forEach((c, i) => {
+        if (!isObject(c)) return;
+        const args = Object.fromEntries(Object.entries(isObject(c.args) ? c.args : {}).map(([k, v]) => [k, typeof v === 'string' ? parsed(v) : v]));
+        const call = geminiCall(`${String(d.step_index)}:${i}`, str(c.name), args);
+        entries.push({ kind: 'call', id: call.id, tool: call.name, input: call.input });
+        open.push(call.id);
+      });
+    } else if (d.type !== 'USER_INPUT' && d.type !== 'SYSTEM_MESSAGE' && open.length) {
+      const failed = d.status === 'ERROR' || !!d.error;
+      results.set(open.shift()!, { failed, output: str(d.error) || str(d.content) });
+    }
+  }
+  return recognised ? { entries, results } : null;
+}
+
+/** A value agy wrote as JSON text (`"\"bun test\""`), else the text as it is. */
+function parsed(v: string): unknown {
+  try {
+    return JSON.parse(v);
+  } catch {
+    return v;
+  }
 }
 
 /** The excerpt of a run: its calls, the failures and retries among them, the files written whole again. */

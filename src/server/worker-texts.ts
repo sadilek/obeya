@@ -178,6 +178,10 @@ export const FOLLOW_UP_FOLDER =
 export const FOLLOW_UP =
   "Answer with reply (ask, for a decision that is the owner's). Commits you make here do not land: a change to the code the owner's words call for becomes a card of its own (propose_card). Workspace and session end once you end a turn with nothing left to wait for.";
 
+/** What a worker hears that goes on in a fresh workspace, at `path` on its `branch`, after the one it had went (`Workers.regain`). */
+export const regainedNote = (path: string, branch: string) =>
+  `Your workspace is gone (its folder was removed, or another card works in that clone now), so you go on in a fresh workspace at ${path} on your branch ${branch}, with the commits it holds; anything uncommitted there did not come along, and an app you ran there no longer runs.`;
+
 export const IN_WORKTREE =
   "No clone of the repository was free, so this is a temporary worktree, where the repository's app and tooling may not run. If answering needs a full clone, call need_clone and end your turn: Obeya resumes you in the next free clone.";
 
@@ -190,6 +194,13 @@ export const ROUND_DEMO =
 
 /** Where the worker of landed work links its demo's page. */
 export const LINK_DEMO = 'Link it wherever you point people at this work (an issue you close, say).';
+
+/**
+ * What the worker of work landed on a main that origin does not have yet does with its commit: a
+ * pull before the push rebases it, and a hash linked before then leads nowhere.
+ */
+export const UNPUSHED_LINK =
+  'Link no commit of it where people outside this machine would follow the link (an issue you close, say): name it by its subject instead. Where its demo has a page, the page links the commit, and Obeya keeps that link current.';
 
 /** What the worker of landed work does where its demo is on no page the team can open. */
 export const ASK_FOR_LINK = 'Before you point anyone to your demo (an issue you close, say), ask the owner for a link.';

@@ -105,9 +105,10 @@ const place = (e: CardEvent, prev: CardEvent | undefined): 'owner' | 'agent' | '
     case 'say':
       // the Coordinator's confirmation of what the owner just said folds away; what it looked up for
       // them stands, and so does a reply that answers them without acting (a question of theirs, why
-      // it could not read them), and its answer that Obeya cannot do what they asked, with its link to report that
+      // it could not read them), its answer that Obeya cannot do what they asked, with its link to report that,
+      // and a confirmation that created cards, with their links
       if (e.author === 'owner') return 'owner';
-      if (e.wish || e.reply) return 'aside';
+      if (e.wish || e.reply || e.created?.length) return 'aside';
       return (e.author === 'coordinator' || e.author === 'project') && !(prev?.kind === 'say' && prev.author === 'owner') ? 'aside' : 'step';
     case 'error':
     case 'denied':

@@ -85,6 +85,12 @@ describe('an unlisted site', () => {
     const headers = readFileSync(join(siteDir(), '_headers'), 'utf8');
     expect(headers).toContain('/*\n  X-Robots-Tag: noindex, nofollow\n  Referrer-Policy: no-referrer\n');
     expect(headers).toContain('/:token/:slug/artifact/*');
+    // an artifact's copy names none either
+    const art = join(dir, 'art');
+    mkdirSync(art);
+    writeFileSync(join(art, 'index.html'), '<h2>Graph</h2>');
+    await unlisted().publish(page(`${A}/graph`, { demos: [{ title: 'Graph', text: 'One sentence.', kind: 'html', chapters: [], dir: art }] }));
+    expect(readFileSync(join(siteDir(), A, 'graph/artifact/index.html'), 'utf8')).not.toContain('canonical');
   });
 
   test('refuses a page outside a random part of its address', async () => {

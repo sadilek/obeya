@@ -1529,7 +1529,7 @@ describe('workers', () => {
     expect(board.item(c.id)!.agent).toEqual({ harness: 'claude', model: 'sonnet', effort: 'low' });
     board.chooseAgent(c.id, null);
     expect(board.item(c.id)!.agent).toBeUndefined();
-    for (const bad of [{ harness: 'codex', model: 'opus' }, { harness: 'gemini', model: 'default' }, { harness: 'claude', model: 'gpt-6.1-sol' }, { harness: 'claude' }, { effort: 'huge' }, {}, { model: 'opus', speed: 1 }])
+    for (const bad of [{ harness: 'codex', model: 'opus' }, { harness: 'grok', model: 'default' }, { harness: 'gemini', model: 'gpt-6.1-sol' }, { harness: 'claude', model: 'gpt-6.1-sol' }, { harness: 'claude' }, { effort: 'huge' }, {}, { model: 'opus', speed: 1 }])
       expect(() => board.chooseAgent(c.id, bad as never)).toThrow('harness');
   });
 

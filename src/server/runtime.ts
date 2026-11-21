@@ -1,6 +1,6 @@
 // Agent sessions behind a small interface, so the orchestration can be tested without a model: the
-// contract every runtime fills (Claude Code's in claude.ts, Codex's in codex.ts), the decorators that
-// wrap any of them, and what both runtimes share.
+// contract every runtime fills (Claude Code's in claude.ts, Codex's in codex.ts, Gemini's in
+// gemini.ts), the decorators that wrap any of them, and what the runtimes share.
 
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import type { ChildProcess } from 'node:child_process';
@@ -17,7 +17,7 @@ import { agentDefault, type AgentEffort, type AgentRole, type AgentSetting, type
 import type { HarnessLimit, HarnessLimits } from './limits';
 import type { Listeners } from '../core/watched';
 import { messageOf } from '../core/text';
-import { claudeLoginFailed, codexLoginLost } from '../core/login';
+import { claudeLoginFailed, codexLoginLost, geminiLoginLost } from '../core/login';
 
 export interface AgentTool {
   name: string;
@@ -184,8 +184,11 @@ export interface AgentRuntime {
 /** A Codex thread's id as Obeya keeps it for a session (`AgentEvent` `session`), told apart from a Claude Code session's. */
 export const CODEX_SESSION = 'codex:';
 
-/** The harness a kept session runs on: Codex's threads carry their mark (`CODEX_SESSION`). */
-export const sessionHarness = (session: string): Harness => (session.startsWith(CODEX_SESSION) ? 'codex' : 'claude');
+/** A Gemini session's id as Obeya keeps it for a session (`AgentEvent` `session`), told apart from the others'. */
+export const GEMINI_SESSION = 'gemini:';
+
+/** The harness a kept session runs on: Codex's threads and Gemini's sessions carry their marks (`CODEX_SESSION`, `GEMINI_SESSION`). */
+export const sessionHarness = (session: string): Harness => (session.startsWith(CODEX_SESSION) ? 'codex' : session.startsWith(GEMINI_SESSION) ? 'gemini' : 'claude');
 
 /** What a fallback asks of a harness: whether it is at its limit now, and whether it is ready here (installed, logged in). */
 export interface Availability {
@@ -232,7 +235,7 @@ export function placeAgent(spec: Pick<AgentSpec, 'role' | 'agent' | 'resume' | '
 /**
  * A runtime that starts each agent of a group where `placeAgent` places it, asked at every start
  * (`setting`, the group's as the owner chose it; `avail`, what the fallback asks of a harness).
- * Claude Code's default model is no model given; a Codex agent always gets a family (`codexFamily`),
+ * Claude Code's default model is no model given; a Codex agent always gets a family (`modelFamily`),
  * which its session resolves to a model. An agent placed on its fallback hears so first (`moved`).
  */
 export function withAgentSetting(runtime: AgentRuntime, setting: (role: AgentRole) => AgentSetting, avail?: Availability): AgentRuntime {
@@ -431,14 +434,16 @@ export interface ToolsHeard {
 
 /**
  * What a resumed session is told of Obeya's tools that changed since it last heard of them
- * (`heard`), on `harness`: nothing when none did. Neither harness gives a resumed session the
- * tools as they are now: Claude Code keeps the definitions its session began with (a new tool it
- * adds by itself; a tool search brings the old definition back), Codex keeps a thread's tools with
- * the thread and takes no new ones. So the session reads each changed tool's definition here, and
- * calls it so, which both pass on to the tool as called. A tool new since then reaches a Codex
- * thread in no way: it hears once that it cannot call it.
+ * (`heard`), on `harness`: nothing when none did. Claude Code and Codex give a resumed session the
+ * tools as they were, not as they are now: Claude Code keeps the definitions its session began with
+ * (a new tool it adds by itself; a tool search brings the old definition back), Codex keeps a
+ * thread's tools with the thread and takes no new ones. So the session reads each changed tool's
+ * definition here, and calls it so, which both pass on to the tool as called. A tool new since then
+ * reaches a Codex thread in no way: it hears once that it cannot call it. Gemini needs none of it:
+ * its session lists Obeya's tools anew from their server at every resume.
  */
 export function toolNews(heard: Record<string, string>, tools: AgentTool[], harness: Harness): string | undefined {
+  if (harness === 'gemini') return undefined;
   const named = (name: string) => (harness === 'claude' ? `mcp__obeya__${name}` : name);
   const changed = tools.filter((t) => heard[t.name] !== undefined && heard[t.name] !== UNREACHABLE && heard[t.name] !== toolPrint(t));
   const added = harness === 'codex' ? tools.filter((t) => heard[t.name] === undefined) : [];
@@ -523,7 +528,7 @@ export function limitedRuntime(resetsAt: number): AgentRuntime {
       let closed = false;
       let ended!: () => void;
       const done = new Promise<void>((r) => (ended = r));
-      const id = `${spec.harness === 'codex' ? CODEX_SESSION : ''}${crypto.randomUUID()}`;
+      const id = `${spec.harness === 'codex' ? CODEX_SESSION : spec.harness === 'gemini' ? GEMINI_SESSION : ''}${crypto.randomUUID()}`;
       const turn = () =>
         setTimeout(() => {
           if (closed) return;
@@ -766,7 +771,7 @@ export function withRest(runtime: AgentRuntime, after = REST_AFTER_MS): AgentRun
   };
 }
 
-/** Claude Code and Codex processes started on this machine that still run. */
+/** The harnesses' processes started on this machine that still run. */
 const here = new Set<ChildProcess>();
 
 /** Counts a process among the agents' that `endAgentsHere` ends as Obeya stops. */
@@ -848,6 +853,8 @@ export function failureReason(message: string, t: Messages): string {
   if (claudeUnreachable(message)) return t.failure.unreachable(message);
   const codex = codexLoginLost(message);
   if (codex) return t.failure.codexNotLoggedIn(codex.host);
+  const gemini = geminiLoginLost(message);
+  if (gemini) return t.failure.geminiNotLoggedIn(gemini.host);
   return t.failure.session(message);
 }
 

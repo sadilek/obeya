@@ -397,6 +397,8 @@ export class IdeaActions {
     const shown = this.board.events(cardId).flatMap((e) => (e.kind === 'talk' && e.author === 'owner' ? (e.images ?? []) : []));
     const images = [...new Set([...(idea.images ?? []), ...shown])].slice(-MAX_IMAGES);
     const task = this.board.create({ title: split.title, body: `${split.brief}\n\n${t.settledTask(idea.title)}`, from: cardId, ...(images.length ? { images } : {}) });
+    // its worker runs on what the idea's agents do
+    if (idea.agent) this.board.chooseAgent(task.id, idea.agent);
     this.board.log(task.id, 'state', 'owner', t.settledFrom(idea.title));
     this.board.setIdea(cardId, { split: undefined });
     this.board.decide({ project_id: null, card_id: cardId, question: t.howOn(idea.title), answer: t.splitOffAnswer(split.title), by: 'owner' });
@@ -406,6 +408,7 @@ export class IdeaActions {
       cardId,
       `The owner clicked "${this.board.t.labels.splitOff}": the part you marked as settled is now the task “${split.title}”, on a card of its own beside this idea, and a worker starts on it. Obeya has cleared the split. This idea stays open, with this conversation and its prototypes, planned and running, for what is still open. Trim the brief to what is open (the built part a line under decisions, as the task “${split.title}”), then reply to the owner in a sentence or two.`,
     );
+    return task.id;
   }
 
   /** Building after the reply is taken back: the idea stays in its discussion. */
@@ -637,6 +640,7 @@ export class IdeaActions {
     if (what || !runs.length) runs.push({ approach: approachOf(what), task: what || t.showAsItStands, variant: '' });
     const taken = new Set((this.board.item(cardId)?.prototypes ?? []).map((p) => p.title));
     const started: string[] = [];
+    const createdIds: string[] = [];
     try {
       for (const run of runs) {
         const base = t.prototypeTitle(`${card.title}${run.approach ? ` – ${run.approach}` : ''}`);
@@ -648,9 +652,14 @@ export class IdeaActions {
           void this.repoOf(prototype).workers.start(prototype.id).catch((e: unknown) => this.board.log(prototype.id, 'error', 'obeya', messageOf(e)));
         } catch (e) {
           this.board.remove(prototype.id);
+          if (createdIds.length) {
+            this.board.log(cardId, 'error', 'obeya', messageOf(e));
+            break;
+          }
           throw e;
         }
         started.push(title);
+        createdIds.push(prototype.id);
       }
     } finally {
       if (started.length) {
@@ -665,6 +674,7 @@ export class IdeaActions {
         );
       }
     }
+    return createdIds;
   }
 
   /** A prototype handed over: its demo shows on the idea beside those of the other prototypes, and the idea's agent hears what it found. */

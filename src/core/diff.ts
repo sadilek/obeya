@@ -154,3 +154,107 @@ export function lineDiff(before: string[], after: string[]): { kind: ' ' | '-' |
   }
   return out;
 }
+
+/** A piece of a changed line: `changed` where it differs from the line it replaces (or is replaced by). */
+export interface LinePart {
+  text: string;
+  changed: boolean;
+}
+
+/** A line of a text diff; a line that replaces a similar one (or is replaced by it) has `parts`, which mark the words that differ. */
+export interface TextLine {
+  kind: ' ' | '-' | '+';
+  line: string;
+  parts?: LinePart[];
+}
+
+/** Words, runs of space and single other characters: what a changed line is compared by. */
+const tokens = (s: string) => s.match(/[\p{L}\p{N}_]+|\s+|[^\p{L}\p{N}_\s]/gu) ?? [];
+
+/** Beyond this many token pairs, two lines are not compared word by word (the comparison grows with their product). */
+const WORD_CELLS = 250_000;
+
+/**
+ * Two lines compared word by word: each split into pieces that both share and pieces only it has;
+ * null where they share too little for that to help (less than half their text), so the lines read
+ * as one gone and one new.
+ */
+export function wordDiff(before: string, after: string): [LinePart[], LinePart[]] | null {
+  const a = tokens(before);
+  const b = tokens(after);
+  if (a.length * b.length > WORD_CELLS) return null;
+  const marks = lineDiff(a, b);
+  const shared = marks.reduce((n, m) => (m.kind === ' ' && m.line.trim() ? n + m.line.length : n), 0);
+  if ((2 * shared) / (before.trim().length + after.trim().length || 1) < 0.5) return null;
+  const side = (gone: ' ' | '-' | '+') => {
+    const kept = marks.filter((m) => m.kind !== gone);
+    const parts: LinePart[] = [];
+    kept.forEach((m, i) => {
+      // space between two changed words is part of the change, so a changed phrase reads as one
+      const changed = m.kind !== ' ' || (!m.line.trim() && kept[i - 1]?.kind !== ' ' && kept[i + 1]?.kind !== ' ' && i > 0 && i < kept.length - 1);
+      const last = parts.at(-1);
+      if (last && last.changed === changed) last.text += m.line;
+      else parts.push({ text: m.line, changed });
+    });
+    return parts;
+  };
+  return [side('+'), side('-')];
+}
+
+/**
+ * The lines of `before` and `after` as a diff the owner reads: in each run of changed lines the
+ * gone ones before the new, and a gone line paired with a new one similar to it (in order) marked
+ * word by word.
+ */
+export function textDiff(before: string[], after: string[]): TextLine[] {
+  const out: TextLine[] = [];
+  const marks = lineDiff(before, after);
+  for (let i = 0; i < marks.length; ) {
+    if (marks[i]!.kind === ' ') {
+      out.push(marks[i++]!);
+      continue;
+    }
+    const gone: TextLine[] = [];
+    const added: TextLine[] = [];
+    for (; i < marks.length && marks[i]!.kind !== ' '; i++) (marks[i]!.kind === '-' ? gone : added).push({ ...marks[i]! });
+    let from = 0;
+    for (const g of gone) {
+      for (let j = from; j < added.length; j++) {
+        const parts = wordDiff(g.line, added[j]!.line);
+        if (!parts) continue;
+        [g.parts, added[j]!.parts] = parts;
+        from = j + 1;
+        break;
+      }
+    }
+    out.push(...gone, ...added);
+  }
+  return out;
+}
+
+/** A row of a diff with the unchanged stretches far from a change folded: a line, or how many lines are folded there. */
+export type DiffRow = { line: TextLine } | { folded: TextLine[] };
+
+/** A diff with the unchanged lines more than `context` lines from a change folded into a row each (where that hides at least two). */
+export function foldUnchanged(lines: TextLine[], context = 3): DiffRow[] {
+  const out: DiffRow[] = [];
+  for (let i = 0; i < lines.length; ) {
+    if (lines[i]!.kind !== ' ') {
+      out.push({ line: lines[i++]! });
+      continue;
+    }
+    let end = i;
+    while (end < lines.length && lines[end]!.kind === ' ') end++;
+    const run = lines.slice(i, end);
+    const head = i === 0 ? 0 : context;
+    const tail = end === lines.length ? 0 : context;
+    if (run.length - head - tail < 2) out.push(...run.map((line) => ({ line })));
+    else {
+      out.push(...run.slice(0, head).map((line) => ({ line })));
+      out.push({ folded: run.slice(head, run.length - tail) });
+      out.push(...run.slice(run.length - tail).map((line) => ({ line })));
+    }
+    i = end;
+  }
+  return out;
+}

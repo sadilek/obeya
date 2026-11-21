@@ -6,7 +6,7 @@ import type { CanvasRuntime } from './canvas';
 import type { Session } from './commands';
 import type { Store } from './db';
 import { appCanvas, type History, writeHistory } from './fixtures/history';
-import { cpuTime, heard, removeDir } from './testing';
+import { cpuNow, cpuTime, heard, removeDir } from './testing';
 
 // The server's rounds that ran into its history: with every change of the canvas, every command to
 // the Coordinator and every pass over the shared pages, they read whole tables, and the history
@@ -156,21 +156,22 @@ test('a search through the archive: the first reads it a slice at a time, the se
   const units: number[] = [];
   for (let k = 0; k < 5; k++) units.push(await cpuTime(rebuild(fresh)));
   const unit = Math.min(...units);
-  // each slice: a page of the archive's rows, and what the search reads of their cards
+  // each slice: a page of the archive's rows, and what the search reads of their cards, in CPU time
+  // like the unit (the clock's time counted the waits for a core, which a busy runner made the larger part)
   const slices: number[] = [];
   const store = long.store;
   const page = store.archivePage.bind(store);
   const read = spyOn(store, 'archivePage').mockImplementation((...a) => {
-    const at = performance.now();
+    const at = cpuNow();
     const rows = page(...a);
-    slices.push(performance.now() - at);
+    slices.push(cpuNow() - at);
     return rows;
   });
   const entries = board.archived['indexEntries'].bind(board.archived);
   const built = spyOn(board.archived as unknown as { indexEntries: typeof entries }, 'indexEntries').mockImplementation((rows) => {
-    const at = performance.now();
+    const at = cpuNow();
     const out = entries(rows);
-    slices[slices.length - 1]! += performance.now() - at;
+    slices[slices.length - 1]! += cpuNow() - at;
     return out;
   });
   let between = 0;

@@ -642,9 +642,14 @@ export class Coordinator {
     // cards whose waits ended in this pass
     const freed: Item[] = [];
     // the owner's question to a finished card whose agent needs a full clone goes before queued cards
+    // so do the owner's words to a card that lost its workspace; one whose branch a clone keeps takes one on that clone's machine,
+    // and none there leaves the others to the cards behind it
     for (const f of items.filter((i) => i.waitsForClone && !i.repoDown)) {
       const hands = this.o.repoFor(f);
-      if (full.has(f.repo) || !hands.workspaces.leasable(true) || !hands.workers.takeClone(f.id)) full.add(f.repo);
+      const near = this.o.board.row(f.id).kept_in;
+      if (!full.has(f.repo) && hands.workspaces.leasable(true, near) && hands.workers.takeClone(f.id)) continue;
+      if (near) again = true;
+      else full.add(f.repo);
     }
     for (const w of waiting) {
       // one whose repository does not run waits on until it is back; one giving up its workspace, until it has;

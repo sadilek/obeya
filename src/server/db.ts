@@ -6,7 +6,7 @@ import type { CardAgent } from '../core/agents';
 import type { RepoCommands } from '../core/config';
 import type { CardFile } from '../core/files';
 import type { PlanDoc } from '../core/plan-doc';
-import type { Detail, HeldComment, Json, LandedState, PageHeard, PausedState, PrState, Scope, Shipped, StoredContribution, StoredDemo, StoredDeps, StoredIdea, StoredNewRepo, StoredPrototype, StoredShare, StoredThread, Unheard } from './row';
+import type { ApproveAfter, Detail, HeldComment, Json, LandedState, PageHeard, PausedState, PrState, Scope, Shipped, StoredContribution, StoredDemo, StoredDeps, StoredIdea, StoredNewRepo, StoredPrototype, StoredShare, StoredThread, Unheard } from './row';
 
 /** Where a page of the archive ends (`Store.archivePage`): the last card's archiving, creation and id. */
 export interface ArchiveCursor {
@@ -82,6 +82,11 @@ export interface CardRow {
   prototype_of: string | null;
   /** When the owner approved work that could not land yet; its next handover lands without asking again. */
   approved_at: string | null;
+  /**
+   * The owner's approval of a handed-over card given while its worker was still at work on their
+   * words (`ApproveAfter`): it is carried out once the worker has replied; null otherwise.
+   */
+  approve_after: Json<ApproveAfter> | null;
   /**
    * While the card's work is on main and its worker finishes what remains (its workspace and
    * session are kept until then).
@@ -159,6 +164,12 @@ export interface CardRow {
    * once the card works in a clone again, which takes the branch from there.
    */
   kept_in: string | null;
+  /**
+   * 1 while the card, waiting for the owner or in its pull request, has no workspace any more (its
+   * folder gone, or a restored card's clone taken by another card) and no clone is free for its
+   * worker to go on in with what came for it (`unheard`): it takes the next free one; null otherwise.
+   */
+  awaits_clone: number | null;
   /**
    * A repository to create for the card before work begins; once Obeya made it, with `made`, so its
    * worker hears that the repository is new.
@@ -639,6 +650,12 @@ export const MIGRATIONS = [
     prints TEXT NOT NULL,
     at TEXT NOT NULL
   );`,
+  // an approval clicked while the card's worker was still at work on the owner's words (`CardRow.approve_after`)
+  'ALTER TABLE cards ADD COLUMN approve_after TEXT;',
+  // cards the Coordinator's command created, for its reply to link to them (`Talk.created`, `CardEvent.created`)
+  'ALTER TABLE talk ADD COLUMN created TEXT; ALTER TABLE events ADD COLUMN created TEXT;',
+  // a card without a workspace whose worker waits for the next free clone to go on in (`CardRow.awaits_clone`)
+  'ALTER TABLE cards ADD COLUMN awaits_clone INTEGER;',
 ];
 
 /**
@@ -656,6 +673,7 @@ const EVENT_FIELDS = {
   unread: 'flag',
   readAfter: 'int',
   wish: 'json',
+  created: 'list',
   reply: 'flag',
   forwarded: 'flag',
   token: 'flag',
@@ -787,6 +805,11 @@ export class Store {
   /** Every card on the canvas: not deleted, not archived. */
   cards(canvasId: string): CardRow[] {
     return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND archived_at IS NULL').all({ c: canvasId }) as CardRow[];
+  }
+
+  /** The canvas's cards, archived ones too, whose work landed (`shipped`). */
+  landed(canvasId: string): CardRow[] {
+    return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND shipped IS NOT NULL').all({ c: canvasId }) as CardRow[];
   }
 
   /** The canvas's cards, archived ones too, that were ever shared or are about to be; with `ids`, those among them. */
@@ -1172,6 +1195,24 @@ export class Store {
   /** Takes an event out of the card's log. */
   deleteEvent(cardId: string, id: number) {
     this.db.query('DELETE FROM events WHERE card_id = $c AND id = $id').run({ c: cardId, id });
+  }
+
+  /** Records the cards created by the Coordinator's command on its reply line in the card's log; returns the updated line. */
+  setEventCreated(cardId: string, id: number, created: import('../core/types').TalkCard[]): CardEvent | undefined {
+    if (!created.length) return undefined;
+    this.db.query('UPDATE events SET created = $created WHERE card_id = $c AND id = $id').run({ c: cardId, id, created: JSON.stringify(created) });
+    return this.event(cardId, id);
+  }
+
+  /** Where each of `ids` currently lives across all canvases, and whether it is archived or deleted. */
+  cardLocations(ids: string[]): Map<string, { canvasId: string; short: string | null; archivedAt: string | null; deletedAt: string | null }> {
+    const out = new Map<string, { canvasId: string; short: string | null; archivedAt: string | null; deletedAt: string | null }>();
+    if (!ids.length) return out;
+    const rows = this.db
+      .query('SELECT id, canvas_id, short, archived_at, deleted_at FROM cards WHERE id IN (SELECT value FROM json_each($ids))')
+      .all({ ids: JSON.stringify(ids) }) as { id: string; canvas_id: string; short: string | null; archived_at: string | null; deleted_at: string | null }[];
+    for (const r of rows) out.set(r.id, { canvasId: r.canvas_id, short: r.short, archivedAt: r.archived_at, deletedAt: r.deleted_at });
+    return out;
   }
 
   /** One event of the card's log. */

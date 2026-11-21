@@ -5,9 +5,8 @@
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoVoiceCheck, type Language, type NarrationLanguage, type PageTags, type SetupCheck, type Theme, THEMES, type VoiceKind, type VoiceSetupView } from '../core/types';
-import { AGENT_ROLES, type AgentRole, HARNESSES, otherHarness } from '../core/agents';
+import { AGENT_ROLES, type AgentRole, HARNESSES } from '../core/agents';
 import { blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSite, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type HostConfig, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, START_FAILED } from '../core/config';
-import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { knownLanguage, LANGUAGES } from '../core/locale';
 import { AccessSection } from './access';
@@ -21,6 +20,7 @@ import { plain } from './markdown';
 import { FolderPick } from './folderPick';
 import { demoState, GitSetup, lastLine, platformName, RecognitionDetail, SetupList, useFolderWithoutGit, voiceState } from './setup';
 import { useFitHeight } from './fitHeight';
+import { TextDiff } from './textDiff';
 import { useCopy } from './copy';
 import { fileSize, snoozeWhen, t } from './strings';
 import { applyTheme } from './theme';
@@ -838,9 +838,10 @@ function AgentsBlock({ on }: { on: boolean }) {
         <span className="hint">{a.fallback}</span>
         {AGENT_ROLES.map((role) => {
           const setting = view.agents[role];
-          // the fallback runs on the other harness, with the group's effort until one is chosen for it
-          const other = otherHarness(setting.harness);
-          const instead = setting.fallback?.harness === other ? { harness: other, model: setting.fallback.model, effort: setting.fallback.effort ?? setting.effort } : null;
+          // the fallback runs on another harness, with the group's effort until one is chosen for it
+          const others = HARNESSES.filter((h) => h !== setting.harness);
+          const f = setting.fallback;
+          const instead = f && f.harness !== setting.harness ? { harness: f.harness, model: f.model, effort: f.effort ?? setting.effort } : null;
           const name = a.roles[role].name;
           return (
             <Fragment key={role}>
@@ -871,7 +872,7 @@ function AgentsBlock({ on }: { on: boolean }) {
                   <ModelMenu
                     view={view}
                     onView={setView}
-                    harnesses={[other]}
+                    harnesses={others}
                     on={instead}
                     none={{ label: a.wait, onPick: () => (close(), choose(role, { fallback: null })) }}
                     onModel={(harness, model) => choose(role, { fallback: { harness, model, effort: instead?.effort ?? setting.effort } })}
@@ -1752,6 +1753,7 @@ function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, 
       {problems.map((p, k) => (
         <div key={k} className="cfg-repo-problem">
           <Problem problem={p} where={where} ask={ask} retried={ask && onRecheck} />
+          {p.code === 'noCommit' && <GitSetup key={repo.path.trim()} path={repo.path.trim()} confirm={t.setup.git.commit} onDone={onRecheck} />}
           {p.code === 'notRepo' && noGit && <GitSetup key={noGit} path={noGit} confirm={t.setup.git.confirm} onDone={onRecheck} onFolder={() => onChange({ path: repo.path, git: false, ...(repo.settings ? { settings: repo.settings } : {}) })} />}
           {p.code === 'untrusted' && resolved?.trust && <TrustCommands path={repo.path} trust={resolved.trust} onDone={onRecheck} />}
         </div>
@@ -2479,8 +2481,8 @@ export function Problem({ problem, where, ask, retried }: { problem: ConfigProbl
 
 /**
  * The commands of a repository that wait for the owner's trust (problem `untrusted`): each group
- * with what it does and its lines as last trusted against those on the main branch now, and the
- * button that trusts them; the dialog checks again after it.
+ * with what it does and its lines as last trusted against those on the main branch now (the Claude
+ * Code configuration file by file, only those that changed), and the button that trusts them; the dialog checks again after it.
  */
 function TrustCommands({ path, trust, onDone }: { path: string; trust: RepoTrust; onDone: () => void }) {
   const { status: error, busy, act } = useAct();
@@ -2495,14 +2497,16 @@ function TrustCommands({ path, trust, onDone }: { path: string; trust: RepoTrust
       {trust.held.map((g) => (
         <div key={g} className="c-trust-group">
           <p className="hint">{c[g]}</p>
-          <div className="d-lines">
-            {lineDiff(commandLines(trust.before, g), commandLines(trust.now, g)).map((d, i) => (
-              <div key={i} className={d.kind === '+' ? 'd-add' : d.kind === '-' ? 'd-del' : undefined}>
-                <span className="d-no">{d.kind === ' ' ? '' : d.kind === '+' ? '+' : '−'}</span>
-                <span className="d-text">{d.line}</span>
+          {g === 'claude' ? (
+            changedFiles(trust).map(({ file, was, now }) => (
+              <div key={file} className="c-trust-file">
+                <span className="d-name">{file}</span> {!was ? <span className="hint">{t.diff.status.added}</span> : !now && <span className="hint">{t.diff.status.deleted}</span>}
+                <TextDiff before={was?.text.split('\n') ?? []} after={now?.text.split('\n') ?? []} />
               </div>
-            ))}
-          </div>
+            ))
+          ) : (
+            <TextDiff before={commandLines(trust.before, g)} after={commandLines(trust.now, g)} />
+          )}
           {g === 'claude' && blankOnly(trust).length > 0 && <p className="hint">{c.blankOnly(blankOnly(trust).join(', '))}</p>}
         </div>
       ))}
@@ -2513,6 +2517,13 @@ function TrustCommands({ path, trust, onDone }: { path: string; trust: RepoTrust
     </div>
   );
 }
+
+/** The files of the Claude Code configuration that changed since last trusted, each with its text then and now (none where it is new or gone). */
+const changedFiles = (trust: RepoTrust) => {
+  const was = trust.before?.claude ?? {};
+  const now = trust.now.claude ?? {};
+  return [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((file) => was[file]?.id !== now[file]?.id).map((file) => ({ file, was: was[file], now: now[file] }));
+};
 
 /** The files of the Claude Code configuration whose change the diff cannot show: other contents, the same text but for space at its start or end. */
 const blankOnly = (trust: RepoTrust) =>

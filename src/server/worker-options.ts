@@ -18,6 +18,11 @@ import type { CardWorkspaces, Landed, Workspaces } from './workspaces';
 export interface WorkerOptions {
   board: Board;
   runtime: AgentRuntime;
+  /**
+   * No agent works on a started card (`--idle-workers`, a scratch Obeya): a card staged at work
+   * without a workspace keeps what comes for it, as no worker can start there.
+   */
+  idleWorkers?: boolean;
   workspaces: CardWorkspaces;
   adapter: RepoAdapter;
   /**
@@ -105,10 +110,11 @@ export interface WorkerOptions {
   harness?: () => Harness;
   /**
    * What a card's worker on harness `on` that waits for its limit would go on with ("Continue with
-   * …"): the workers' fallback, else their own setting or the other harness's preset model, with
-   * `effort`; none where that harness is not ready or at its limit itself. Without it no card offers it.
+   * …"), on harness `to` where given: the workers' fallback, else their own setting, else another
+   * harness's preset model, with `effort`, the first whose harness is ready and not at its limit
+   * itself; none where none is. Without it no card offers it.
    */
-  moveTo?: (on: Harness, effort?: AgentEffort) => AgentSetting | undefined;
+  moveTo?: (on: Harness, effort?: AgentEffort, to?: Harness) => AgentSetting | undefined;
   /** Which harness is at its limit (`HarnessLimits`): a waiting worker's card offers to go on elsewhere once that changes. */
   limits?: Listeners;
   /** Where Obeya keeps a copy of each demo handed over (`keepDemo`), by card and handover; without it a demo's files are only where the worker made them. */
@@ -123,6 +129,8 @@ export interface WorkerOptions {
   forge?: Forge;
   /** The repository's checkout, where the forge's calls run for a card without a workspace on this machine. */
   repoPath?: string;
+  /** Whether the repository is still empty (`isEmptyRepo`), as last looked: its workers then set it up beside their task. */
+  empty?: () => boolean;
   /** The URL of the checkout's `origin`, where a review card's PR head is fetched from when it is that repository. */
   remote?: string | null;
   /**

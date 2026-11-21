@@ -4,6 +4,7 @@
 import { userInfo } from 'node:os';
 import { resolve } from 'node:path';
 import { type CardAction, type CardPatch, type NewCard, type PageTags, type SpotInput, type TalkRef, MAX_FILE_BYTES } from '../core/types';
+import { HARNESSES } from '../core/agents';
 import index from '../ui/index.html';
 import { type Gate, guarded, LOCAL_HOSTS, refusal } from './access';
 import { BadRequest } from './board';
@@ -14,7 +15,7 @@ import { SiteSetup } from './site-setup';
 import { isField } from './commands';
 import type { Config } from './config';
 import type { DemoSettingsDialog } from './demo-settings';
-import { serveAnswerFile, serveCardFile, serveDemoFile, serveMockFrame } from './serve-files';
+import { serveAnswerFile, serveCardFile, serveDemoFile, serveMockFrame, servePdf } from './serve-files';
 import { type NarrationHost, parseClipRequest, parseHearRequest } from './narration';
 import type { Restarter } from './self-update';
 import type { Transcriber } from './voice';
@@ -150,7 +151,7 @@ export interface ServeDeps {
   usage?: UsageMeters;
   /** Where the stalls of the pages go, beside the server's own. */
   stalls?: Stalls;
-  /** Claude Code and Codex on this machine, for the Configuration's harnesses and models. */
+  /** Claude Code, Codex and Gemini on this machine, for the Configuration's harnesses and models. */
   harnesses?: Harnesses;
   /** Which harness is at its limit: agents waiting for it look again once the owner saved a fallback. */
   limits?: HarnessLimits;
@@ -428,7 +429,7 @@ function ownerSettingsRoutes(x: Routing) {
     '/api/agents/update': {
       POST: needs(config, async (c, req) => {
         const { harness, host } = await someFields(req);
-        harnesses?.update(harness === 'codex' ? 'codex' : 'claude', typeof host === 'string' ? host : undefined);
+        harnesses?.update(HARNESSES.find((h) => h === harness) ?? 'claude', typeof host === 'string' ? host : undefined);
         return agentsView(c.home, (await harnesses?.view()) ?? [], harnesses?.preferred());
       }),
     },
@@ -698,16 +699,26 @@ function canvasRoutes(x: Routing) {
     // the app running in the card's workspace: whether it answers, and the owner opening it to try it by hand
     '/api/c/:canvas/cards/:id/app': { GET: on((c, req) => c.appUp(req.params.id!)) },
     '/api/c/:canvas/cards/:id/app/open': {
-      GET: async (req) => {
+      GET: async (req, srv) => {
         const c = pages.canvas(req.params.canvas);
         if (!c) return notFound();
+        const text = (body: string, status: number) => new Response(body, { status, headers: { 'content-type': 'text/plain; charset=utf-8' } });
         let url: string | null = null;
         try {
           url = await c.openApp(req.params.id);
         } catch (e) {
           if (!(e instanceof BadRequest)) throw e;
         }
-        return url ? Response.redirect(url, 302) : new Response(c.board.t.worker.appGone, { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+        if (!url) return text(c.board.t.worker.appGone, 404);
+        // another device cannot reach this machine's localhost: it opens the app through a proxy at Obeya's address for it
+        if (!x.access.isLocal(req, srv)) {
+          try {
+            url = await x.access.reach(url);
+          } catch (e) {
+            return text(c.board.t.worker.appUnreachable((e as Error).message), 502);
+          }
+        }
+        return Response.redirect(url, 302);
       },
     },
     '/api/c/:canvas/cards/:id/plan': { GET: on((c, req) => c.board.planDoc(req.params.id!)) },
@@ -752,6 +763,15 @@ function fileRoutes(x: Routing) {
         const image = localImage(new URL(req.url).searchParams.get('path') ?? '');
         if (!image) throw new BadRequest('imageType', 'no image on this machine');
         return new Response(Bun.file(image.file), { headers: { 'content-type': image.type, 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox' } });
+      }),
+    },
+    // a file Obeya keeps for a message (`/files`), opened from the conversation: shown, never run; a PDF in the browser's viewer
+    '/api/c/:canvas/files/stored/:id/:name': {
+      GET: on(async (c, req) => {
+        const file = await c.files.stored(req.params.id!, req.params.name!);
+        if (!file) return notFound();
+        if (/\.pdf$/i.test(file)) return servePdf(Bun.file(file), req.params.name!);
+        return new Response(Bun.file(file), { headers: { 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox' } });
       }),
     },
     '/api/c/:canvas/images/:file': {
@@ -980,7 +1000,8 @@ function voiceRoutes(x: Routing) {
         // `field`: typed into that field of the open card rather than into the Coordinator's sheet
         // `replyTo`: typed in reply to that message of the open card's conversation, or with no card open of the sheet (`TalkRef`)
         // `spot`: typed about that place in the open card's demo video
-        const { text, images, field, replyTo, spot } = (await fields(req)) as { text: string; images?: string[]; field?: unknown; replyTo?: unknown; spot?: SpotInput };
+        // `spoken`: dictated into that field, maybe edited by hand since: spoken words, not typed ones
+        const { text, images, field, replyTo, spot, spoken } = (await fields(req)) as { text: string; images?: string[]; field?: unknown; replyTo?: unknown; spot?: SpotInput; spoken?: unknown };
         // a screenshot alone may speak for itself to the open card's agent
         const card = focusOf(req).card;
         const open = card ? c.board.item(card) : undefined;
@@ -988,7 +1009,7 @@ function voiceRoutes(x: Routing) {
         if (typeof text !== 'string' || (!text.trim() && !(toAgent && images?.length))) throw new BadRequest('emptyText', 'text must be a non-empty string');
         // screenshots pasted into the typed command go to the cards it creates or concerns
         c.images.resolve(images);
-        return heard(c, text.trim(), focusOf(req, c), images ?? [], { typed: true, ...(isField(field) ? { field } : {}), ...(typeof replyTo === 'number' || isTalkRef(replyTo) ? { replyTo } : {}), ...(spot ? { spot } : {}) });
+        return heard(c, text.trim(), focusOf(req, c), images ?? [], { ...(spoken === true ? { dictated: true } : { typed: true }), ...(isField(field) ? { field } : {}), ...(typeof replyTo === 'number' || isTalkRef(replyTo) ? { replyTo } : {}), ...(spot ? { spot } : {}) });
       }),
     },
     '/api/c/:canvas/command/undo': {

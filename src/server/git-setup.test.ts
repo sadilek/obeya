@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DEFAULT_GITIGNORE, previewGitSetup, setUpGit, withoutGit } from './git-setup';
+import { DEFAULT_GITIGNORE, previewGitSetup, setUpGit, withoutCommit, withoutGit } from './git-setup';
 import { gitRepo, ownGlobalGitConfig, removeDir } from './testing';
 import { git } from './git';
 
@@ -42,7 +42,7 @@ describe('setting up git in a folder', () => {
   });
 
   test('the first commit holds every file not ignored, without node_modules and .env', () => {
-    expect(setUpGit(folder)).toEqual({ branch: 'main' });
+    expect(setUpGit(folder)).toMatchObject({ branch: 'main' });
     expect(git(folder, 'ls-tree', '-r', '--name-only', 'HEAD').split('\n')).toEqual(['.gitignore', 'README.md', 'data.bin', 'src/app.ts']);
     expect(git(folder, 'symbolic-ref', '--short', 'HEAD')).toBe('main');
     expect(git(folder, 'log', '-1', '--format=%an <%ae>')).toBe('Ada Lovelace <ada@example.com>');
@@ -67,6 +67,52 @@ describe('setting up git in a folder', () => {
     expect(() => setUpGit(folder)).toThrow(expect.objectContaining({ code: 'noIdentity' }));
     expect(existsSync(join(folder, '.git'))).toBe(false);
     expect(existsSync(join(folder, '.gitignore'))).toBe(false);
+  });
+
+  test('a repository without a commit gets its first one on the branch HEAD names, with what was staged', () => {
+    git(folder, 'init', '--quiet', '--initial-branch=trunk');
+    git(folder, 'add', 'README.md', '.env');
+    writeFileSync(join(folder, '.git', 'info', 'exclude'), 'data.bin\n');
+    expect(withoutCommit(folder)).toBe('trunk');
+    const p = previewGitSetup(folder);
+    // a staged file goes in, though the .gitignore would keep it out
+    expect(p).toMatchObject({ repo: true, branch: 'trunk', gitignore: DEFAULT_GITIGNORE, files: 4 });
+    expect(p.entries.map((e) => e.path)).toContain('.env');
+    expect(p.ignored).toEqual(['data.bin', 'node_modules/']);
+    expect(setUpGit(folder)).toMatchObject({ branch: 'trunk' });
+    expect(git(folder, 'ls-tree', '-r', '--name-only', 'trunk').split('\n')).toEqual(['.env', '.gitignore', 'README.md', 'src/app.ts']);
+    expect(withoutCommit(folder)).toBeNull();
+    expect(() => setUpGit(folder)).toThrow(expect.objectContaining({ code: 'invalid' }));
+  });
+
+  test('the first commit in a repository is taken back with what was staged as it was', () => {
+    git(folder, 'init', '--quiet', '--initial-branch=main');
+    git(folder, 'add', 'README.md');
+    setUpGit(folder).undo();
+    expect(withoutCommit(folder)).toBe('main');
+    expect(git(folder, 'diff', '--cached', '--name-only')).toBe('README.md');
+    expect(existsSync(join(folder, '.gitignore'))).toBe(false);
+  });
+
+  test('a failed first commit in a repository leaves what was staged as it was', () => {
+    git(folder, 'init', '--quiet', '--initial-branch=main');
+    git(folder, 'add', 'README.md');
+    // a hook that refuses the commit
+    writeFileSync(join(folder, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    expect(() => setUpGit(folder)).toThrow(expect.objectContaining({ code: 'gitSetup' }));
+    expect(git(folder, 'diff', '--cached', '--name-only')).toBe('README.md');
+    expect(existsSync(join(folder, '.gitignore'))).toBe(false);
+    expect(withoutCommit(folder)).toBe('main');
+  });
+
+  test('a clone of an empty repository is one without a commit; a folder inside a repository is not', () => {
+    const origin = join(dir, 'origin.git');
+    git(dir, 'init', '--quiet', '--bare', '--initial-branch=trunk', origin);
+    git(dir, 'clone', '--quiet', origin, 'clone');
+    expect(withoutCommit(join(dir, 'clone'))).toBe('trunk');
+    mkdirSync(join(dir, 'clone', 'sub'));
+    expect(withoutCommit(join(dir, 'clone', 'sub'))).toBeNull();
+    expect(withoutCommit(gitRepo(join(dir, 'repo')))).toBeNull();
   });
 
   test('only in a folder without git', () => {

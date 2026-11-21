@@ -89,7 +89,7 @@ export function FolderBox({ item, diff }: { item: Item; diff: CardDiff | null })
  * "Discard changes" on a card waiting for approval: puts back what it changed in the folder.
  * That cannot be taken back once done, so the button first counts down, and a second click on it (or its ×) calls it off.
  */
-export function DiscardChanges({ diff, act, onDone }: { diff: CardDiff | null; act: (a: CardAction, done: ActDone) => Promise<void>; onDone: () => void }) {
+export function DiscardChanges({ diff, act, onDone, busy = false }: { diff: CardDiff | null; act: (a: CardAction, done: ActDone) => Promise<void>; onDone: () => void; busy?: boolean }) {
   const [left, setLeft] = useState<number | null>(null);
   const undoable = (diff?.folder?.changes ?? []).filter((c) => c.undo === 'yes').length;
   useEffect(() => {
@@ -109,7 +109,9 @@ export function DiscardChanges({ diff, act, onDone }: { diff: CardDiff | null; a
     <>
       <button
         className={counting ? 'btn f-discard counting' : 'btn f-discard'}
-        title={counting ? t.folder.cancelHint : t.folder.discardHint(undoable)}
+        // while the agent is at work on the owner's words it still changes the folder: discarding waits for its reply
+        disabled={busy && !counting}
+        title={counting ? t.folder.cancelHint : busy ? t.folder.discardWaits : t.folder.discardHint(undoable)}
         onClick={() => setLeft(counting ? null : DISCARD_WAIT_S)}
       >
         {t.folder.discard}

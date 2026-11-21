@@ -548,7 +548,7 @@ export function stackedPageHtml(p: StackedPageParts): string {
     const link = i === 0 ? changeLink(p, w) : '';
     if (d.kind === 'html')
       return `<div class="links">${ownWindow(`alone=${i + 1}`, w)}${link}</div>
-${artifactFrame(`src="${esc(d.base + ARTIFACT_DIR)}/index.html" `, d.title)}`;
+${artifactFrame(`src="${esc(d.base + ARTIFACT_DIR)}/" `, d.title)}`;
     return videoGrid(
       {
         src: `${d.base}demo.mp4`,

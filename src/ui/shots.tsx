@@ -5,10 +5,10 @@
 
 import { type ClipboardEvent, type DragEvent, type MouseEvent, type PointerEvent, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { IMAGE_TYPES, MAX_FILE_BYTES, MAX_IMAGE_BYTES } from '../core/types';
+import { IMAGE_TYPES, MAX_FILE_BYTES, MAX_IMAGE_BYTES, MAX_IMAGES } from '../core/types';
 import { api, ApiError, at, failText } from './api';
 import { droppedPath, withBytes } from './appDrop';
-import { draftOf, type DraftsHome, draftsHome, dropDraft, insertFilesAt, markupOf, pathWord, setMarkup, updateDraft, updateDraftAt, useDraft } from './draft';
+import { draftOf, type DraftsHome, draftsHome, dropDraft, insertAt, insertFilesAfter, insertFilesAt, insertPastedAt, markupOf, pathWord, setMarkup, updateDraft, updateDraftAt, useDraft } from './draft';
 import { useKnown } from './stored';
 import { badgeOf, CLICK_PX, drawMarks, EDGE, type Mark, markOf, markSize, type Point, RED, roundedRect } from './marks';
 import { confirmPasteHint, pastedShots, pickedShots, usePasteHint } from './pasteHint';
@@ -77,13 +77,23 @@ async function eachFile(key: string, files: File[], one: (f: File, home: DraftsH
   return arrived;
 }
 
-/** Screenshots for a draft, uploaded one after the other; `added` hears each one that arrived. How many did. */
-const attachTo = (key: string, files: File[], added?: () => void) =>
-  eachFile(key, files, async (f, home) => {
+/**
+ * Screenshots for a draft, uploaded one after the other; `added` hears each one that arrived. Those
+ * beyond what a message takes (`MAX_IMAGES`, counting the ones in the draft and on their way) stay
+ * out, and the draft says so at once, before the owner tries to send it. How many arrived.
+ */
+function attachTo(key: string, files: File[], added?: () => void) {
+  const d = draftOf(key);
+  const room = Math.max(0, MAX_IMAGES - d.images.length - d.uploading);
+  const arriving = eachFile(key, files.slice(0, room), async (f, home) => {
     const id = await api.uploadImage(await prepareImage(await withBytes(f)));
     updateDraftAt(home, key, (d) => ({ images: [...d.images, id] }));
     added?.();
   });
+  // after `eachFile` cleared the draft's last error
+  if (files.length > room) updateDraft(key, { error: t.shots.tooMany(files.length - room, MAX_IMAGES) });
+  return arriving;
+}
 
 /**
  * Files for a draft that are no screenshots, one after the other; the path of each goes into its
@@ -99,6 +109,38 @@ const fileTo = (key: string, files: File[], put?: (path: string) => void) =>
     if (put) put(path);
     else insertFilesAt(home, key, [pathWord(path)]);
   });
+
+/**
+ * A text too long for a message (`MAX_MESSAGE_CHARS`) as a file Obeya keeps, named `name`: its path
+ * goes into the draft's text in place of `replaces` where the text still holds it; else, pasted, it
+ * goes in where the text would have, at the cursor as a dropped file's does (`fileTo`), or for a text
+ * pasted outside a field (`outside`) at the end in a paragraph of its own (`insertPasted`), and is
+ * noted as a paste's, for the field to say why its path stands there. Where the upload fails, a
+ * pasted text goes in as text after all, so nothing pasted is lost (the field then offers to move it
+ * into a file), before the draft stops counting it as uploading, so a recording waiting for it takes
+ * it. Whether it arrived; until then the field shows it uploading and does not send.
+ */
+export const textAsFile = async (key: string, text: string, { name = 'pasted-text.txt', replaces, outside = false }: { name?: string; replaces?: string; outside?: boolean } = {}) =>
+  (await eachFile(key, [new File([text], name, { type: 'text/plain' })], async (f, home) => {
+    let word: string;
+    try {
+      word = pathWord(await api.uploadFile(f));
+    } catch (e) {
+      if (!replaces) outside ? insertPastedAt(home, key, [text]) : insertAt(home, key, text);
+      throw e;
+    }
+    let swapped = false;
+    if (replaces)
+      updateDraftAt(home, key, (d) => {
+        if (!d.text.includes(replaces)) return {};
+        swapped = true;
+        return { text: d.text.replace(replaces, () => word), files: [...(d.files ?? []), word] };
+      });
+    if (swapped) return;
+    if (outside) insertFilesAfter(home, key, [word]);
+    else insertFilesAt(home, key, [word]);
+    if (!replaces) updateDraftAt(home, key, { pastedAsFile: word });
+  })) > 0;
 
 /**
  * Pasted or dropped files for a draft: the screenshots as screenshots (`added` hears each), the

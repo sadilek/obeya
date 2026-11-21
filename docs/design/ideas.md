@@ -99,9 +99,9 @@ until the idea becomes a project: then its plan doc decides.
 ### Deciding
 
 "Build it like this" makes the brief the card's task and starts it through the Coordinator like
-"Start agent" (see Scheduling). Like that button it has the menu of the harness, model and effort
-its worker runs on (see Agents and workspaces); the exploration agent stays on the explorers'
-setting.
+"Start agent" (see Scheduling). What the card's agents run on, the exploration agent included,
+is named and changed at the small chip button among the idea's buttons, as on every card, during
+the discussion too (see Harnesses, models and effort in Agents and workspaces).
 
 Beside it stands the repository picker of a card before work begins (see Canvases and repositories),
 with "New repository …": an idea to be built in a repository that does not exist yet. Its agent

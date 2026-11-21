@@ -98,7 +98,7 @@ where it happened, not folded into the next message. A worker stopped while taki
 words on its handover is still at them: the card does not wait for the owner. One whose background
 work runs on stays busy and goes on at the reset without waiting for that work.
 
-Where the workers' group has a fallback on the other harness, or that harness is ready anyway, a
+Where the workers' group has a fallback on another harness, or another harness is ready anyway, a
 worker waiting at work offers to go on there now; a new agent of a group with a fallback runs there
 instead of waiting (see At the limit in Agents and workspaces).
 

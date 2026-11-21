@@ -51,6 +51,20 @@ describe('artifactCopy', () => {
     );
   });
 
+  test('names the address it is to be listed under, in its head and in place of one the artifact names itself', async () => {
+    const files = { 'index.html': '<!doctype html><html lang="en"><head><link rel="canonical" href="https://elsewhere.example/chart"><title>T</title></head><body><a href="more.html">more</a></body></html>', 'more.html': '<link rel=canonical href="https://elsewhere.example/more">' };
+    const { dir } = await copyOf(files);
+    const copy = await artifactCopy(dir, artifactFiles(dir), 'https://demos.example.com', 'https://demos.example.com/chart/artifact/');
+    const index = copy.get('index.html')!;
+    expect(index).toContain(`<meta http-equiv="x-dns-prefetch-control" content="off"><link rel="canonical" href="https://demos.example.com/chart/artifact/"><!doctype html><html lang="en"><head>`);
+    expect(index).not.toContain('elsewhere.example/chart');
+    expect(index.match(/rel="?canonical/g)).toHaveLength(1);
+    // its other pages are only ever at their own address
+    expect(copy.get('more.html')).toContain('<link rel=canonical href="https://elsewhere.example/more">');
+    // without an address to name (an unlisted site, a ZIP) it keeps the artifact's own
+    expect((await copyOf(files)).copy.get('index.html')).toContain('<link rel="canonical" href="https://elsewhere.example/chart">');
+  });
+
   test('bundles module scripts into the page, without the paths of this machine', async () => {
     const { dir, copy } = await copyOf({
       'index.html': `<html><body><script type="module" src="app.js"></script>

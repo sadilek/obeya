@@ -1,14 +1,18 @@
-// The harnesses Obeya runs agents on, as this machine has them: Claude Code and Codex, each
-// installed or not, logged in or not. The setup assistant shows what it found (machine.ts) and tells
-// this what it found; Obeya looks once as it starts. A group of agents the owner chose no harness for
-// runs on Claude Code, unless only Codex is ready here. The Configuration lists each harness with the
-// models it offers: Claude Code's aliases, and the models Codex lists for its login, of each family
-// (`gpt-6.1-sol`, `gpt-5.6-sol`) only the newest, which stands for the family. Each with the version
-// it runs on here: Codex's model ids carry it; which models Claude Code has, an idle Claude Code
-// session says, asked in the background so the menus never wait for it, and an alias stands for the
-// newest of its family among them, which an agent then runs on even where Claude Code's alias still
-// names an older one. Whether a newer Claude Code or Codex is out, npm says; Obeya updates it at the
-// owner's click. The same for Claude Code and Codex on each host, asked over the connection.
+// The harnesses Obeya runs agents on, as this machine has them: Claude Code, Codex and Gemini (the
+// Antigravity CLI), each installed or not, logged in or not. The setup assistant shows what it found
+// (machine.ts) and tells this what it found; Obeya looks once as it starts. A group of agents the
+// owner chose no harness for runs on Claude Code, unless it is not ready and Codex (else Gemini) is.
+// The Configuration lists each harness with the models it offers: Claude Code's aliases, and the
+// models Codex and Gemini list for their logins, of each family (`gpt-6.1-sol`, `gpt-5.6-sol`) only
+// the newest, which stands for the family. Each with the version it runs on here: Codex's and
+// Gemini's model ids carry it; which models Claude Code has, an idle Claude Code session says, asked
+// in the background so the menus never wait for it, and an alias stands for the newest of its family
+// among them, which an agent then runs on even where Claude Code's alias still names an older one.
+// Whether a newer Claude Code or Codex is out, npm says; Obeya updates it at the owner's click. The
+// same for Claude Code and Codex on each host, asked over the connection, and Gemini's version and
+// login there. Gemini updates itself: agy looks for a newer version each time it runs as a command
+// (Obeya's own looks at its version, models and quota are such runs, here and on the hosts), at most
+// every 15 minutes.
 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -16,6 +20,7 @@ import { AGENT_MODELS, type AgentModel, HARNESSES, type Harness, type HarnessHos
 import { Kept } from '../core/kept';
 import { Listeners } from '../core/watched';
 import { codexExecutable, codexLogin, codexModels, codexVersion } from './codex';
+import { geminiExecutable, geminiLogin, geminiModels, geminiVersion, geminiOn } from './gemini';
 import type { SshHost } from './hosts';
 import { idleClaude } from './claude';
 import { messageOf } from '../core/text';
@@ -28,8 +33,10 @@ export interface HarnessFound {
   how?: string;
 }
 
-/** How long Codex's list of models is kept before it is asked again, and a harness looked at again. */
+/** How long Codex's and Gemini's lists of models are kept before they are asked again, and a harness looked at again. */
 const MODELS_FOR_MS = 10 * 60_000;
+/** How long a host's look that found its harness not logged in there counts, when a view asks. */
+const LOGIN_LOOK_MS = 20_000;
 /** How long npm's newest version of a harness is kept before it is asked again. */
 const NEWEST_FOR_MS = 60 * 60_000;
 
@@ -49,15 +56,18 @@ export interface HostHarness {
   harness: Harness;
   /** Whether the host answered the last time it was asked; one that did not is looked at once it does. */
   reachable(): boolean;
-  /** Its version, and for Claude Code the channel it updates from; null: not installed there. Fails where the host does not answer. */
-  look(): Promise<{ version: string; channel?: ClaudeChannel } | null>;
-  /** The models Claude Code lists there; none for Codex, whose models the menus take from this machine's. */
+  /**
+   * Its version, for Claude Code the channel it updates from, for Gemini whether it is logged in
+   * there; null: not installed there. Fails where the host does not answer.
+   */
+  look(): Promise<{ version: string; channel?: ClaudeChannel; loggedIn?: boolean } | null>;
+  /** The models Claude Code lists there; none for Codex and Gemini, whose models the menus take from this machine's. */
   models?(): Promise<ClaudeListed[]>;
-  /** Brings it up to date there. */
-  update(): Promise<void>;
+  /** Brings it up to date there; none for Gemini, which updates itself. */
+  update?(): Promise<void>;
 }
 
-const NAMES: Record<Harness, string> = { claude: 'Claude Code', codex: 'Codex' };
+const NAMES: Record<Harness, string> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini' };
 
 /**
  * A harness installed on one machine, this one or a host: its version as last looked at, the
@@ -187,16 +197,17 @@ class Install {
 export class Harnesses extends Listeners {
   /** By harness, once looked at. */
   private found: Partial<Record<Harness, HarnessFound | null>> = {};
-  private models: { at: number; list: Promise<HarnessModel[]> } | undefined;
+  /** The models Codex and Gemini list here, as last asked. */
+  private models: Partial<Record<Harness, { at: number; list: Promise<HarnessModel[]> }>> = {};
   /** When each harness here was last looked at. */
-  private lookedAt: Record<Harness, number> = { claude: Date.now(), codex: Date.now() };
+  private lookedAt: Record<Harness, number> = { claude: Date.now(), codex: Date.now(), gemini: Date.now() };
   /** Each harness on this machine. */
   private here: Record<Harness, Install>;
   /**
    * Each harness on the hosts, by harness and host name: when it was last looked at there, whether
    * it is installed there.
    */
-  private there = new Map<string, { host: HostHarness; install: Install; at: number; looking?: boolean; installed?: boolean }>();
+  private there = new Map<string, { host: HostHarness; install: Install; at: number; looking?: boolean; installed?: boolean; loggedIn?: boolean }>();
 
   constructor(
     private o: {
@@ -206,6 +217,9 @@ export class Harnesses extends Listeners {
       claude?: () => Promise<HarnessFound | null>;
       codex?: () => Promise<HarnessFound | null>;
       codexModels?: (cwd: string) => Promise<HarnessModel[]>;
+      /** Looks at Gemini; none: `findGemini`. */
+      gemini?: () => Promise<HarnessFound | null>;
+      geminiModels?: () => Promise<HarnessModel[]>;
       /** Asks Claude Code which models it has; none: the aliases go without a version. */
       claudeModels?: (cwd: string) => Promise<ClaudeListed[]>;
       /** The newest Claude Code there is, of the channel given (none: the one this machine's Claude Code updates from); none: no update is offered. */
@@ -246,8 +260,19 @@ export class Harnesses extends Listeners {
           this.set({ codex });
         },
         // the menus have the new version's models once the line goes
-        settle: () => this.codexModels(),
+        settle: () => this.listed('codex'),
         ready: () => this.ready('codex'),
+        changed,
+      }),
+      // agy updates itself: no newest version to offer, nor an update to run
+      gemini: new Install({
+        harness: 'gemini',
+        look: async () => {
+          const gemini = await (this.o.gemini ?? findGemini)();
+          this.lookedAt.gemini = Date.now();
+          this.set({ gemini });
+        },
+        ready: () => this.ready('gemini'),
         changed,
       }),
     };
@@ -255,9 +280,9 @@ export class Harnesses extends Listeners {
 
   /** Looks at the harnesses again. */
   async refresh(): Promise<void> {
-    this.lookedAt = { claude: Date.now(), codex: Date.now() };
-    const [claude, codex] = await Promise.all([this.o.claude?.(), (this.o.codex ?? findCodex)()]);
-    this.set({ ...(claude !== undefined ? { claude } : {}), codex });
+    this.lookedAt = { claude: Date.now(), codex: Date.now(), gemini: Date.now() };
+    const [claude, codex, gemini] = await Promise.all([this.o.claude?.(), (this.o.codex ?? findCodex)(), (this.o.gemini ?? findGemini)()]);
+    this.set({ ...(claude !== undefined ? { claude } : {}), codex, gemini });
   }
 
   /** What a look found (null: not installed). */
@@ -265,10 +290,11 @@ export class Harnesses extends Listeners {
     const before = this.found;
     this.found = { ...this.found, ...found };
     if (JSON.stringify(this.found) === JSON.stringify(before)) return;
-    // another Codex may list other models
-    if (!this.ready('codex') || this.found.codex?.version !== before.codex?.version) this.models = undefined;
+    // another Codex or Gemini may list other models
+    for (const h of ['codex', 'gemini'] as const) if (!this.ready(h) || this.found[h]?.version !== before[h]?.version) delete this.models[h];
     this.here.claude.found(this.found.claude?.version);
     this.here.codex.found(this.found.codex?.version);
+    this.here.gemini.found(this.found.gemini?.version);
     this.emit();
   }
 
@@ -289,15 +315,17 @@ export class Harnesses extends Listeners {
           const at = this.there.get(key);
           if (at?.host !== host) return;
           at.installed = !!found;
+          at.loggedIn = found?.loggedIn;
           at.install.found(found?.version, found?.channel);
         };
-        const newest = host.harness === 'claude' ? this.o.claudeNewest : this.o.codexNewest;
+        // agy updates itself: npm has no newest version of it to offer
+        const newest = host.harness === 'claude' ? this.o.claudeNewest : host.harness === 'codex' ? this.o.codexNewest : undefined;
         const install = new Install({
           harness: host.harness,
           host: host.name,
           ...(host.models ? { models: () => host.models!() } : {}),
           ...(newest ? { newest } : {}),
-          update: () => host.update(),
+          ...(host.update ? { update: () => host.update!() } : {}),
           look,
           ready: () => !!this.there.get(key)?.installed,
           changed: () => this.emit(),
@@ -305,15 +333,17 @@ export class Harnesses extends Listeners {
         on = { host, install, at: 0 };
         this.there.set(key, on);
       }
-      if (on.looking || !host.reachable() || Date.now() - on.at <= MODELS_FOR_MS) continue;
+      // one not logged in there is looked at again sooner, so a login the owner just gave shows soon
+      if (on.looking || !host.reachable() || Date.now() - on.at <= (on.loggedIn === false ? LOGIN_LOOK_MS : MODELS_FOR_MS)) continue;
       const it = on;
       it.looking = true;
       it.at = Date.now();
       void (async () => {
         try {
-          const version = it.install.version;
+          const { version } = it.install;
+          const { loggedIn } = it;
           await it.install.look();
-          if (it.install.version !== version) this.emit();
+          if (it.install.version !== version || it.loggedIn !== loggedIn) this.emit();
         } catch {
           // asked again once it answers
           it.at = 0;
@@ -323,15 +353,16 @@ export class Harnesses extends Listeners {
     }
   }
 
-  /** Installed and logged in. Claude Code counts as ready until a look says otherwise, Codex once one says so. */
+  /** Installed and logged in. Claude Code counts as ready until a look says otherwise, Codex and Gemini once one says so. */
   ready(h: Harness): boolean {
     const f = this.found[h];
     return f === undefined ? h === 'claude' : !!f?.loggedIn;
   }
 
-  /** The harness of a group the owner chose none for: Claude Code, unless only Codex is ready. */
+  /** The harness of a group the owner chose none for: Claude Code, unless it is not ready and Codex (else Gemini) is. */
   preferred(): Harness {
-    return !this.ready('claude') && this.ready('codex') ? 'codex' : 'claude';
+    if (this.ready('claude')) return 'claude';
+    return this.ready('codex') ? 'codex' : this.ready('gemini') ? 'gemini' : 'claude';
   }
 
   /** Each harness with what it offers, for the Configuration. */
@@ -352,9 +383,10 @@ export class Harnesses extends Listeners {
       models: AGENT_MODELS.filter((id) => id !== 'default').map((id) => ({ id, ...(resolved[id] ? { resolved: resolved[id] } : {}) })),
       ...this.updates('claude'),
     };
-    const listed = this.ready('codex') ? await this.codexModels() : [];
-    const codex: HarnessView = { id: 'codex', ready: this.ready('codex'), ...this.version('codex'), models: newestOfFamilies(listed), ...this.updates('codex') };
-    return [claude, codex];
+    const [codexListed, geminiListed] = await Promise.all((['codex', 'gemini'] as const).map((h) => (this.ready(h) ? this.listed(h) : [])));
+    const codex: HarnessView = { id: 'codex', ready: this.ready('codex'), ...this.version('codex'), models: newestOfFamilies(codexListed!), ...this.updates('codex') };
+    const gemini: HarnessView = { id: 'gemini', ready: this.ready('gemini'), ...this.version('gemini'), models: newestOfFamilies(geminiListed!), ...this.updates('gemini') };
+    return [claude, codex, gemini];
   }
 
   private version(h: Harness) {
@@ -362,7 +394,7 @@ export class Harnesses extends Listeners {
     return v ? { version: v } : {};
   }
 
-  /** A harness's update here, and its version and update on each host that has it. */
+  /** A harness's update here, and its version and update on each host that has it (and whether it is logged in there, where the look says). */
   private updates(h: Harness): Pick<HarnessView, 'update' | 'hosts'> {
     const update = this.here[h].offer();
     const hosts: HarnessHost[] = [];
@@ -370,7 +402,7 @@ export class Harnesses extends Listeners {
       const version = on.install.version;
       if (on.host.harness !== h || !version) continue;
       const offer = on.install.offer();
-      hosts.push({ name: on.host.name, version, ...(offer ? { update: offer } : {}) });
+      hosts.push({ name: on.host.name, version, ...(offer ? { update: offer } : {}), ...(on.loggedIn === false ? { loggedIn: false as const } : {}) });
     }
     return { ...(update ? { update } : {}), ...(hosts.length ? { hosts } : {}) };
   }
@@ -395,16 +427,18 @@ export class Harnesses extends Listeners {
     (host === undefined ? this.here[harness] : this.there.get(`${harness} ${host}`)?.install)?.update();
   }
 
-  private async codexModels(): Promise<HarnessModel[]> {
-    if (!this.models || Date.now() - this.models.at > MODELS_FOR_MS) {
-      const list = (this.o.codexModels ?? codexModels)(this.o.cwd).catch((e) => {
-        console.warn(`Obeya: Codex did not list its models: ${messageOf(e)}`);
-        this.models = undefined;
-        return [];
-      });
-      this.models = { at: Date.now(), list };
-    }
-    return this.models.list;
+  /** The models Codex or Gemini lists here, asked again once they are ten minutes old. */
+  private async listed(h: 'codex' | 'gemini'): Promise<HarnessModel[]> {
+    const kept = this.models[h];
+    if (kept && Date.now() - kept.at <= MODELS_FOR_MS) return kept.list;
+    const ask = h === 'codex' ? () => (this.o.codexModels ?? codexModels)(this.o.cwd) : () => (this.o.geminiModels ?? geminiModels)();
+    const list = ask().catch((e) => {
+      console.warn(`Obeya: ${NAMES[h]} did not list its models: ${messageOf(e)}`);
+      delete this.models[h];
+      return [];
+    });
+    this.models[h] = { at: Date.now(), list };
+    return list;
   }
 }
 
@@ -414,6 +448,15 @@ export async function findCodex(env: Record<string, string | undefined> = proces
   const version = bin ? await codexVersion(bin, env) : null;
   if (!bin || !version) return null;
   const login = await codexLogin(bin, env);
+  return { version, loggedIn: login.loggedIn, ...(login.how ? { how: login.how } : {}) };
+}
+
+/** Gemini on this machine (the Antigravity CLI): its version and whether it is logged in; null where it is not installed. */
+export async function findGemini(env: Record<string, string | undefined> = process.env): Promise<HarnessFound | null> {
+  const bin = await geminiExecutable(env);
+  const version = bin ? await geminiVersion(bin, env) : null;
+  if (!bin || !version) return null;
+  const login = await geminiLogin(bin, env);
   return { version, loggedIn: login.loggedIn, ...(login.how ? { how: login.how } : {}) };
 }
 
@@ -487,6 +530,7 @@ function onHost(host: SshHost): Record<Harness, HostHarness> {
     them = {
       claude: { name: host.name, harness: 'claude', reachable, look: () => host.claude(), models: () => claudeModels('/', host), update: () => host.updateClaude() },
       codex: { name: host.name, harness: 'codex', reachable, look: () => host.codex(), update: () => host.updateCodex() },
+      gemini: { name: host.name, harness: 'gemini', reachable, look: () => geminiOn(host) },
     };
     onHosts.set(host, them);
   }
@@ -498,3 +542,6 @@ export const hostClaude = (host: SshHost): HostHarness => onHost(host).claude;
 
 /** Codex on a host, asked over its connection. */
 export const hostCodex = (host: SshHost): HostHarness => onHost(host).codex;
+
+/** Gemini on a host, asked over its connection. */
+export const hostGemini = (host: SshHost): HostHarness => onHost(host).gemini;

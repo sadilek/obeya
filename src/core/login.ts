@@ -18,3 +18,12 @@ export function codexLoginLost(message: string): { host: string | null } | null 
   const m = /^Codex is not logged in on (this machine|\S+)\. \(/.exec(message);
   return m ? { host: m[1] === 'this machine' ? null : m[1]! } : null;
 }
+
+/**
+ * Whether a message says Gemini lost its login, as Obeya words that failure (`notLoggedIn` in the
+ * server's Gemini runtime), and where: the host's name, or null for the machine Obeya runs on.
+ */
+export function geminiLoginLost(message: string): { host: string | null } | null {
+  const m = /^Gemini is not logged in on (this machine|\S+)\. \(/.exec(message);
+  return m ? { host: m[1] === 'this machine' ? null : m[1]! } : null;
+}

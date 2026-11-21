@@ -7,7 +7,7 @@ import { type Language, languageOf } from '../core/locale';
 import { MESSAGES } from '../core/messages';
 import type { OutdatedBy } from '../core/page-changes';
 import type { NotAProject } from '../core/plan-doc';
-import { type CardState, type DemoKind, type ClipProblem, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type Theme, type VoiceKind, type Idea, type Item, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId, type CloudPreset, type MachineSectionId, type NeededId, type PrId, type PrWait, type Snooze, type Awaited, type AwaitedState, type LostWork } from '../core/types';
+import { type CardState, type DemoKind, type ClipProblem, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type Theme, type VoiceKind, type Idea, type Item, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId, type CloudPreset, type MachineSectionId, type NeededId, type PrId, type PrWait, type Snooze, type Awaited, type AwaitedState, type LostWork, MAX_IMAGES } from '../core/types';
 import { stopped } from '../core/card';
 import type { AgentEffort, AgentModel, AgentRole, Harness } from '../core/agents';
 import type { ConfigProblemCode, LeavingClone } from '../core/config';
@@ -268,9 +268,13 @@ const de = {
   /** Beside the button that starts a card: what its agent runs on, the workers' group's unless chosen for this card. */
   agentPick: {
     /** The narrow part beside the start button that opens the menu. */
-    hint: 'Harness, Modell und Effort nur für diese Karte wählen',
-    /** Beside it while the card has a choice of its own. */
-    chosenHint: 'Gilt nur für diese Karte, für jede Sitzung ihres Laufs. Ändern im Menü daneben.',
+    /** Under the card's buttons: what its agent runs on, as a picker. */
+    runsOn: 'Läuft auf',
+    hint: 'Gilt für jeden Button, der den Agenten startet. Klicken, um für diese Karte ein anderes Modell zu wählen.',
+    /** Beside it where the other role's setting differs (`what`: "Codex · Sol 6.1 · Effort hoch"). */
+    other: { explorer: (what: string) => `als Idee: ${what}`, worker: (what: string) => `beim Bauen: ${what}` },
+    /** Beside it while the card has a choice of its own: back to what the Configuration sets for each role. */
+    reset: 'Einstellungen verwenden',
     effort: 'Effort',
     /** The effort chosen, beside the harness and model in the line beside the button. */
     chosenEffort: (effort: string) => `Effort ${effort}`,
@@ -286,6 +290,10 @@ const de = {
     running: (name: string, host?: string) => (host ? `${name} wird auf ${host} aktualisiert …` : `${name} wird aktualisiert …`),
     failed: (why: string, host?: string) => (host ? `Aktualisieren auf ${host} ging nicht: ${why}` : `Aktualisieren ging nicht: ${why}`),
     again: 'Nochmal versuchen',
+    /** A host whose harness (Gemini) is not logged in there, with the button that logs it in from a terminal here. */
+    notLoggedIn: (name: string, host: string) => `${name} ist auf ${host} nicht angemeldet`,
+    logIn: 'Anmelden',
+    logInHint: (name: string, host: string) => `Öffnet auf diesem Rechner ein Terminal, das sich über SSH bei ${name} auf ${host} anmeldet: dort mit Google anmelden und den Code einfügen.`,
   },
   /** The state of a task the owner stopped, in place of „Geplant“. */
   stoppedState: 'Gestoppt',
@@ -532,6 +540,7 @@ const de = {
     renamedFrom: (from: string) => `vorher ${from}`,
     big: (lines: number) => `${lines} Zeilen, eingeklappt`,
     unfold: 'Aufklappen',
+    unchanged: (lines: number) => `${lines} unveränderte Zeilen`,
     truncated: 'Das Diff ist hier abgeschnitten, weil es zu groß ist; die übrigen Dateien stehen oben in der Liste.',
     copyPath: 'Pfad kopieren',
     copied: '✓ Pfad kopiert',
@@ -556,6 +565,7 @@ const de = {
       'Das hat sich geändert, während der Agent nur Befehle ausführte, die lesen oder warten (wc, sleep …). Wahrscheinlich hat es ein anderes Programm geschrieben: Es zählt nicht zu den Änderungen der Karte, und „Änderungen verwerfen“ lässt es, wie es ist.',
     discard: 'Änderungen verwerfen',
     discardHint: (n: number) => `Setzt ${n === 1 ? '1 Datei' : `${n} Dateien`} zurück, wie sie vor der Karte waren. Die Karte wartet danach weiter auf dich.`,
+    discardWaits: 'Der Agent arbeitet noch an deiner Nachricht und ändert dabei den Ordner: Verwerfen geht, sobald er geantwortet hat.',
     seconds: (s: number) => `${s} s`,
     clickToCancel: 'Noch einmal klicken bricht ab',
     cancelHint: 'Bricht ab: Die Änderungen der Karte bleiben, wie sie sind. Ist die Zeit abgelaufen, lässt sich das Verwerfen nicht mehr zurücknehmen.',
@@ -568,6 +578,13 @@ const de = {
   approvedDirect: 'Freigegeben; geht direkt auf main.',
   approving: 'wird freigegeben …',
   approvingDirect: 'wird direkt auf main gepusht …',
+  approvesAfterReply: 'Gibt nach der Antwort frei …',
+  pushesAfterReply: 'Pusht nach der Antwort …',
+  unapprove: 'Doch nicht freigeben',
+  unpush: 'Doch nicht pushen',
+  approvesAfterReplyAck: 'Freigegeben, sobald der Agent geantwortet hat.',
+  approvesAfterReplyShort: 'Gibt nach der Antwort frei',
+  approvesAfterReplyHint: 'Der Agent arbeitet noch an deiner Nachricht. Sobald seine Antwort da ist, wird freigegeben, mit der Arbeit, wie sie dann steht; fragt er noch etwas, nicht.',
   upstream: {
     approve: (name: string) => `Freigeben + PR an ${name}`,
     approveMine: 'Freigeben, nur für mich',
@@ -741,6 +758,7 @@ const de = {
     snoozeTime: 'Dieser Zeitpunkt liegt nicht im kommenden Jahr.',
     noQuestion: 'Hier ist keine Frage mehr offen.',
     notReady: 'Das ist nicht bereit zur Abnahme.',
+    agentAtWork: 'Der Agent arbeitet noch an deiner Nachricht; verwerfen geht, sobald er geantwortet hat.',
     notHeld: 'Der Kommentar ist schon beim Agenten.',
     noDirect: 'In diesem Repository geht freigegebene Arbeit nur per Pull Request auf main.',
     noUpstream: 'Dieses Repository ist kein Fork, dessen Arbeit auf seinem Hauptbranch landet und an ein Original gehen kann.',
@@ -773,10 +791,12 @@ const de = {
     noSlot: 'Kein Slot frei: Auf jedem Rechner mit freiem Workspace arbeiten so viele Agenten, wie er Slots hat.',
     workspace: 'Der Workspace für den Agenten ließ sich nicht vorbereiten (git-Fehler).',
     emptyText: 'Bitte zuerst einen Text eingeben.',
+    textTooLong: 'Die Nachricht ist zu lang (höchstens 20.000 Zeichen).',
     unknownPreference: 'Diese Präferenz gibt es nicht mehr.',
     unknownSetting: 'Über diesen Vorschlag ist schon entschieden.',
     imageType: 'Das ist kein Bild, das der Agent lesen kann (PNG, JPEG, GIF oder WebP).',
     imageTooLarge: 'Das Bild ist zu groß, auch verkleinert.',
+    tooManyImages: `Nicht gesendet: Eine Nachricht nimmt höchstens ${MAX_IMAGES} Screenshots mit. Nimm einige heraus oder schick sie mit einer zweiten Nachricht.`,
     fileTooLarge: 'Die Datei ist zu groß (höchstens 100 MB).',
     notDone: 'Archivieren lässt sich nur eine eigene Aufgabe, die live, erledigt oder gestoppt ist, oder eine geparkte oder verworfene Idee.',
     holdsWork: 'Auf dem Branch liegt Arbeit, die noch nicht gelandet ist. Starte die Aufgabe neu oder lösche sie.',
@@ -815,6 +835,7 @@ const de = {
     voiceInstalling: 'Es wird schon eine Stimme installiert.',
     voiceCloud: 'Der Dienst hat nicht erkannt:',
     notRepo: 'In diesem Ordner liegt kein git-Repository.',
+    noCommit: 'Dieses Repository hat noch keinen Commit.',
     cloneTarget: 'Diesen Ordner gibt es schon. Einen anderen Zielordner wählen, oder den vorhandenen als Ordner angeben.',
     noIdentity: 'git kennt noch keinen Namen und keine E-Mail für Commits. Bitte in der Einrichtung bei „Name und E-Mail für Commits“ eintragen, dann noch einmal.',
     gitSetup: 'git ließ sich nicht einrichten; der Ordner ist wie vorher.',
@@ -1154,6 +1175,8 @@ const de = {
         'Das Video spielt im Player der Walkthroughs: der Fortschrittsbalken in einem Abschnitt je Kapitel, die Untertitel zum Mitlesen unter dem Bild, mit CC oder C ein- und ausgeschaltet.',
       '2026-11-09-pointer': 'Der Untertitel markiert das Wort, das gerade gesprochen wird, wie im Walkthrough.',
       '2026-11-09-word-times': 'Der Untertitel markiert jedes Wort in dem Moment, in dem es zu hören ist, wo das Video mit den Zeiten seiner Wörter gerendert wurde.',
+      '2026-11-19-artifact-address':
+        'Für Suchmaschinen hat das Artefakt eine einzige Adresse (…/artifact/): Sie führen es einmal statt auch unter …/artifact/index.html.',
       theme: 'Theme geändert: Die Datei .obeya/theme.css des Repositorys ist neu, anders oder entfernt.',
     } satisfies Record<OutdatedBy, string>,
     pages: (n: number) => (n === 1 ? 'eine Seite' : `${n} Seiten`),
@@ -1237,6 +1260,8 @@ const de = {
     settingsHint: 'Aus der Arbeitsrückschau: Werte für die Einstellungen eines Repositorys, weil Agenten auf mehreren Karten dasselbe selbst herausfinden mussten. Du wählst, wohin ein Wert kommt.',
     settingKind: (repo: string) => `Konfiguration ändern · ${repo}`,
     settingWas: 'Bisher',
+    settingChange: 'Änderung',
+    settingSame: 'Gleich wie bisher.',
     settingNew: 'Neu',
     settingEmpty: '(leer)',
     openConfig: 'Zur Einstellung ↗',
@@ -1490,7 +1515,7 @@ const de = {
       title: 'Agenten und Modelle',
       /** By what a group the owner chose nothing for runs on here (`AgentsView.preset`). */
       hint: (preset: Harness) =>
-        `Worauf jede Gruppe von Agenten läuft (Claude Code oder Codex, mit deinem Abo dort), welches Modell sie nimmt und wie viel es nachdenkt (Effort). Voreingestellt ist überall ${preset === 'codex' ? 'Codex mit Sol, da auf diesem Rechner nur Codex eingerichtet ist' : 'Claude Code mit Opus'}, mit hohem Effort für Agenten an Aufgaben und Explorations-Agenten, sonst mittlerem. Ein Codex-Modell steht für seine Familie: Ein Agent läuft auf ihrer neuesten Version auf dem Rechner, auf dem er arbeitet. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann. „Am Limit“: Worauf eine Gruppe ausweicht, solange die Laufzeit, auf der sie läuft, an ihrem Nutzungslimit oder nicht erreichbar ist; mit „Warten“ warten ihre Agenten bis dahin.`,
+        `Worauf jede Gruppe von Agenten läuft (Claude Code, Codex oder Gemini, mit deinem Abo dort), welches Modell sie nimmt und wie viel es nachdenkt (Effort). Voreingestellt ist überall ${preset === 'codex' ? 'Codex mit Sol, da auf diesem Rechner Claude Code nicht eingerichtet ist' : preset === 'gemini' ? 'Gemini mit Neon, da auf diesem Rechner nur Gemini eingerichtet ist' : 'Claude Code mit Opus'}, mit hohem Effort für Agenten an Aufgaben und Explorations-Agenten, sonst mittlerem. Ein Codex- oder Gemini-Modell steht für seine Familie: Ein Agent läuft auf ihrer neuesten Version auf dem Rechner, auf dem er arbeitet. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann. „Am Limit“: Worauf eine Gruppe ausweicht, solange die Laufzeit, auf der sie läuft, an ihrem Nutzungslimit oder nicht erreichbar ist; mit „Warten“ warten ihre Agenten bis dahin.`,
       harness: 'Läuft auf',
       /** The column of each group's fallback while its harness is at its usage limit. */
       fallback: 'Am Limit',
@@ -1526,7 +1551,7 @@ const de = {
     trust: {
       app: 'App stoppen und behalten (app.stop, app.keep): Obeya führt sie aus, wenn eine Karte wartet. Bis dahin bleibt die App laufen.',
       site: 'Demo-Seite (demo.site): Obeya veröffentlicht mit diesem Befehl und liest die Seite unter dieser Adresse. Bis dahin werden Demos exportiert.',
-      claude: 'Claude-Code-Konfiguration des Repositorys (.claude/, .mcp.json): Agenten führen ihre Hooks und MCP-Server ohne Rückfrage aus. Bis dahin arbeiten sie ohne sie.',
+      claude: 'Agenten-Konfiguration des Repositorys (.claude/, .mcp.json; .agents/ für Gemini): Agenten führen ihre Hooks und MCP-Server ohne Rückfrage aus. Bis dahin arbeiten sie ohne sie, Gemini startet in so einem Repository dann nicht.',
       trust: 'Diesen Befehlen vertrauen',
       blankOnly: (files: string) => `In ${files} hat sich nur Leerraum am Anfang oder Ende geändert, den die Ansicht nicht zeigt. Er kann entscheiden, ob ein Hook läuft.`,
     },
@@ -1729,6 +1754,7 @@ const de = {
       noRepo: 'Eine Leinwand braucht mindestens ein Repository.',
       noPath: 'Hier fehlt noch der Pfad.',
       notRepo: 'Unter diesem Pfad liegt kein git-Repository.',
+      noCommit: 'Dieses Repository hat noch keinen Commit; Karten starten von einem Commit aus.',
       noFolder: 'Unter diesem Pfad liegt kein Ordner.',
       sameRepo: 'Dieses Repository hat die Leinwand schon, weiter oben.',
       sameId: 'Gleiche Kennung wie eine andere Leinwand: bitte einen anderen Namen geben.',
@@ -1959,7 +1985,7 @@ const de = {
     title: 'Einrichtung',
     close: 'Schließen',
     introFirst:
-      'Obeya prüft, was es auf diesem Rechner braucht. Nötig sind Claude Code oder Codex mit deiner Anmeldung, und git; der Rest geht auch später. Was ohne Administratorrechte geht, installiert Obeya mit einem Klick, für den Rest steht der Befehl da. Danach legst du die erste Leinwand an.',
+      'Obeya prüft, was es auf diesem Rechner braucht. Nötig sind Claude Code, Codex oder Gemini mit deiner Anmeldung, und git; der Rest geht auch später. Was ohne Administratorrechte geht, installiert Obeya mit einem Klick, für den Rest steht der Befehl da. Danach legst du die erste Leinwand an.',
     intro: 'Was Obeya auf diesem Rechner braucht. Was ohne Administratorrechte geht, installiert Obeya mit einem Klick, für den Rest steht der Befehl da.',
     platform: (platform: string) => `Geprüft auf ${platform}. Die Liste prüft erneut, sobald du aus einem Terminal oder Installer hierher zurückkommst.`,
     needed: 'nötig',
@@ -1969,7 +1995,7 @@ const de = {
     readyLater: 'geht, der Rest lädt beim ersten Gebrauch',
     open: (n: number) => (n === 1 ? '1 fehlt' : `${n} fehlen`),
     sections: {
-      needed: { title: 'Agenten', hint: 'Ohne Claude Code oder Codex, und ohne git, arbeitet kein Agent. Eins von beiden reicht: Claude Code läuft auf deinem Claude-Abo, Codex auf deinem ChatGPT-Abo; welche Agenten worauf laufen, wählst du in der Konfiguration unter Agenten und Modelle. Die Agenten committen unter deinem Namen.' },
+      needed: { title: 'Agenten', hint: 'Ohne Claude Code, Codex oder Gemini, und ohne git, arbeitet kein Agent. Eins davon reicht: Claude Code läuft auf deinem Claude-Abo, Codex auf deinem ChatGPT-Abo, Gemini (die Antigravity CLI) auf deinem Google-AI-Abo; welche Agenten worauf laufen, wählst du in der Konfiguration unter Agenten und Modelle. Die Agenten committen unter deinem Namen.' },
       pr: { title: 'Pull Requests', hint: 'Freigegebene Arbeit geht als Pull Request auf GitHub, außer die Einstellungen eines Repositorys sagen etwas anderes. Nötig erst bei der ersten Freigabe.' },
       voice: { title: 'Sprachbefehle', hint: 'Leertaste halten und sagen, was zu tun ist. Obeya bestätigt schriftlich: auf der Karte oder in Obeyas Fenster (Schaltfläche oben rechts, Taste C).' },
       demos: { title: 'Demos', hint: 'Agenten zeigen ihre Arbeit als vertontes Video. Ohne das schicken sie eine Zusammenfassung.' },
@@ -1979,6 +2005,8 @@ const de = {
       claudeLogin: 'Anmeldung bei Claude',
       codex: 'Codex',
       codexLogin: 'Anmeldung bei Codex',
+      gemini: 'Gemini (Antigravity CLI)',
+      geminiLogin: 'Anmeldung bei Google (Gemini)',
       git: 'git',
       gitUser: 'Name und E-Mail für Commits',
       gh: 'GitHub CLI (gh)',
@@ -1986,14 +2014,15 @@ const de = {
     } satisfies Record<NeededId | PrId, string>,
     loggedIn: 'angemeldet',
     loggedInAs: (who: string) => `angemeldet als ${who}`,
-    /** Codex, which says how it is logged in rather than as whom. */
+    /** Codex and Gemini, which say how they are logged in rather than as whom. */
     loggedInVia: (how: string) => `angemeldet über ${how}`,
     loggedOut: 'nicht angemeldet',
     claudeFirst: 'erst Claude Code installieren',
     codexFirst: 'erst Codex installieren',
-    /** Beside the other harness's missing pieces once one harness is ready. */
+    geminiFirst: 'erst die Antigravity CLI installieren',
+    /** Beside the other harnesses' missing pieces once one harness is ready. */
     orOther: (other: string) => `nicht nötig, ${other} ist eingerichtet`,
-    /** Beside Codex's missing pieces while neither harness is ready. */
+    /** Beside Codex's and Gemini's missing pieces while no harness is ready. */
     instead: (other: string) => `geht auch statt ${other}`,
     ghFirst: 'erst gh installieren',
     noIdentity: 'nicht eingetragen',
@@ -2069,6 +2098,10 @@ const de = {
       again: 'Neu ansehen',
       confirm: 'Einrichten und committen',
       confirmCanvas: 'Einrichten, committen und Leinwand anlegen',
+      noCommit: 'Dieses Repository hat noch keinen Commit. Karten starten von einem Commit aus, deshalb macht Obeya zuerst den ersten.',
+      showCommit: 'Ersten Commit ansehen',
+      commit: 'Committen',
+      commitCanvas: 'Committen und Leinwand anlegen',
       working: 'Wird eingerichtet …',
     },
   },
@@ -2154,21 +2187,23 @@ const de = {
   },
   /** The plan's usage limits in the bar (src/ui/usage.tsx), and the setting that shows or hides them. */
   /** The harnesses agents run on, by their names. */
-  harnesses: { claude: 'Claude Code', codex: 'Codex' } satisfies Record<Harness, string>,
+  harnesses: { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini' } satisfies Record<Harness, string>,
   usage: {
     /** The two groups of limits by name, for a limit of a kind the list does not know. */
     groups: { session: 'Sitzung', weekly: 'Woche' } as Record<string, string>,
     title: 'Nutzungslimits deiner Abos',
     /** Beside a plan's meters in the bar, once there are two plans. */
-    short: { claude: 'Claude', codex: 'Codex' } satisfies Record<Harness, string>,
+    short: { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' } satisfies Record<Harness, string>,
     /** A plan's heading in the list. */
-    plans: { claude: 'Claude-Abo', codex: 'ChatGPT-Abo (Codex)' } satisfies Record<Harness, string>,
+    plans: { claude: 'Claude-Abo', codex: 'ChatGPT-Abo (Codex)', gemini: 'Google-AI-Abo (Gemini)' } satisfies Record<Harness, string>,
     /** Beside a plan no group of agents runs on, which the bar leaves out. */
     /** A limit by its kind, in the list under the bar's button. */
     kinds: { session: 'Sitzung (5 Stunden)', weekly_all: 'Woche, alle Modelle' } as Record<string, string>,
     /** A limit for one model or surface only. */
     scoped: (scope: string) => `Woche, nur ${scope}`,
     resets: (when: string) => `neu ab ${when}`,
+    /** In place of that, for a window nothing has been used of yet: it begins with the first use. */
+    unstarted: 'beginnt mit der ersten Nutzung',
     /** How long until then, after it. */
     left: (span: string) => `noch ${span}`,
     /** The parts of that span. */
@@ -2181,7 +2216,7 @@ const de = {
     setting: {
       title: 'Nutzungslimits in der Menüzeile',
       label: 'Anzeigen',
-      hint: 'Wie viel vom Sitzungs- und vom Wochenlimit der Abos verbraucht ist, mit denen Claude Code und Codex auf diesem Rechner angemeldet sind: jede Minute neu, solange eine Seite von Obeya offen ist. Die Leiste zeigt die Abos, auf denen Agenten laufen. Mit einem API-Schlüssel gibt es keine Limits zu zeigen.',
+      hint: 'Wie viel vom Sitzungs- und vom Wochenlimit der Abos verbraucht ist, mit denen Claude Code, Codex und Gemini auf diesem Rechner angemeldet sind: jede Minute neu, solange eine Seite von Obeya offen ist. Die Leiste zeigt die Abos, auf denen Agenten laufen. Mit einem API-Schlüssel gibt es keine Limits zu zeigen.',
     },
   },
   /** What the agents cost (src/ui/costs.tsx), and the setting that shows it. */
@@ -2436,6 +2471,14 @@ const de = {
     winShiftS: 'Win+Umschalt+S',
     pasteHint: (k: { paste: string; grab?: string }) =>
       `Screenshots fügst du auch mit ${k.paste} aus der Zwischenablage ein, ohne sie erst als Datei zu speichern.${k.grab ? ` ${k.grab} legt einen Screenshot direkt dort ab.` : ''}`,
+    tooLong: (n: number, max: number) => `Zu lang zum Senden (${n.toLocaleString('de-DE')} von höchstens ${max.toLocaleString('de-DE')} Zeichen). Kürze den Text oder lagere ihn in eine Datei aus; dann steht ihr Pfad im Feld.`,
+    intoFile: 'In Datei auslagern',
+    /** Screenshots pasted, dropped or picked beyond `max` for the message: `refused` of them stay out. */
+    tooMany: (refused: number, max: number) =>
+      `Eine Nachricht nimmt höchstens ${max} Screenshots mit: ${refused === 1 ? 'einer ist' : `${refused} sind`} nicht angehängt. Schick ${refused === 1 ? 'ihn' : 'sie'} mit der nächsten Nachricht.`,
+    /** More screenshots in the field than a message takes (`n` of at most `max`): it does not send. */
+    overLimit: (n: number, max: number) => `Zu viele Screenshots zum Senden (${n} von höchstens ${max}). Nimm ${n - max === 1 ? 'einen' : n - max} heraus; ${n - max === 1 ? 'er geht' : 'sie gehen'} mit der nächsten Nachricht.`,
+    pastedAsFile: 'Der eingefügte Text war zu lang für eine Nachricht; er steht jetzt in einer Datei, ihr Pfad im Feld.',
   },
   /** The menu of the agent's skills that `/` opens in a field whose words go to a card's agent. */
   skills: {
@@ -2675,8 +2718,10 @@ const en: Strings = {
   start: 'Start agent',
   startHint: 'An agent starts on a branch of its own and shows a demo at the end.',
   agentPick: {
-    hint: 'Choose harness, model and effort for this card alone',
-    chosenHint: 'Holds for this card alone, for every session of its run. Change it in the menu beside.',
+    runsOn: 'Runs on',
+    hint: 'Holds for whichever button starts the agent. Click to choose another model for this card.',
+    other: { explorer: (what: string) => `as an idea: ${what}`, worker: (what: string) => `building it: ${what}` },
+    reset: 'Use the settings',
     effort: 'Effort',
     chosenEffort: (effort: string) => `effort ${effort}`,
   },
@@ -2688,6 +2733,9 @@ const en: Strings = {
     running: (name: string, host?: string) => (host ? `Updating ${name} on ${host}…` : `Updating ${name}…`),
     failed: (why: string, host?: string) => (host ? `Update on ${host} failed: ${why}` : `Update failed: ${why}`),
     again: 'Try again',
+    notLoggedIn: (name: string, host: string) => `${name} is not logged in on ${host}`,
+    logIn: 'Log in',
+    logInHint: (name: string, host: string) => `Opens a terminal on this machine that logs in to ${name} on ${host} over SSH: sign in with Google there and paste the code.`,
   },
   stoppedState: 'Stopped',
   startAgain: 'Start again',
@@ -2895,6 +2943,7 @@ const en: Strings = {
     renamedFrom: (from: string) => `was ${from}`,
     big: (lines: number) => `${lines} lines, folded`,
     unfold: 'Unfold',
+    unchanged: (lines: number) => `${lines} unchanged lines`,
     truncated: 'The diff is cut off here because it is too large; the remaining files are in the list at the top.',
     copyPath: 'Copy path',
     copied: '✓ Path copied',
@@ -2919,6 +2968,7 @@ const en: Strings = {
       'This changed while the agent only ran commands that read or wait (wc, sleep, …). Another program probably wrote it: it does not count among the card’s changes, and “Discard changes” leaves it as it is.',
     discard: 'Discard changes',
     discardHint: (n: number) => `Puts ${n === 1 ? '1 file' : `${n} files`} back as they were before the card. The card then still waits for you.`,
+    discardWaits: 'The agent is still at work on your message and may change the folder meanwhile: discarding works once it has replied.',
     seconds: (s: number) => `${s} s`,
     clickToCancel: 'Click again to cancel',
     cancelHint: 'Cancels: the card’s changes stay as they are. Once the time is up, discarding cannot be taken back.',
@@ -2931,6 +2981,13 @@ const en: Strings = {
   approvedDirect: 'Approved; goes straight to main.',
   approving: 'being approved …',
   approvingDirect: 'being pushed straight to main …',
+  approvesAfterReply: 'Approves after the reply …',
+  pushesAfterReply: 'Pushes after the reply …',
+  unapprove: 'Don’t approve after all',
+  unpush: 'Don’t push after all',
+  approvesAfterReplyAck: 'Approved once the agent has replied.',
+  approvesAfterReplyShort: 'Approves after the reply',
+  approvesAfterReplyHint: 'The agent is still at work on your message. Once its reply is there, the approval goes ahead with the work as it stands then; if the agent still asks something, it does not.',
   upstream: {
     approve: (name: string) => `Approve + PR to ${name}`,
     approveMine: 'Approve, for me only',
@@ -3085,6 +3142,7 @@ const en: Strings = {
     snoozeTime: 'That time is not within the coming year.',
     noQuestion: 'No question is open here any more.',
     notReady: 'This is not ready for review.',
+    agentAtWork: 'The agent is still at work on your message; discarding works once it has replied.',
     notHeld: 'The comment is with the agent already.',
     noDirect: 'In this repository, approved work reaches main only through a pull request.',
     noUpstream: 'This repository is no fork whose work lands on its main branch and can go to an original repository.',
@@ -3117,10 +3175,12 @@ const en: Strings = {
     noSlot: 'No slot free: every machine with a free workspace has as many agents at work as it has slots.',
     workspace: 'The workspace for the agent could not be prepared (git error).',
     emptyText: 'Please enter some text first.',
+    textTooLong: 'The message is too long (20,000 characters at most).',
     unknownPreference: 'This preference no longer exists.',
     unknownSetting: 'This proposal has been decided already.',
     imageType: 'This is not an image the agent can read (PNG, JPEG, GIF or WebP).',
     imageTooLarge: 'The image is too large, even scaled down.',
+    tooManyImages: `Not sent: a message takes at most ${MAX_IMAGES} screenshots. Take some out, or send them with a second message.`,
     fileTooLarge: 'The file is too large (100 MB at most).',
     notDone: 'Only your own task that is live, done or stopped, or a parked or dropped idea, can be archived.',
     holdsWork: 'Its branch holds work that has not landed. Start the task again or delete it.',
@@ -3159,6 +3219,7 @@ const en: Strings = {
     voiceInstalling: 'A voice is already being installed.',
     voiceCloud: 'The service did not transcribe:',
     notRepo: 'There is no git repository in this folder.',
+    noCommit: 'This repository has no commit yet.',
     cloneTarget: 'This folder exists already. Choose another one to clone into, or give the existing one as the folder.',
     noIdentity: 'git has no name and e-mail for commits yet. Please enter them in the setup under "Name and e-mail for commits", then try again.',
     gitSetup: 'git could not be set up; the folder is as it was.',
@@ -3474,6 +3535,7 @@ const en: Strings = {
       '2026-11-08-player': "The video plays in the walkthroughs' player: the progress bar in a segment per chapter, captions to read along under the picture, switched on and off with CC or C.",
       '2026-11-09-pointer': 'The caption marks the word being spoken, as in a walkthrough.',
       '2026-11-09-word-times': 'The caption marks each word the moment it is heard, where the video was rendered with the times of its words.',
+      '2026-11-19-artifact-address': 'For search engines, the artifact has one address (…/artifact/): they list it once instead of also under …/artifact/index.html.',
       theme: 'Theme changed: the repository’s .obeya/theme.css is new, different or removed.',
     },
     pages: (n: number) => (n === 1 ? 'one page' : `${n} pages`),
@@ -3555,6 +3617,8 @@ const en: Strings = {
     settingsHint: 'From the work retrospective: values for a repository’s settings, because agents had to work out the same thing themselves on several cards. You choose where a value goes.',
     settingKind: (repo: string) => `Configuration change · ${repo}`,
     settingWas: 'Now',
+    settingChange: 'Change',
+    settingSame: 'Same as now.',
     settingNew: 'New',
     settingEmpty: '(empty)',
     openConfig: 'To the setting ↗',
@@ -3784,7 +3848,7 @@ const en: Strings = {
     agents: {
       title: 'Agents and models',
       hint: (preset: Harness) =>
-        `What each group of agents runs on (Claude Code or Codex, with your plan there), which model it uses and how much it thinks (effort). Preset is ${preset === 'codex' ? 'Codex with Sol throughout, since only Codex is set up on this machine' : 'Claude Code with Opus throughout'}, with high effort for agents on tasks and exploration agents, medium for the rest. A Codex model stands for its family: an agent runs on its newest version on the machine it works on. Applies at once to every agent that starts afterwards; one at work keeps what it started with. “At the limit”: what a group switches to while the harness it runs on is at its usage limit or cannot be reached; with “Wait” its agents wait until then.`,
+        `What each group of agents runs on (Claude Code, Codex or Gemini, with your plan there), which model it uses and how much it thinks (effort). Preset is ${preset === 'codex' ? 'Codex with Sol throughout, since Claude Code is not set up on this machine' : preset === 'gemini' ? 'Gemini with Neon throughout, since only Gemini is set up on this machine' : 'Claude Code with Opus throughout'}, with high effort for agents on tasks and exploration agents, medium for the rest. A Codex or Gemini model stands for its family: an agent runs on its newest version on the machine it works on. Applies at once to every agent that starts afterwards; one at work keeps what it started with. “At the limit”: what a group switches to while the harness it runs on is at its usage limit or cannot be reached; with “Wait” its agents wait until then.`,
       harness: 'Runs on',
       fallback: 'At the limit',
       wait: 'Wait',
@@ -3816,7 +3880,7 @@ const en: Strings = {
     trust: {
       app: 'Stopping and keeping the app (app.stop, app.keep): Obeya runs them while a card waits. Until then the app keeps running.',
       site: 'Demo site (demo.site): Obeya deploys with this command and reads the site at this address. Until then demos are exported.',
-      claude: 'The repository’s Claude Code configuration (.claude/, .mcp.json): agents run its hooks and MCP servers without asking. Until then they work without it.',
+      claude: 'The repository’s agent configuration (.claude/, .mcp.json; .agents/ for Gemini): agents run its hooks and MCP servers without asking. Until then they work without it, and Gemini does not start in such a repository.',
       trust: 'Trust these commands',
       blankOnly: (files: string) => `In ${files} only space at the start or end changed, which the view does not show. It can decide whether a hook runs.`,
     },
@@ -4020,6 +4084,7 @@ const en: Strings = {
       noRepo: 'A canvas needs at least one repository.',
       noPath: 'The path is missing.',
       notRepo: 'There is no git repository at this path.',
+      noCommit: 'This repository has no commit yet; cards start from a commit.',
       noFolder: 'There is no folder at this path.',
       sameRepo: 'The canvas has this repository already, further up.',
       sameId: 'Same id as another canvas: please give it another name.',
@@ -4249,7 +4314,7 @@ const en: Strings = {
     title: 'Setup',
     close: 'Close',
     introFirst:
-      'Obeya checks what it needs on this machine. Claude Code or Codex with your login, and git, are needed; the rest can wait. What installs without admin rights, Obeya installs at a click; for the rest the command is there. Then you create the first canvas.',
+      'Obeya checks what it needs on this machine. Claude Code, Codex or Gemini with your login, and git, are needed; the rest can wait. What installs without admin rights, Obeya installs at a click; for the rest the command is there. Then you create the first canvas.',
     intro: 'What Obeya needs on this machine. What installs without admin rights, Obeya installs at a click; for the rest the command is there.',
     platform: (platform: string) => `Checked on ${platform}. The list checks again when you come back here from a terminal or an installer.`,
     needed: 'needed',
@@ -4259,7 +4324,7 @@ const en: Strings = {
     readyLater: 'works, the rest loads on first use',
     open: (n: number) => `${n} missing`,
     sections: {
-      needed: { title: 'Agents', hint: 'Without Claude Code or Codex, and without git, no agent works. Either one is enough: Claude Code runs on your Claude subscription, Codex on your ChatGPT subscription; which agents run on which you choose in the configuration under Agents and models. The agents commit under your name.' },
+      needed: { title: 'Agents', hint: 'Without Claude Code, Codex or Gemini, and without git, no agent works. One of them is enough: Claude Code runs on your Claude subscription, Codex on your ChatGPT subscription, Gemini (the Antigravity CLI) on your Google AI subscription; which agents run on which you choose in the configuration under Agents and models. The agents commit under your name.' },
       pr: { title: 'Pull requests', hint: 'Approved work goes out as a pull request on GitHub, unless a repository’s settings say otherwise. Needed only at the first approval.' },
       voice: { title: 'Voice commands', hint: 'Hold Space and say what to do. Obeya confirms in writing: on the card or in Obeya’s panel (button at the top right, key C).' },
       demos: { title: 'Demos', hint: 'Agents show their work as a narrated video. Without it they send a summary.' },
@@ -4269,6 +4334,8 @@ const en: Strings = {
       claudeLogin: 'Claude login',
       codex: 'Codex',
       codexLogin: 'Codex login',
+      gemini: 'Gemini (Antigravity CLI)',
+      geminiLogin: 'Google login (Gemini)',
       git: 'git',
       gitUser: 'Name and e-mail for commits',
       gh: 'GitHub CLI (gh)',
@@ -4280,6 +4347,7 @@ const en: Strings = {
     loggedOut: 'not logged in',
     claudeFirst: 'install Claude Code first',
     codexFirst: 'install Codex first',
+    geminiFirst: 'install the Antigravity CLI first',
     orOther: (other: string) => `not needed, ${other} is set up`,
     instead: (other: string) => `works instead of ${other} too`,
     ghFirst: 'install gh first',
@@ -4356,6 +4424,10 @@ const en: Strings = {
       again: 'Look again',
       confirm: 'Set up and commit',
       confirmCanvas: 'Set up, commit and create canvas',
+      noCommit: 'This repository has no commit yet. Cards start from a commit, so Obeya makes the first one.',
+      showCommit: 'Show the first commit',
+      commit: 'Commit',
+      commitCanvas: 'Commit and create canvas',
       working: 'Setting up …',
     },
   },
@@ -4438,15 +4510,16 @@ const en: Strings = {
       `\`${checkout}\` has uncommitted changes to files the new commits change: ${files}. Commit them or put them aside with \`git stash\`; then "git pull" here brings in the commits.`,
     failed: (error: string) => `"git pull" failed: ${error}`,
   },
-  harnesses: { claude: 'Claude Code', codex: 'Codex' },
+  harnesses: { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini' },
   usage: {
     groups: { session: 'Session', weekly: 'Week' },
     title: 'Usage limits of your plans',
-    short: { claude: 'Claude', codex: 'Codex' },
-    plans: { claude: 'Claude plan', codex: 'ChatGPT plan (Codex)' },
+    short: { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' },
+    plans: { claude: 'Claude plan', codex: 'ChatGPT plan (Codex)', gemini: 'Google AI plan (Gemini)' },
     kinds: { session: 'Session (5 hours)', weekly_all: 'Week, all models' },
     scoped: (scope: string) => `Week, ${scope} only`,
     resets: (when: string) => `resets ${when}`,
+    unstarted: 'starts with the first use',
     left: (span: string) => `in ${span}`,
     days: (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`,
     hours: (n: number) => `${n} h`,
@@ -4456,7 +4529,7 @@ const en: Strings = {
     setting: {
       title: 'Usage limits in the bar',
       label: 'Show',
-      hint: 'How much of the session and the weekly limit is used of the plans that Claude Code and Codex on this machine are logged in with: every minute, while a page of Obeya is open. The bar shows the plans agents run on. With an API key there are no limits to show.',
+      hint: 'How much of the session and the weekly limit is used of the plans that Claude Code, Codex and Gemini on this machine are logged in with: every minute, while a page of Obeya is open. The bar shows the plans agents run on. With an API key there are no limits to show.',
     },
   },
   costs: {
@@ -4669,6 +4742,12 @@ const en: Strings = {
     winShiftS: 'Win+Shift+S',
     pasteHint: (k: { paste: string; grab?: string }) =>
       `You can also paste screenshots from the clipboard with ${k.paste}, without saving them as a file first.${k.grab ? ` ${k.grab} puts a screenshot straight there.` : ''}`,
+    tooLong: (n: number, max: number) => `Too long to send (${n.toLocaleString('en-US')} of ${max.toLocaleString('en-US')} characters at most). Shorten the text or move it into a file; its path then stands in the field.`,
+    intoFile: 'Move into a file',
+    tooMany: (refused: number, max: number) =>
+      `A message takes at most ${max} screenshots: ${refused === 1 ? 'one was' : `${refused} were`} not attached. Send ${refused === 1 ? 'it' : 'them'} with the next message.`,
+    overLimit: (n: number, max: number) => `Too many screenshots to send (${n} of ${max} at most). Take ${n - max === 1 ? 'one' : n - max} out; ${n - max === 1 ? 'it goes' : 'they go'} with the next message.`,
+    pastedAsFile: 'The pasted text was too long for a message, so it went into a file; its path stands in the field.',
   },
   /** The menu of the agent's skills that `/` opens in a field whose words go to a card's agent. */
   skills: {

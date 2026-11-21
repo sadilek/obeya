@@ -7,6 +7,7 @@
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import { CLOUD_PRESETS, CLOUD_VOICES, type CloudPreset, type GitSetupPreview, LARGE_FILE, type Language, type MachineItem, type MachineSection, type MachineView, type SetupItem, type VoiceSetupItem } from '../core/types';
 import { LANGUAGES } from '../core/locale';
+import { HARNESSES } from '../core/agents';
 import { api, reload } from './api';
 import { useAct, usePoll } from './act';
 import { useCopy } from './copy';
@@ -285,16 +286,17 @@ export function Setup({ first, onClose }: { first?: boolean; onClose?: () => voi
   const state = (section: MachineSection) => (i: MachineItem) => {
     if (section.id === 'voice') return voiceState(i);
     if (section.id === 'demos') return demoState(i);
-    const login = i.id === 'claudeLogin' || i.id === 'codexLogin' || i.id === 'ghLogin';
-    if (i.state === 'ok') return login ? (i.found ? (i.id === 'codexLogin' ? s.loggedInVia : s.loggedInAs)(i.found) : s.loggedIn) : (i.found ?? t.config.setup.there);
-    // a harness's piece the other harness makes unneeded, or which may stand in for it
+    const login = i.id === 'claudeLogin' || i.id === 'codexLogin' || i.id === 'geminiLogin' || i.id === 'ghLogin';
+    if (i.state === 'ok') return login ? (i.found ? (i.id === 'codexLogin' || i.id === 'geminiLogin' ? s.loggedInVia : s.loggedInAs)(i.found) : s.loggedIn) : (i.found ?? t.config.setup.there);
+    // a harness's piece another harness makes unneeded, or which may stand in for it
     if (i.or) {
-      const other = i.id === 'codex' || i.id === 'codexLogin' ? 'claude' : 'codex';
-      const otherReady = section.items.filter((x) => x.id === other || x.id === `${other}Login`).every((x) => x.state === 'ok');
-      return otherReady ? s.orOther(t.harnesses[other]) : s.instead(t.harnesses[other]);
+      const mine = HARNESSES.find((h) => i.id === h || i.id === `${h}Login`);
+      const ready = HARNESSES.find((h) => h !== mine && section.items.filter((x) => x.id === h || x.id === `${h}Login`).every((x) => x.state === 'ok'));
+      return ready ? s.orOther(t.harnesses[ready]) : s.instead(t.harnesses.claude);
     }
     if (i.id === 'claudeLogin' && !i.act) return s.claudeFirst;
     if (i.id === 'codexLogin' && !i.act) return s.codexFirst;
+    if (i.id === 'geminiLogin' && !i.act) return s.geminiFirst;
     if (i.id === 'ghLogin' && !i.act) return s.ghFirst;
     if (login) return s.loggedOut;
     if (i.id === 'gitUser') return s.noIdentity;
@@ -421,8 +423,9 @@ function FirstCanvas({ view, ready, onView }: { view: MachineView; ready: boolea
   useEffect(() => {
     if (job && !job.running && job.canvas) setSaved({ canvas: job.canvas, branch: job.branch, opens: !!job.opens });
   }, [job?.running, job?.canvas]);
-  const branch = saved?.branch ?? found?.branch;
-  const noGit = !!found?.noGit;
+  const branch = saved?.branch ?? (found?.empty ? undefined : found?.branch);
+  // a folder without git, or a repository without a commit: either gets its first commit before the canvas
+  const noGit = !!found?.noGit || !!found?.empty;
   // once Obeya runs with the canvas (by itself, or started again by the owner), the page opens it
   const opened = useRef(false);
   usePoll(
@@ -476,7 +479,12 @@ function FirstCanvas({ view, ready, onView }: { view: MachineView; ready: boolea
                 </span>
               </label>
               {branch && <p className="hint setup-branch">{s.first.branch(branch)}</p>}
-              {noGit && <GitSetup key={path.trim()} path={path.trim()} confirm={s.git.confirmCanvas} onDone={() => create()} onFolder={() => create(true)} />}
+              {noGit &&
+                (found?.empty ? (
+                  <GitSetup key={path.trim()} path={path.trim()} confirm={s.git.commitCanvas} onDone={() => create()} />
+                ) : (
+                  <GitSetup key={path.trim()} path={path.trim()} confirm={s.git.confirmCanvas} onDone={() => create()} onFolder={() => create(true)} />
+                ))}
             </>
           ) : (
             <>
@@ -509,12 +517,12 @@ function FirstCanvas({ view, ready, onView }: { view: MachineView; ready: boolea
   );
 }
 
-/** What Obeya found at the folder `path` once it stopped changing for a moment: its main branch, or that it has no git; null until then. */
-function useFolder(path: string): { branch?: string; noGit?: boolean } | null {
-  const [found, setFound] = useState<{ path: string; branch?: string; noGit?: boolean } | null>(null);
+/** What Obeya found at the folder `path` once it stopped changing for a moment: its main branch, or that it has no git, or no commit yet; null until then. */
+function useFolder(path: string): { branch?: string; noGit?: boolean; empty?: boolean } | null {
+  const [found, setFound] = useState<{ path: string; branch?: string; noGit?: boolean; empty?: boolean } | null>(null);
   useEffect(() => {
     if (!path) return;
-    const timer = setTimeout(() => api.setupFolder(path).then((f) => setFound({ path, branch: f.branch, noGit: f.folder }), () => setFound(null)), 300);
+    const timer = setTimeout(() => api.setupFolder(path).then((f) => setFound({ path, branch: f.branch, noGit: f.folder, empty: f.empty }), () => setFound(null)), 300);
     return () => clearTimeout(timer);
   }, [path]);
   return found?.path === path ? found : null;
@@ -530,10 +538,11 @@ const IGNORED_SHOWN = 12;
  * A folder that has no git: the two ways on, each with what it means. Using it without git
  * (`onFolder`), or setting up git there: what the first commit holds (the folder's entries with
  * their sizes, large files marked, what stays out, the `.gitignore` Obeya writes), and only once the
- * owner confirms, the repository with its first commit. The first canvas and "+ Repository" in the
- * configuration both show it.
+ * owner confirms, the repository with its first commit. Without `onFolder`, a repository without a
+ * commit yet: there is no other way on, so the preview of its first commit shows at once. The
+ * first canvas and "+ Repository" in the configuration both show it.
  */
-export function GitSetup({ path, confirm, onDone, onFolder }: { path: string; confirm: string; onDone: (branch: string) => void; onFolder: () => void }) {
+export function GitSetup({ path, confirm, onDone, onFolder }: { path: string; confirm: string; onDone: (branch: string) => void; onFolder?: () => void }) {
   const [preview, setPreview] = useState<GitSetupPreview | null>(null);
   const [busy, setBusy] = useState<'looking' | 'working' | null>(null);
   const { status: error, act } = useAct({ detail: ['gitSetup', 'invalid'] });
@@ -548,14 +557,27 @@ export function GitSetup({ path, confirm, onDone, onFolder }: { path: string; co
     await act(async () => onDone((await api.setupGit(path)).branch));
     setBusy(null);
   };
+  // a repository without a commit: nothing to choose, the first commit is what it needs
+  useEffect(() => {
+    if (!onFolder) void look();
+  }, []);
   const p = preview;
   return (
     <div className="git-setup">
-      {!p ? (
+      {!p && !onFolder ? (
+        <>
+          <p className="hint">{s.noCommit}</p>
+          <div className="c-actions">
+            <button className="btn small" disabled={!!busy} onClick={look}>
+              {busy === 'looking' ? s.looking : s.showCommit}
+            </button>
+          </div>
+        </>
+      ) : !p ? (
         <>
           <p className="hint">{s.none}</p>
           <div className="git-choices">
-            <button className="git-choice" disabled={!!busy} onClick={onFolder}>
+            <button className="git-choice" disabled={!!busy} onClick={() => onFolder?.()}>
               <b>{s.folder}</b>
               <span className="hint">{s.folderHint}</span>
             </button>
@@ -568,6 +590,7 @@ export function GitSetup({ path, confirm, onDone, onFolder }: { path: string; co
       ) : (
         <>
           <b>{s.title}</b>
+          {p.repo && <p className="hint">{s.noCommit}</p>}
           <p className="hint">{s.summary(p.files, fileSize(p.bytes), p.branch)}</p>
           <ul className="git-entries">
             {p.entries.map((e) => (

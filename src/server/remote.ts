@@ -18,6 +18,7 @@ import type { Language } from '../core/locale';
 import { MESSAGES } from '../core/messages';
 import type { AccessView, DeviceView, Pairing, RemoteProblem, RemoteSetting, TailscaleState } from '../core/types';
 import { LOCAL_HOSTS, hostname, type Gate } from './access';
+import { AppReach, type Where } from './app-reach';
 import { BadRequest } from './board';
 import type { Store } from './db';
 import { OWNER_SETTINGS_FILE as SETTINGS_FILE } from '../../plugin/skills/demo/lib/language.ts';
@@ -120,6 +121,8 @@ export class Access implements Gate {
   private readonly removedFns = new Set<(id: string) => void>();
   /** Changes to the network, one after the other. */
   private applying: Promise<void> = Promise.resolve();
+  /** The proxies in front of cards' apps, for other devices to open them. */
+  private readonly apps: AppReach;
 
   constructor(o: AccessOptions) {
     this.store = o.store;
@@ -131,6 +134,8 @@ export class Access implements Gate {
     this.owner = o.owner ?? new Owner({ home: o.home, language: this.language });
     this.setting = o.home ? remoteSetting(o.home) : null;
     this.served = this.readServed();
+    this.onRemoved((id) => this.apps.revoke(id));
+    this.apps = new AppReach({ tailscale: this.tailscale, home: o.home, paired: (req) => this.device(req)?.id ?? null, notPaired: () => this.notPairedPage(false) });
   }
 
   // ------------------------------------------------------------ the network
@@ -139,6 +144,9 @@ export class Access implements Gate {
   start(port: number, listen: Listen): Promise<void> {
     this.port = port;
     this.listen = listen;
+    // what a run that ended without removing them left serving cards' apps to the tailnet goes, before
+    // Obeya serves its own entry: removing rewrites the whole configuration, which would lose one made meanwhile
+    this.applying = this.applying.then(() => this.apps.tidy()).catch(() => {});
     return this.apply(true);
   }
 
@@ -154,6 +162,7 @@ export class Access implements Gate {
    */
   release() {
     this.stop();
+    this.apps.release();
     if (!this.served) return;
     this.tailscale.unserveSync(this.served);
     this.keepServed(null);
@@ -167,6 +176,7 @@ export class Access implements Gate {
       } catch (e) {
         this.problem = { code: 'failed', detail: (e as Error).message };
       }
+      await this.applyApps().catch(() => {});
     });
     return this.applying;
   }
@@ -207,6 +217,32 @@ export class Access implements Gate {
     }
     this.problem = undefined;
     this.keepServed({ ...r.entry, name });
+  }
+
+  /** The proxies in front of cards' apps go once other devices reach Obeya elsewhere, or not at all. */
+  private async applyApps() {
+    const at = this.apps.at();
+    if (at && JSON.stringify(at) !== JSON.stringify(this.where())) await this.apps.close();
+  }
+
+  /** Where other devices reach Obeya now, for the proxies in front of cards' apps; `null` while they do not. */
+  private where(): Where | null {
+    const s = this.setting;
+    if (s?.via === 'tailscale' && this.served && this.ts.state === 'ready' && this.served.name === this.ts.name) return { via: 'tailscale', name: this.served.name };
+    if (s?.via === 'address' && this.listening === s.address) return { via: 'address', address: s.address };
+    return null;
+  }
+
+  /**
+   * Where a paired device opens a card's app, which runs at `app` on this machine (where other
+   * devices cannot reach it): a proxy at Obeya's address for other devices, with a port of its own.
+   * Throws with the reason when it cannot be made.
+   */
+  async reach(app: string): Promise<string> {
+    await this.applying;
+    const where = this.where();
+    if (!where) throw new Error('other devices do not reach Obeya');
+    return this.apps.reach(app, where);
   }
 
   private readServed(): NamedEntry | null {

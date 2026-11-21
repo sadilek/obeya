@@ -46,7 +46,8 @@ owner's screenshots (`images/<canvas>/`), other files the owner dropped into a f
 (`files/<canvas>/<uuid>/<name>`), the configuration (`canvases.json`), the settings
 (`settings.json`, `demo.json`, `voice.json`, `personal-site.json`), the owner's key (`owner.key`),
 the Claude token the owner gave Obeya (`claude-token`), where the running Obeya answers
-(`server.json`), the `tailscale serve` entry Obeya made (`tailscale-serve.json`), the key it signs
+(`server.json`), the `tailscale serve` entry Obeya made (`tailscale-serve.json`) and those for cards' apps opened
+from the phone (`tailscale-serve-apps.json`), the key it signs
 pushes with (`vapid.json`), the app's server log (`app.log`) and its shell's failed rebuilds
 (`app-build.log`), the stalls of the server and its pages (`stalls.log`, see Running Obeya), voices
 and models (`voices/`), the workers' clones and worktrees (`workspaces/`), copies of demos and

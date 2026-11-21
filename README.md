@@ -25,31 +25,31 @@ listed there with the demo its agent recorded.
 
 ## How it works
 
-Each card gets its own agent, Claude Code or Codex. The agent works in its own clone or worktree of
+Each card gets its own agent: Claude Code, Codex or Gemini. The agent works in its own clone or worktree of
 your repository, on this machine or on another one that Obeya reaches over SSH. When it needs a
-decision, it asks on the card. When it is done, it hands over with a demo. Usually that is a
+decision, it asks on the card. When it is done, it hands over its work with a demo. Usually that is a
 narrated screen recording of the change, or a silent one with subtitles in as many languages as
 you like. When the result is a layout or several variants side by side, the demo is a page to look
 at instead. A report or another file the agent made for you shows beside its conversation.
 
-You approve the demo or say what to change. If your feedback is about one moment of the video,
-pause it there and type or say it. The agent gets that frame and the narration's sentence along
+You approve the demo or say what to change. If your feedback is about one moment in the video,
+pause it there and type or say it. The agent gets that frame and the sentence narrated there along
 with your words.
 
 Approved work lands on `main` or goes out as a pull request on GitHub (GitHub Enterprise too),
 Forgejo or Gitea (Codeberg, for example). Obeya looks after the pull request until it is merged.
-Where your team merges itself, Obeya looks after it until it is ready to merge. Beside the branch,
+Where your team merges pull requests itself, Obeya looks after the pull request until it is ready to merge. Beside the branch,
 the card shows how large the change is, and a click shows the diff. An approval given by mistake
 can be taken back, even after the work landed: Obeya closes the pull request or reverts the change.
 
-Give Obeya a branch of yours, or the link of your own pull request, and the task carries on there:
+Give Obeya a branch of yours, or a link to your own pull request, and the task carries on there:
 its work goes onto that pull request. In a fork, each task can also go to the original repository
 as a pull request, while the fork keeps its own changes.
 
 "Share" puts a demo on a page of its own on your repository's demo site, for colleagues to watch.
-The site can also publish every approved demo without your click. If a repository has no demo
-site, you share on a personal one, which Obeya sets up on GitHub Pages or Cloudflare with one
-button.
+The site can also publish every approved demo without you clicking anything. If a repository
+has no demo site, you share on a personal one, which Obeya sets up on GitHub Pages or Cloudflare in
+one click.
 
 Say "Review PR #14", and a pull request someone else opened gets a card. Its agent reads the diff
 before any of that code runs on your machine, reviews it, and records a demo of the app before and
@@ -58,8 +58,8 @@ fixes it, it becomes a follow-up task, or you ignore it. You can edit the text t
 pull request, then click "Push and merge" or "Push and comment only". When it is the contributor's
 turn, the card waits. Once they comment or push, the agent reviews the pull request again.
 
-You talk to Obeya itself, spoken or typed. It takes your instructions, cuts large tasks into
-packages that run in parallel, and learns your preferences. It queues cards whose changes would
+You talk to Obeya itself, by voice or in writing. It takes your instructions, splits large tasks
+into packages that run in parallel, and learns your preferences. It queues cards whose changes would
 collide, and an arrow you draw from one card to another makes the second wait for the first. Ask
 Obeya how something works or what a change does, and it can answer with a short walkthrough of
 slides and narration, which starts to play while Obeya is still writing it. "Show as walkthrough"
@@ -76,19 +76,24 @@ questions about the plan. Each product you build gets its own canvas, for one re
 several, and one Obeya runs all of them.
 
 You can pause and resume a card's agent, or all agents of a canvas from the canvas list. Each
-agent finishes its current step first. Typing "/" in a card's field offers the skills its agent
-knows. The bar shows how much of your plan's session and week is used, for Claude, for ChatGPT
-(which Codex runs on), or for both. If you switch it on in Configuration, the bar also shows what
-the agents cost, per card and per canvas. In "Agents and models" you choose which harness and
-model each group of agents runs on. The menu beside a card's start button sets them for that card
-alone. When Claude Code or Codex has an update, Obeya offers it at a click.
+agent finishes its current step first. Typing "/" in a card's text field offers the skills its agent
+knows. The top bar shows how much of the session and weekly limits you have used, for each plan
+your agents run on: Claude, ChatGPT (which Codex runs on) or Google AI (which Gemini runs on). If
+you switch it on in Configuration, the top bar also shows what the agents cost, per card and per
+canvas. In "Agents and models" you choose which harness (Claude Code, Codex or Gemini) and model
+each group of agents runs on, and in its "At the limit" column another harness for the group to
+switch to while its own is at its usage limit; without one, its agents wait until the limit resets.
+If the limit stops a worker in the middle of its work, its card offers "Continue with Codex" (or
+another harness). The chip button among a card's buttons sets harness and model for that card alone.
+When Claude Code or Codex has an update, Obeya offers it at a click; Gemini (the Antigravity
+CLI) keeps itself up to date.
 
 ![An Obeya canvas: a project with its workstreams, one at work and one in the queue. Beside it are a demo and a question waiting for you, a task at work, an approved and a live one, and an idea](site/img/canvas.png)
 
 ## On your phone
 
-Away from your desk, your phone lists the cards that are waiting for you on all your canvases,
-grouped by canvas, and the ones agents are working on. Watch a demo and approve it, answer a
+When you are away from your desk, your phone lists the cards that are waiting for you on all your
+canvases, grouped by canvas, and the ones agents are working on. Watch a demo and approve it, answer a
 question, or hold the microphone button and describe a new task. Swipe aside a card you would
 rather handle at your desk, and it stays hidden until it needs you again. A notification tells you
 when a card needs you.
@@ -118,9 +123,9 @@ commercial software. The interface and the voice input work in English and Germa
 | Linux | AppImage for [x64](https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-x86_64.AppImage) · [arm64](https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-aarch64.AppImage), .deb for [x64](https://github.com/sadilek/obeya/releases/latest/download/obeya_amd64.deb) · [arm64](https://github.com/sadilek/obeya/releases/latest/download/obeya_arm64.deb) |
 
 The app needs neither Bun nor a checkout. On its first start it checks the machine for what Obeya
-needs ([Claude Code](https://claude.com/claude-code) or [Codex](https://developers.openai.com/codex/cli)
-with your login, and git) and for what can wait (the [GitHub CLI](https://cli.github.com) for pull
-requests, voice, demos). It installs what it can without admin rights and shows the command for
+needs: [Claude Code](https://claude.com/claude-code), [Codex](https://developers.openai.com/codex/cli)
+or Gemini (the [Antigravity CLI](https://antigravity.google)) with your login, and git. It also
+checks for what can wait: the [GitHub CLI](https://cli.github.com) for pull requests, voice, demos. It installs what it can without admin rights and shows the command for
 the rest. Then it opens your first canvas on one of your repositories.
 
 The Windows installer is not signed yet. An application for signing at the SignPath Foundation is
@@ -128,15 +133,15 @@ pending ([code signing policy](https://obeya.si/code-signing/)). Until then Smar
 the installer, and "More info" followed by "Run anyway" continues. On Linux, make the AppImage
 executable (`chmod +x`) first.
 
-The app keeps itself up to date. A new release shows in its bar. When you install it, the app
+The app keeps itself up to date. A new release shows in its top bar. When you install it, the app
 waits until the agents have paused and then restarts with the new version. A .deb is updated by
 installing the next one.
 
 On the canvas, double-click to write a task, then click "Start agent". The card shows what the
-agent is doing. Cards that are waiting for you are counted in orange at the left of the bar and on
+agent is doing. Cards that are waiting for you are counted in orange at the left of the top bar and on
 the app's icon, and they are listed under "Needs you". Open such a card to answer a question, or to
 watch the demo and click "Approve". Hold Space to say what to do instead of typing. `/` searches
-the cards on the canvas and in the archive, and `?` lists every key.
+the cards on the canvas and in the archive, and `?` lists every keyboard shortcut.
 
 ### Connecting a phone
 
@@ -153,26 +158,27 @@ the cards on the canvas and in the archive, and `?` lists every key.
 Instead of Tailscale, Obeya can listen on an address of another VPN ("At an address"). That
 connection is plain HTTP, so the phone's browser allows neither the microphone nor notifications
 there. You pair and remove devices on the computer only. The phone reaches Obeya only while the
-computer is awake. "Keep this computer awake" beside the setting holds off sleep while an agent
-works, or always. A closed laptop lid still sends the computer to sleep.
+computer is awake. "Keep this computer awake" beside the setting keeps the computer from sleeping while an
+agent works, or always. A closed laptop lid still sends the computer to sleep.
 
 ## From source
 
 Obeya itself is developed from a checkout. Started that way, it updates itself whenever the
-checkout moves to new code. When `origin` has new commits, the bar says so and offers to pull
+checkout moves to new code. When `origin` has new commits, the top bar says so and offers to pull
 them.
 
 - [Bun](https://bun.sh) 1.3.14 or newer (on Linux, older 1.3 releases can hang the canvas).
-- [Claude Code](https://claude.com/claude-code) or [Codex](https://developers.openai.com/codex/cli),
-  installed and logged in. Either is enough, and both work side by side. Obeya starts it for every
+- [Claude Code](https://claude.com/claude-code), [Codex](https://developers.openai.com/codex/cli)
+  or Gemini (the [Antigravity CLI](https://antigravity.google)), installed and logged in. One is
+  enough, and they work side by side. Obeya starts it for every
   agent, and the agents run on your own login.
 - git, and the [GitHub CLI](https://cli.github.com) (`gh`, logged in) for repositories whose work
   lands through pull requests.
 - For demos: Node.js 22.18 or newer, a Chromium browser, ffmpeg and uv. "Configuration" →
   "Demos" shows what is missing and how to install it. See [`docs/demo-setup.md`](docs/demo-setup.md).
-- For voice: ffmpeg and uv. Parakeet transcribes what you say on the CPU of any machine, in a
+- For voice: ffmpeg and uv. Parakeet, a speech recognition model, transcribes what you say on the CPU of any machine, in a
   fraction of a second per command. "Configuration" → "Voice input" shows what is missing,
-  installs the rest and measures how fast it is. Where it is too slow, it offers a cloud service
+  installs the rest and measures how fast it is. If transcription is too slow on the machine, it offers a cloud service
   instead (Groq for free, Mistral, or any OpenAI-compatible endpoint). Everything else works
   without voice.
 
@@ -208,7 +214,7 @@ prints a new link that signs another browser in. An Obeya that is older than the
 on the home (an app not yet updated after a newer checkout, for example) leaves the database alone
 and tells you to update.
 
-Agents run on the Claude Code or Codex login of the machine. You can see and change the canvases
+Agents run on the Claude Code, Codex or Gemini login of the machine. You can see and change the canvases
 and their repositories in the app ("Configuration") or by telling Obeya. Saving writes
 `canvases.json`, and the running canvases pick up the change at once. An Obeya that was started
 with repositories on the command line restarts with the file.
@@ -231,11 +237,13 @@ own part (`app/`) changes, so you install it only once.
 A repository's agents can also run on other machines that Obeya reaches over SSH. "Configuration"
 lists these machines per repository, each with its SSH target, the directory for the clones, the
 number of clones and the number of agents at once. Obeya clones the repository there and starts
-new cards there when this machine has no free slot. The other machine needs git, Claude Code or
-Codex, and whatever the repository's own work needs. Obeya sends Claude's login along with each
-start and does not leave it on the other machine. The login comes from `claude setup-token`, saved
-as `claude-token` in Obeya's home. Codex runs on the other machine's own Codex login. Demos
-recorded there come back to this machine, which narrates them in its voice. The details are under
+new cards there when this machine has no free slot. The other machine needs git, Claude Code,
+Codex or Gemini, and whatever the repository's own work needs. Obeya passes Claude's login to each
+agent it starts there and does not leave it on the other machine. The login comes from `claude
+setup-token`, saved as `claude-token` in Obeya's home. Codex and Gemini run on the other machine's
+own logins; signing in to Gemini there takes a click on "Log in" in "Agents and models",
+which opens a terminal that signs in over SSH. Demos recorded there come back to this machine,
+which narrates them with its own voice settings. The details are under
 "Hosts" in [`docs/design/agents-and-workspaces.md`](docs/design/agents-and-workspaces.md).
 
 ### Setting up a repository
@@ -248,7 +256,7 @@ A repository's settings, `.obeya/settings.json`, say how the project's app start
 change must pass, how approved work lands and how a demo is recorded.
 [`docs/settings.md`](docs/settings.md) describes them. "Configuration" shows the settings, changes
 them for one machine, and copies them into the repository for everyone. For a repository that has
-none, it offers a card whose agent writes them. Commands that a repository brings along, in these
+none, it offers a card whose agent writes them. Commands that come with a repository, in these
 settings and in its Claude Code configuration, run only after you have trusted them. After they
 change, you have to trust them again.
 
@@ -257,9 +265,9 @@ change, you have to trust them again.
 It's a big word for a short list, but here are some extensions that would be nice to have and that
 are too large to simply build with a single card in Obeya.
 
-- Support more coding subs (Grok, Gemini).
+- Support more coding subs (Grok).
 - Support more coding harnesses (OpenCode, Pi) – not sure how much value that would bring, maybe for local models?
-- I personally let Codex (and sometimes Grok) review all Opus-made changes, but that's happening at my user-level prompt, so it's not built into Obeya. That could be a good built-in feature though because at least at the moment still, I find it makes a big difference in the quality of the result.
+- I personally let Codex (and sometimes Grok) review all Opus-made changes, but that's happening at my user-level prompt, so it's not built into Obeya. That could be a good built-in feature though because, at least for now, I find it makes a big difference in the quality of the result.
 - App in the App/Play stores. The phone app is just a web app that you need to "install" to your home screen for the best experience.
 
 ... and that is a good segue into the next section ;)

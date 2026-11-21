@@ -520,6 +520,8 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .proposals .setting-diff .setting-value.was { color: var(--muted); background: transparent; border: 1px dashed var(--line); }
 .proposals .setting-diff .setting-value.was.setting-none { font-family: inherit; font-style: italic; }
 .proposals .setting-diff textarea { min-width: 0; }
+.proposals .setting-diff .t-diff { min-width: 0; }
+.proposals .setting-same { padding-top: 6px; font-size: 12px; }
 .proposals .setting-value { flex-basis: 100%; margin: 0; font: 12px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--card); border-radius: 2px; padding: 6px 8px; }
 .prefs .pref-actions .take-on { flex-basis: 100%; color: var(--muted); font-size: 12px; }
 .kpill .n.prop { background: var(--proposal); }
@@ -1203,6 +1205,8 @@ span.cl-name { color: inherit; cursor: default; }
 .talk .note.snooze-line .clock-mark { vertical-align: -1px; }
 .talk .wait-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; }
 .talk .wait-line .clock-mark { vertical-align: -1px; }
+.talk .created-links { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.talk .created-links .link { color: var(--ink); }
 .snooze-acts { display: flex; gap: 8px; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
 .snooze-acts .btn.small { margin-top: 4px; background: var(--card); border: 1px solid var(--line); color: var(--ink); }
 /* "Later …" and its menu of times, above the button in a card's action row; on the snooze line over the conversation, placed by script */
@@ -1219,17 +1223,20 @@ span.cl-name { color: inherit; cursor: default; }
 .snooze-pick { display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); margin-top: 2px; align-items: center; }
 .snooze-pick input { min-width: 0; font: inherit; font-size: 13px; padding: 5px 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg); color: var(--ink); }
 .snooze-pick .btn { padding: 6px 12px; }
-/* the button that starts a card, joined to a narrow part with a triangle that opens the menu of what its agent runs on (placed by script), and that choice beside them where the card has one */
-.agent-split, .agent-join { display: inline-flex; align-items: stretch; }
-.agent-join { border-radius: 3px; }
-.agent-join > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.agent-join > .agent-pick { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 1px; padding: 0 6px; display: inline-flex; align-items: center; }
-.agent-join > .btn.agent-pick:not(.primary) { box-shadow: inset 1px 0 0 var(--line); }
-.agent-join:has(> .btn.suggested:first-child) { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--idea); }
-.agent-join > .btn.suggested:first-child { box-shadow: none; }
-.agent-split.saving .agent-join > .btn:first-child { pointer-events: none; opacity: 0.7; }
+/* "Continue with …", with the chip button beside it that names and picks what the new agent runs on (menu placed by script) */
+.agent-split { display: inline-flex; align-items: stretch; gap: 10px; }
 .agent-caret { flex: none; opacity: 0.8; }
-.agent-chosen { align-self: center; margin: 0 0 0 10px; font-size: 12.5px; white-space: nowrap; }
+/* among a card's buttons: what its agent runs on, an icon until the card has a choice of its own, then that choice and a × back to the settings */
+.agent-choice { display: inline-flex; align-items: stretch; }
+.agent-choice-btn { display: inline-flex; align-items: center; gap: 7px; padding-left: 10px; padding-right: 10px; background: none; box-shadow: none; color: var(--muted); }
+.agent-choice-btn:hover, .agent-choice-btn[aria-expanded="true"] { color: var(--ink); background: var(--chip); }
+.agent-choice.chosen .agent-choice-btn { color: var(--ink); background: var(--chip); border-top-right-radius: 0; border-bottom-right-radius: 0; font-weight: 500; }
+.agent-choice.chosen.alone .agent-choice-btn { border-radius: 3px; }
+.agent-choice-reset { padding: 0 9px; font-weight: 500; margin-left: 1px; border-top-left-radius: 0; border-bottom-left-radius: 0; background: var(--chip); color: var(--muted); }
+.agent-choice-reset:hover { color: var(--ink); }
+.agent-choice.saving button { pointer-events: none; opacity: .7; }
+.agent-chip { flex: none; }
+.agent-menu .agent-runs-on { text-transform: none; letter-spacing: normal; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 2px; }
 .agent-menu { position: fixed; z-index: 75; bottom: auto; max-width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; }
 .agent-menu .snooze-opt { display: flex; align-items: baseline; }
 /* a project's buttons where they do not fit beside its title, from its "…" button (placed by script) */
@@ -1246,6 +1253,7 @@ span.cl-name { color: inherit; cursor: default; }
 .harness-update { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 4px 12px; font-size: 12.5px; color: var(--muted); }
 .harness-update-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .harness-update.failed .harness-update-text { color: var(--error); }
+.harness-update-status { display: block; margin-top: 2px; }
 .harness-update .btn { flex: none; }
 .cfg-box .harness-update { padding: 6px 0; font-size: inherit; }
 .agent-effort-h { border-top: 1px solid var(--line); margin-top: 4px; }
@@ -1448,6 +1456,10 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 /* the marked version is being drawn and uploaded, to take its place */
 .c-shot.marking img { opacity: .5; }
 .c-error { flex-basis: 100%; margin: 0; }
+/* longer than a message may be: why it does not send, and the way out beside it */
+.c-too-long { display: flex; align-items: center; gap: 12px; line-height: 1.4; }
+.c-too-long span { flex: 1; }
+.c-too-long .btn { flex: none; color: var(--ink); }
 .shots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .shot { border: 1px solid var(--line); border-radius: 2px; padding: 0; background: var(--card); cursor: zoom-in; line-height: 0; }
 .shot img { height: 88px; max-width: 240px; object-fit: cover; border-radius: 2px; display: block; }
@@ -1522,6 +1534,13 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .d-lines > .d-del { background: color-mix(in srgb, var(--error) 12%, transparent); color: inherit; }
 .d-lines > .d-hunk { color: var(--muted); background: color-mix(in srgb, var(--working) 7%, transparent); }
 .d-lines > .d-note { color: var(--muted); font-style: italic; }
+.t-diff { border-top: 1px solid var(--line); border-radius: 2px; background: var(--card); }
+.t-diff > div { min-height: 1.5em; }
+.t-diff mark { color: inherit; border-radius: 2px; }
+.t-diff > .d-add mark { background: color-mix(in srgb, var(--approved) 34%, transparent); }
+.t-diff > .d-del mark { background: color-mix(in srgb, var(--error) 30%, transparent); }
+.t-diff > .d-fold { display: flex; width: 100%; padding: 0; border: 0; background: color-mix(in srgb, var(--working) 7%, transparent); color: var(--muted); font: inherit; text-align: left; cursor: pointer; }
+.t-diff > .d-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--working) 14%, transparent); }
 .d-cut { margin-top: 18px; }
 .btn:disabled { opacity: .45; cursor: default; filter: none; }
 /* above projects (z-index 0), below cards (2): a line from a workstream stays visible over its project */
@@ -1681,7 +1700,10 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .c-trust { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 8px; }
 .c-trust-group { align-self: stretch; }
 .c-trust-group > .hint { margin: 0 0 4px; }
-.c-trust .d-lines { border-top: 1px solid var(--line); }
+.c-trust-file { margin-top: 6px; font-size: 12px; }
+.c-trust-file .d-name { font-family: var(--mono); }
+.c-trust-file .hint { margin-left: 4px; }
+.c-trust-file .t-diff { margin-top: 2px; }
 /* fields sunk a little into the sheet, a shade darker than it with a firmer edge, so the page's structure
    reads at a glance; the one being typed in comes up to the sheet's own colour */
 #config input, #config select, #config textarea { font: inherit; font-size: 13px; padding: 6px 9px; border-radius: 2px;
@@ -2011,6 +2033,8 @@ button.link:hover { text-decoration: underline; }
 .c-listener { flex-basis: 100%; margin-top: -4px; font-size: 11.5px; color: var(--muted); }
 .c-listener.c-dictation, .c-listener.c-dictation b { color: var(--working); }
 .c-listener.c-note { color: var(--warn); }
+.composer.hinted { margin-bottom: 6px; }
+.composer > .c-skills-hint { position: absolute; left: 0; top: 100%; margin-top: 2px; line-height: 1.3; pointer-events: none; z-index: 2; }
 /* `/` in a card's field: the skills of its agent that fit, over the conversation just above the field */
 .composer { position: relative; }
 .skill-menu { position: absolute; left: 0; right: 0; bottom: 100%; margin-bottom: 4px; z-index: 5; max-height: min(320px, 45vh); overflow: hidden auto;

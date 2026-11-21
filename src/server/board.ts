@@ -13,13 +13,14 @@ import { cardNumbersIn, cardTag } from '../core/card-number';
 import type { Language } from '../core/locale';
 import { MESSAGES, type Messages, snoozeTerm } from '../core/messages';
 import { allTicked, type OtherDoc, type PlanDoc, type Workstream } from '../core/plan-doc';
-import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type ClonePool, type Decision, type DemoKind, type ErrorCode, type Group, type Snooze, type Woke, type Item, type NewCard, type NewRepo, type TalkMoved, type PreferenceState, type ProposedSetting, type SettingProposal, type SettingProposalState, type ProjectHistory, type Proposal, type Superseded, type CardState, type Revising, type Question, type PlanDir, type Queue, STATES, type Notice, type WorkerTurn } from '../core/types';
+import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type ClonePool, type Decision, type DemoKind, type ErrorCode, type Group, type Snooze, type Woke, type Item, type NewCard, type NewRepo, type TalkCard, type TalkMoved, type PreferenceState, type ProposedSetting, type SettingProposal, type SettingProposalState, type ProjectHistory, type Proposal, type Superseded, type CardState, type Revising, type Question, type PlanDir, type Queue, STATES, type Notice, type WorkerTurn } from '../core/types';
 import { archivedWithDone, archiveRefusal, type ArchiveRefusal, finished, formatQuestion, needsYou, plannedToStart } from '../core/card';
 import { type CardAgent, AGENT_EFFORTS, type AgentEffort, type Harness, HARNESSES, modelFits, storedModel } from '../core/agents';
 import type { CardRow, DecisionRow, Friction, FrictionNote, GroupRow, NewEvent, NewRow, RowUpdate, Store } from './db';
 import { History } from './history';
 import { Sheet } from './sheet';
-import { atWork, begun, finishing, stateOf, tickedAhead, toItems, workDone, type Worked } from './items';
+import { atWork, begun, finishing, goesOnElsewhere, stateOf, tickedAhead, toItems, workDone, type Worked } from './items';
+import type { Rewritten } from './workspaces';
 import { docOfRef, keyOfRef, repoOfRef, workstreamRef } from './plan-ref';
 import { PageNotice } from './shared-pages';
 import { Archive } from './archive';
@@ -317,6 +318,28 @@ export class Board {
     });
   }
 
+  /**
+   * The unpushed commits on repository `repo`'s default branch were rebased (`rewritten`; every
+   * repository's where none is named): the cards that landed them, archived ones too, name the new
+   * ones, and where their work starts. Returns those cards.
+   */
+  rewritten(repo: string | undefined, { commits, bases }: Rewritten): string[] {
+    const moved: string[] = [];
+    for (const r of this.store.landed(this.canvas.id)) {
+      const s = fromJson(r.shipped);
+      const commit = s?.commit && commits[s.commit];
+      if (!s || !commit || (repo && (r.repo ?? (r.plan_ref ? repoOfRef(r.plan_ref, this.home) : this.home)) !== repo)) continue;
+      const l = fromJson(r.landed);
+      this.work(r.id, {
+        shipped: toJson({ ...s, commit, ...(s.base && bases[s.base] ? { base: bases[s.base] } : {}) }),
+        // the worker still finishing after its landing names the new one too
+        ...(l?.commit && commits[l.commit] ? { landed: toJson({ ...l, commit: commits[l.commit] }) } : {}),
+      });
+      moved.push(r.id);
+    }
+    return moved;
+  }
+
   /** Plan docs changed on disk: read them again. */
   docsChanged() {
     this.docs = null;
@@ -417,6 +440,38 @@ export class Board {
     for (const e of this.store.readEvents(cardId, ids)) for (const fn of this.eventListeners) fn(e);
   }
 
+  /** Attaches cards the Coordinator created to its reply line in `cardId`'s log and updates open views. */
+  eventCreated(cardId: string, id: number, created: TalkCard[]) {
+    const e = this.store.setEventCreated(cardId, id, created);
+    if (!e) return;
+    const resolved = this.resolveEvents([e])[0]!;
+    for (const fn of this.eventListeners) fn(resolved);
+  }
+
+  /** Resolves `created` card references against the live store so archived, deleted, or moved cards (on any canvas) reflect their current state. */
+  private resolveCreated(cards: TalkCard[], locs: Map<string, { canvasId: string; short: string | null; archivedAt: string | null; deletedAt: string | null }>): TalkCard[] {
+    return cards.map((c) => {
+      const loc = locs.get(c.id);
+      if (!loc || loc.deletedAt || loc.archivedAt) return { id: c.id, title: c.title, gone: true as const };
+      if (loc.canvasId !== this.canvas.id) return { id: c.id, title: c.title, canvas: loc.canvasId, ...(loc.short ? { short: loc.short } : {}) };
+      return { id: c.id, title: c.title };
+    });
+  }
+
+  private resolveEvents(events: CardEvent[]): CardEvent[] {
+    const ids = [...new Set(events.flatMap((e) => e.created?.map((c) => c.id) ?? []))];
+    if (!ids.length) return events;
+    const locs = this.store.cardLocations(ids);
+    return events.map((e) => (e.created?.length ? { ...e, created: this.resolveCreated(e.created, locs) } : e));
+  }
+
+  /** Invalidates the cached snapshot when any card linked from this canvas's chat changed on another canvas (archived, deleted, restored, moved). */
+  refreshLinked(cardIds: string[]) {
+    if (!cardIds.length || !this.cache) return;
+    const set = new Set(cardIds);
+    if (this.cache.talk.some((x) => x.created?.some((c) => set.has(c.id)))) this.changed();
+  }
+
   /**
    * The owner takes back words the agent has not read: they leave the conversation, and so does
    * what they said aloud for them, which stood as the same words just before.
@@ -456,7 +511,7 @@ export class Board {
 
   events(cardId: string): CardEvent[] {
     this.own(cardId);
-    return this.store.events(cardId);
+    return this.resolveEvents(this.store.events(cardId));
   }
 
   row(id: string): CardRow {
@@ -917,8 +972,10 @@ export class Board {
         repo: this.repoColumn(idea?.repo),
       },
     ]);
+    // its worker runs on what the idea's agents do
+    if (idea?.agent) this.store.update(row!.id, { agent: toJson(idea.agent) });
     this.changed();
-    return this.itemOf(row!);
+    return this.itemOf(this.store.card(row!.id)!);
   }
 
   /** The prototype's worker proposes to build the idea on it; the owner accepts on the prototype's card. */
@@ -971,10 +1028,11 @@ export class Board {
   }
 
   /**
-   * The harness, model and effort the card's agent runs on, over the workers' group's (`null`: the
-   * group's again), for each session of its next run. A session keeps what it started on, so the choice
-   * changes only while the card waits to start (planned, proposed, an idea its worker will build, or a
-   * Question card it will start as a task).
+   * The harness, model and effort every agent of the card runs on (its worker, an idea's exploration
+   * agent), over each one's group's (`null`: the groups' again), for each session of its next run; an
+   * idea's discussion takes it from its next message on. A worker's session keeps what it started on,
+   * so the choice changes only while the card waits to start (planned, proposed, an idea, or a
+   * Question card it will start as a task or discuss as an idea).
    */
   chooseAgent(id: string, agent: CardAgent | null) {
     this.own(id);
@@ -1255,7 +1313,9 @@ export class Board {
     if (!row || row.workspace !== path) return this.changed();
     const working = row.state === 'working';
     this.work(cardId, { workspace: null, app: null, parked: null, ...(working ? { state: 'planned', paused: null, pausing: null, snoozed: null } : {}) });
-    if (!row.deleted_at) this.log(cardId, 'state', 'obeya', this.t.worker.workspaceGone(path, working));
+    // one waiting for the owner or in its pull request keeps its state: its agent goes on elsewhere once something comes for it
+    const then = working ? 'planned' : goesOnElsewhere(this.store.card(cardId)!) ? 'agent' : 'start';
+    if (!row.deleted_at) this.log(cardId, 'state', 'obeya', this.t.worker.workspaceGone(path, then));
   }
 
   /** A card's landed work is done, its worker gone: a card whose plan doc is a project now gives way to it. */
@@ -1269,7 +1329,10 @@ export class Board {
   snapshot(): CanvasSnapshot {
     const items = this.items();
     if (this.cache) return this.cache;
-    const talk = this.sheet.latest(SHEET_TALK, true);
+    const rawTalk = this.sheet.latest(SHEET_TALK, true);
+    const createdIds = [...new Set(rawTalk.flatMap((x) => x.created?.map((c) => c.id) ?? []))];
+    const locs = createdIds.length ? this.store.cardLocations(createdIds) : null;
+    const talk = locs ? rawTalk.map((x) => (x.created?.length ? { ...x, created: this.resolveCreated(x.created, locs) } : x)) : rawTalk;
     const reshare = this.pages.reshare();
     const pools = this.clonePools();
     const planDirs = this.planDirs(this.docs!, this.rows!);
@@ -1798,34 +1861,37 @@ export class Board {
    * written in the sheet: it goes into the repository's card "Add to CLAUDE.md" at once, without
    * a proposal. `replaces`: an active rule of the owner's it takes the place of.
    */
-  fileRule(text: string, repos: string[], cardId: string | null = null, replaces?: number) {
+  fileRule(text: string, repos: string[], cardId: string | null = null, replaces?: number): string[] {
     const clean = checkPreference(text);
     if (!repos.length) throw new BadRequest('invalid', 'no repository');
     for (const r of repos) this.checkRepo(r);
+    const cards: string[] = [];
     this.store.db.transaction(() => {
       if (replaces !== undefined) this.store.setPreference(this.canvas.id, replaces, null);
       for (const repo of new Set(repos)) {
         this.store.fileRule(this.canvas.id, clean, cardId, repo);
-        this.collect(repo, clean);
+        cards.push(this.collect(repo, clean));
       }
     })();
     this.changed();
+    return cards;
   }
 
   /**
    * Adds an accepted rule to the repository's open card "Add to CLAUDE.md": planned and not yet
-   * with the Coordinator. Without one, a new card collects it.
+   * with the Coordinator. Without one, a new card collects it. Returns the card's id.
    */
-  private collect(repo: string, rule: string) {
+  private collect(repo: string, rule: string): string {
     const open = this.collecting(repo);
     if (open) {
       this.store.update(open.id, { body: `${open.body.trimEnd()}\n- ${rule}` });
       this.log(open.id, 'state', 'coordinator', this.t.coordinator.ruleTaken(rule));
-      return;
+      return open.id;
     }
     const card = this.create({ title: this.t.claudeMd.title, body: `${this.t.claudeMd.task}\n\n- ${rule}`, repo, ...this.freeSpot() });
     this.setSetting(`${CLAUDE_MD_SETTING}${repo}`, card.id);
     this.log(card.id, 'state', 'coordinator', this.t.coordinator.ruleTaken(rule));
+    return card.id;
   }
 
   /** The repository's card "Add to CLAUDE.md" while it still collects rules, if there is one. */

@@ -10,9 +10,10 @@
 
 import { createContext, useEffect, useRef, useState } from 'react';
 import type { Place } from '../core/layout';
+import { MAX_IMAGES } from '../core/types';
 import { ApiError, api, type Heard, holdRestart, type Where, failText } from './api';
 import { confirmShownMs, undoShownMs } from './tell';
-import { beginDictation, dictate, draftOf, focusedDraft, insertFiles, insertPasted, MIC_DRAFT, moveFiles, moveImages, pastedIn, sendsWithEnter, takesImages, toObeya, updateDraft, useDraft, useFieldOn, uploaded, useFocusedDraft, withoutPasted, withoutWords, wordsOf } from './draft';
+import { beginDictation, dictate, draftOf, focusedDraft, insertFiles, insertPasted, MIC_DRAFT, moveFiles, moveImages, pastedIn, putBack, sendsWithEnter, takesImages, toObeya, updateDraft, useDraft, useFieldOn, uploaded, useFocusedDraft, withoutPasted, withoutWords, wordsOf } from './draft';
 import { Aside } from './aside';
 import { type Recording, record } from './recorder';
 import { AttachButton, ShotStrip, useShotInput } from './shots';
@@ -264,7 +265,7 @@ export function usePushToTalk(
       // what stands in the field goes out with the words and leaves it; nothing heard, it comes back
       const key = field(r.target);
       await uploaded(key);
-      const { text, images } = draftOf(key);
+      const { text, images, dictated } = draftOf(key);
       updateDraft(key, (d) => ({ text: '', images: d.images.filter((id) => !images.includes(id)) }));
       // said in reply to the message the field quotes, as typed words are
       const reply = replyOn(key);
@@ -285,7 +286,7 @@ export function usePushToTalk(
         }
       });
       if (!h.unheard && !failed) return;
-      updateDraft(key, (d) => ({ text: [text, d.text].filter((x) => x.trim()).join(' '), images: [...images, ...d.images.filter((id) => !images.includes(id))] }));
+      putBack(key, text, images, !!dictated);
       if (reply && !replyOn(key)) setReply(key, reply);
     }).finally(() => setWriting((n) => n - 1));
   }
@@ -478,9 +479,13 @@ export function PushToTalk({ phase, level, flat, target, field, onDown }: { phas
       moveImages(MIC_DRAFT, key);
       if (paths.trim()) {
         const texts = pastedIn(beside);
-        insertFiles(key, wordsOf(withoutPasted(paths, texts)));
+        const words: string[] = wordsOf(withoutPasted(paths, texts));
+        insertFiles(key, words);
         insertPasted(key, texts);
-        updateDraft(MIC_DRAFT, { text: '', pasted: [] });
+        // a paste's path goes with the note that it stands for a paste
+        const { pastedAsFile } = beside;
+        if (pastedAsFile && words.includes(pastedAsFile)) updateDraft(key, { pastedAsFile });
+        updateDraft(MIC_DRAFT, { text: '', pasted: [], pastedAsFile: undefined });
       }
     } else if (key === MIC_DRAFT && obeya.current) {
       moveImages(obeya.current, MIC_DRAFT);
@@ -522,7 +527,7 @@ export function PushToTalk({ phase, level, flat, target, field, onDown }: { phas
           </div>
         )}
       </div>
-      {shots.error && key === MIC_DRAFT && <div className="ptt-error">{shots.error}</div>}
+      {key === MIC_DRAFT && (n > MAX_IMAGES ? <div className="ptt-error">{t.shots.overLimit(n, MAX_IMAGES)}</div> : shots.error && <div className="ptt-error">{shots.error}</div>)}
       {flat ? (
         <div id="target" className="flat">
           {t.voice.flat}

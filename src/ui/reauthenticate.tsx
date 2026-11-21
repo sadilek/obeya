@@ -6,16 +6,17 @@ import { t } from './strings';
 
 /** Whether this browser runs on the machine Obeya runs on, asked once per page. */
 let local: Promise<boolean> | undefined;
-const onThisMachine = () => (local ??= api.access().then((v) => v.local, () => true));
+export const onThisMachine = () => (local ??= api.access().then((v) => v.local, () => true));
 
 /**
- * The same terminal login as Setup, offered where an agent's expired login interrupted a chat. A
- * session that signed in with a token (`token`: on another machine, or on CLAUDE_CODE_OAUTH_TOKEN)
- * gets a new one instead: `claude setup-token` in a terminal, its token pasted here for Obeya to keep.
- * The terminal opens on the machine Obeya runs on, so the phone view and another device get no
- * button, only where to go.
+ * The same terminal login as Setup, offered where an agent's expired login interrupted a chat: Claude
+ * Code's, or Gemini's (`gemini`: on this machine, or on the host it names, reached over SSH from a
+ * terminal here). A Claude session that signed in with a token (`token`: on another
+ * machine, or on CLAUDE_CODE_OAUTH_TOKEN) gets a new one instead: `claude setup-token` in a terminal,
+ * its token pasted here for Obeya to keep. The terminal opens on the machine Obeya runs on, so the
+ * phone view and another device get no button, only where to go.
  */
-export function Reauthenticate({ start = false, token = false }: { start?: boolean; token?: boolean }) {
+export function Reauthenticate({ start = false, token = false, gemini }: { start?: boolean; token?: boolean; gemini?: { host: string | null } }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [command, setCommand] = useState('');
@@ -26,7 +27,7 @@ export function Reauthenticate({ start = false, token = false }: { start?: boole
     setBusy(true);
     setStatus('');
     try {
-      const { opened, command } = await api.setupLogin('needed', 'claudeLogin', token);
+      const { opened, command } = await api.setupLogin('needed', gemini ? 'geminiLogin' : 'claudeLogin', token, gemini?.host);
       setCommand(command);
       setStatus(opened ? t.setup.terminalOpen : t.setup.noTerminal);
     } catch (e) {

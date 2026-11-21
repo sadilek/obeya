@@ -18,6 +18,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'advisor.ts': { why: "server path, cheap: a stat of each file the assistant's answer names, to tell which are none", calls: { existsSync: 1, statSync: 1 } },
   'answers.ts': { why: "server path, cheap: creates an answer's directory before its agent starts", calls: { mkdirSync: 2 } },
   'app-command.ts': { why: "server path, cheap: whether the script an app command names is there, before it starts", calls: { existsSync: 1 } },
+  'app-reach.ts': { why: "the tailscale serve entries made for cards' apps: a small file written when one is made or goes, and the entries taken back as the server stops", calls: { existsSync: 1, readFileSync: 1, rmSync: 1, unserveSync: 1, writeFileSync: 1 } },
   'artifact-copy.ts': {
     why: "server path: an artifact's own files read by their real path while its copy is put together (a share, an export); small files, a candidate for fs/promises",
     calls: { readFileSync: 1, realpathSync: 2 },
@@ -65,8 +66,8 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     calls: { existsSync: 2, spawnSync: 3 },
   },
   'git-setup.ts': {
-    why: "server path, rare: setting up git in a folder the owner chose (setup, a card's new repository) runs git init, add and commit with the server waiting; a candidate for spawnOutput",
-    calls: { existsSync: 2, mkdtempSync: 1, rmSync: 3, spawnSync: 1, statSync: 2, writeFileSync: 2 },
+    why: "server path, rare: setting up git or the first commit in a folder the owner chose (setup, a card's new repository) runs git init, add and commit with the server waiting, what was staged kept to put back; a candidate for spawnOutput",
+    calls: { existsSync: 4, mkdtempSync: 1, readFileSync: 1, rmSync: 4, spawnSync: 1, statSync: 2, writeFileSync: 3 },
   },
   'hosts.ts': {
     why: "cheap: the ssh socket directory checked per command, a session's files listed and stamped before it starts there, a host's copy replaced, Claude's token file",
@@ -80,8 +81,8 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   },
   'instance.ts': { why: "startup and shutdown: the running instance's file", calls: { readFileSync: 1, renameSync: 1, rmSync: 1, writeFileSync: 1 } },
   'machine.ts': {
-    why: "server path, cheap: the setup's checks of known paths (Claude's binary, a clone's target), the first canvas's welcome marker",
-    calls: { existsSync: 3, readFileSync: 1, rmSync: 1, writeFileSync: 1 },
+    why: "server path, cheap: the setup's checks of known paths (Claude's binary, a clone's target, whether a fresh clone holds anything), the first canvas's welcome marker",
+    calls: { existsSync: 3, readFileSync: 1, readdirSync: 1, rmSync: 1, writeFileSync: 1 },
   },
   'main.ts': { why: 'startup before the server listens, and the replay CLI', calls: { chmodSync: 1, existsSync: 2, mkdirSync: 1, rmSync: 1, statSync: 2, writeFileSync: 1 } },
   'narration.ts': {
@@ -103,8 +104,8 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'remote.ts': { why: 'the remote access setting: a small file, and tailscale serve taken back as the server stops', calls: { existsSync: 1, readFileSync: 1, rmSync: 1, unserveSync: 1, writeFileSync: 1 } },
   'replay.ts': { why: 'CLI for recording and replaying demos, not the server', calls: { appendFileSync: 1, cpSync: 2, existsSync: 7, mkdirSync: 3, mkdtempSync: 2, readFileSync: 4, readdirSync: 3, rmSync: 2, writeFileSync: 4 } },
   'repo.ts': {
-    why: "server path: the plan docs read from the read tree when they change (a directory of small files, read where the canvas needs them at once), the plan directory watched and polled by stats; gh's hosts file read for a remote's host, and for the accounts gh is logged into when the configuration is checked (a small file)",
-    calls: { existsSync: 5, readFileSync: 3, readdirSync: 3, statSync: 3 },
+    why: "server path: the plan docs read from the read tree when they change (a directory of small files, read where the canvas needs them at once), the plan directory watched and polled by stats (and a repository that is gone, until it is back); gh's hosts file read for a remote's host, and for the accounts gh is logged into when the configuration is checked (a small file)",
+    calls: { existsSync: 7, readFileSync: 3, readdirSync: 3, statSync: 3 },
   },
   'resources.ts': { why: 'startup: where the bundled resources are', calls: { existsSync: 2 } },
   'runtime.ts': { why: "server path at an agent's start: a repository's trust notes", calls: { existsSync: 1, readFileSync: 1 } },
@@ -140,8 +141,8 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'tailscale.ts': { why: 'tailscale serve taken back as the server stops; the binary found by a stat', calls: { existsSync: 1, spawnSync: 1 } },
   'theme.ts': { why: "a folder's theme, read from the folder's few files (a repository's is read from git without waiting)", calls: { readFileSync: 1 } },
   'transcript.ts': {
-    why: "server path, in the background: the work retrospective finds a session's transcript by listing Claude's and Codex's session directories and reads it whole; a candidate for fs/promises",
-    calls: { existsSync: 2, readFileSync: 1, readdirSync: 3, statSync: 1 },
+    why: "server path, in the background: the work retrospective finds a session's transcript by listing Claude's and Codex's session directories (Gemini's by its path) and reads it whole; a candidate for fs/promises",
+    calls: { existsSync: 3, readFileSync: 1, readdirSync: 3, statSync: 1 },
   },
   'voice-cloud.ts': { why: "the cloud voice's settings file, small, read when used and written when the owner saves", calls: { chmodSync: 1, existsSync: 1, readFileSync: 1, writeFileSync: 1 } },
   'walkthrough.ts': {

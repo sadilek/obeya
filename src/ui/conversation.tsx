@@ -8,11 +8,13 @@ import { finished, openQuestions, parseQuestion, pausableNow, started, taskAutho
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answerText, toggle } from './answer';
-import { api, type Field, onCardEvent, onCardEventGone, onReconnect } from './api';
+import { api, type Field, onCardEvent, onCardEventGone, onReconnect, storedFile } from './api';
+import { linkStoredFiles } from './storedFiles';
 import type { Act, Tell } from './cardSheet';
 import { PlayMark, StopMark } from './parts';
 import { holdsNotes } from '../core/queue';
 import { Body, Inline } from './markdown';
+import { ReplyBody } from './cardLink';
 import { goToMessage, Msg, Quote, Reading, tellable, useAnswer } from './message';
 import { useReportedHeight } from './frame';
 import { cardDraft, giveBack, questionsKey, updateDraft, useDraft } from './draft';
@@ -30,7 +32,7 @@ import { clock as time, errorText, stamp, t } from './strings';
 import { worked as isWorked } from './cardState';
 import { cardTalk, demoHandover, talkState, coordinatorReads, snoozeLine, type Turn, unseenTurns } from './talk';
 import { WishReplyLink } from './wish';
-import { claudeLoginFailed, codexLoginLost } from '../core/login';
+import { claudeLoginFailed, codexLoginLost, geminiLoginLost } from '../core/login';
 import { CodexLogin, Reauthenticate } from './reauthenticate';
 import { clip } from '../core/text';
 import { DecidedChip, useUnsentDecisions } from './review';
@@ -323,6 +325,7 @@ function Line({
       {stamp(turn.e.at)} · <Linked text={eventText(turn.e)} />
       {turn.e.kind === 'error' && !explained && claudeLoginFailed(turn.e.text) && <Reauthenticate token={turn.e.token} />}
       {turn.e.kind === 'error' && !explained && codexLoginLost(turn.e.text) && <CodexLogin host={codexLoginLost(turn.e.text)!.host} />}
+      {turn.e.kind === 'error' && !explained && geminiLoginLost(turn.e.text) && <Reauthenticate gemini={geminiLoginLost(turn.e.text)!} />}
     </div>
   ) : (
     <Message turn={turn} {...rest} />
@@ -391,7 +394,7 @@ function Message({
       {quoted && <Quote q={eventQuote(quoted)} />}
       {answer.continues}
       {e.spot && <SpotLink cardId={e.cardId} spot={e.spot} />}
-      {!turn.quiet && <Body md={q ? q.text : (turn.words ?? e.text)} />}
+      {!turn.quiet && <ReplyBody md={q ? q.text : ownerSide(e) ? linkStoredFiles(turn.words ?? e.text, storedFile) : (turn.words ?? e.text)} created={e.created} />}
       {e.wish && <WishReplyLink wish={e.wish} />}
       {q && turn.end !== 'settled' && q.options.length > 0 && (
         <ul className="q-opts">
@@ -590,12 +593,12 @@ interface TalkField {
    * them; the conversation marks them on the question.
    */
   quote?: boolean;
-  /** Words alone go to the card's agent, or to the Coordinator that `listener` names; `replyTo`: the message they reply to. */
-  onWords: (text: string, images?: string[], replyTo?: number) => Promise<void>;
+  /** Words alone go to the card's agent, or to the Coordinator that `listener` names; `replyTo`: the message they reply to; `spoken`: dictated into the field. */
+  onWords: (text: string, images?: string[], replyTo?: number, spoken?: boolean) => Promise<void>;
   /** Picked options go to the agent with the words: `picks` holds them for each question, and with `quote` the text names them too. */
-  onPicked: (text: string, picks: string[][], images?: string[], replyTo?: number) => Promise<void>;
+  onPicked: (text: string, picks: string[][], images?: string[], replyTo?: number, spoken?: boolean) => Promise<void>;
   /** On a review card: the owner's decisions on its findings go to the agent with the words. */
-  onDecided?: (text: string, findings: Record<string, ChangeRoute>, images?: string[], replyTo?: number) => Promise<void>;
+  onDecided?: (text: string, findings: Record<string, ChangeRoute>, images?: string[], replyTo?: number, spoken?: boolean) => Promise<void>;
 }
 
 /**
@@ -607,8 +610,8 @@ export const wordsField = (placeholder: string, onTell: Tell, field: Field, act:
   placeholder,
   listener,
   quote: true,
-  onWords: async (words, images, replyTo) => onTell(words, images, field, replyTo),
-  onPicked: (text, _, images, replyTo) => act({ action, text, images, ...(replyTo ? { replyTo } : {}) }, { close: false }),
+  onWords: async (words, images, replyTo, spoken) => onTell(words, images, field, replyTo, spoken),
+  onPicked: (text, _, images, replyTo, spoken) => act({ action, text, images, ...(replyTo ? { replyTo } : {}), ...(spoken ? { spoken } : {}) }, { close: false, rejects: true }),
 });
 
 /**
@@ -630,14 +633,14 @@ export function Talk({ item, past, field }: { item: Item; past?: boolean; field?
   const unsent = useUnsentDecisions(item);
   const decided = review ? unsent : {};
   const deciding = Object.keys(decided).length > 0;
-  const send = async (words: string, images?: string[], to?: Reply['to']) => {
+  const send = async (words: string, images?: string[], to?: Reply['to'], spoken?: boolean) => {
     const replyTo = typeof to === 'number' ? to : undefined;
     if (deciding && field!.onDecided) {
-      await field!.onDecided(words.trim(), decided, images, replyTo);
+      await field!.onDecided(words.trim(), decided, images, replyTo, spoken);
       updateDraft(draft, { findings: undefined });
       return;
     }
-    await (picked ? field!.onPicked(field!.quote ? answerText(questions, picks.picks, words) : words.trim(), picks.picks, images, replyTo) : field!.onWords(words, images, replyTo));
+    await (picked ? field!.onPicked(field!.quote ? answerText(questions, picks.picks, words) : words.trim(), picks.picks, images, replyTo, spoken) : field!.onWords(words, images, replyTo, spoken));
     picks.clear();
   };
   return (
@@ -870,6 +873,7 @@ export function LastFailure({ item }: { item: Item }) {
         {eventText(last)}
         {claudeLoginFailed(last.text) && <Reauthenticate start token={last.token} />}
         {codexLoginLost(last.text) && <CodexLogin start host={codexLoginLost(last.text)!.host} />}
+        {geminiLoginLost(last.text) && <Reauthenticate start gemini={geminiLoginLost(last.text)!} />}
       </div>
     </div>
   );

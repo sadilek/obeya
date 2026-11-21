@@ -12,7 +12,7 @@ import { DemoSettingsDialog } from './demo-settings';
 import { Store } from './db';
 import { serve } from './server';
 import { ownerLanguage } from './settings';
-import { asOwner, commit, FakeRuntime, gitClone, gitRepo, noForge, removeDir, silentWav, syncGitCalls, until, silent } from './testing';
+import { asOwner, commit, FakeRuntime, gitClone, gitRepo, identify, noForge, removeDir, silentWav, syncGitCalls, until, silent } from './testing';
 import { git } from './git';
 
 let dir: string;
@@ -115,6 +115,18 @@ describe("Obeya's configuration", () => {
     expect(checked.canvases[0]!.repos[0]).toEqual({ path: docs, git: false });
     expect(checked.resolved[0]!.repos[0]).toMatchObject({ id: 'dokumente', folder: true, values: { checks: { value: ['true'], source: 'repository' } } });
     expect((await c.check([{ repos: [{ path: join(dir, 'nowhere'), git: false }] }])).problems.map((p) => p.code)).toEqual(['noFolder']);
+  });
+
+  test('a repository without a commit keeps the configuration from being saved, until it has one', async () => {
+    const c = config('file', []);
+    const shop = join(dir, 'shop');
+    mkdirSync(shop);
+    git(shop, 'init', '--quiet');
+    const checked = await c.check([{ repos: [{ path: shop }] }]);
+    expect(checked.problems.map(({ code, canvas, repo }) => ({ code, canvas, repo }))).toEqual([{ code: 'noCommit', canvas: 0, repo: 0 }]);
+    identify(shop);
+    commit(shop, 'README.md', '# Shop\n', 'First commit');
+    expect((await c.check([{ repos: [{ path: shop }] }])).problems).toEqual([]);
   });
 
   test('finds what keeps a configuration from working, by canvas and repository', async () => {

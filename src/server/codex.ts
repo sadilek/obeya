@@ -22,7 +22,7 @@ import { basename, join } from 'node:path';
 import { messageOf } from '../core/text';
 import { within, withTimeout } from '../core/late';
 import type { UsageLimit } from '../core/types';
-import { type AgentEffort, type HarnessModel, AGENT_EFFORTS, codexFamily, codexFamilyName, newestOfFamilies } from '../core/agents';
+import { type AgentEffort, type HarnessModel, AGENT_EFFORTS, modelFamily, familyName, newestOfFamilies } from '../core/agents';
 import type { ToolCall } from './folder';
 import { HostError, LOST, remote, sessionFiles, type SshHost } from './hosts';
 import { which } from './path';
@@ -92,8 +92,8 @@ export async function codexLogin(bin: string, env: Env): Promise<{ loggedIn: boo
  * one the catalog marks as its default; none where the catalog has neither.
  */
 export function resolveCodexModel<M extends { id: string; isDefault?: true }>(models: M[], family: string): M | undefined {
-  const key = codexFamily(family);
-  return newestOfFamilies(models).find((m) => codexFamily(m.id) === key) ?? models.find((m) => m.isDefault);
+  const key = modelFamily(family);
+  return newestOfFamilies(models).find((m) => modelFamily(m.id) === key) ?? models.find((m) => m.isDefault);
 }
 
 /** The effort a model takes nearest to the one chosen, the higher of two as near: the one chosen where it takes it, or says nothing. */
@@ -560,7 +560,7 @@ class CodexSession implements AgentSession {
    * name one the login cannot use. An effort that model does not take becomes the nearest it does.
    */
   private async model(server: AppServer): Promise<string> {
-    const family = codexFamily(this.spec.model ?? 'default');
+    const family = modelFamily(this.spec.model ?? 'default');
     const where = this.there?.host.name ?? 'this machine';
     let catalog: HarnessModel[];
     try {
@@ -571,7 +571,7 @@ class CodexSession implements AgentSession {
       throw new Error(`Codex on ${where} did not list its models, so the agent did not start. (${messageOf(e)})`);
     }
     const model = resolveCodexModel(catalog, family);
-    if (!model) throw new Error(`Codex on ${where} lists no model of the family ${codexFamilyName(family)} and no default, so the agent did not start.`);
+    if (!model) throw new Error(`Codex on ${where} lists no model of the family ${familyName(family)} and no default, so the agent did not start.`);
     if (this.effort) this.effort = nearestEffort(this.effort, model.efforts);
     return model.id;
   }

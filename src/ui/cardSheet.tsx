@@ -9,7 +9,7 @@ import { Naming } from './cardLink';
 import { CardIdRoom } from './cardNumber';
 import { plain } from './markdown';
 import { shownTitle } from './parts';
-import { AgentPick, ContinueOn } from './agentPick';
+import { AgentChoice, ContinueOn } from './agentPick';
 import { useFitHeight } from './fitHeight';
 import { contributorChoice, SnoozeMenu } from './snooze';
 import { clock as time, snoozeWhen, stateLabel, t } from './strings';
@@ -19,7 +19,10 @@ import { clock as time, snoozeWhen, stateLabel, t } from './strings';
  * With `pending`, the card folds at once, before the server has answered, and says so until it has.
  * `ackFor`: with `pending`, the confirmation as the server's answer has it, where that differs from `ack`.
  */
-export type ActDone = { close: true; ack: string; ackFor?: (result: unknown) => string | undefined; undo?: () => unknown; pending?: string } | { close: false };
+export type ActDone =
+  | { close: true; ack: string; ackFor?: (result: unknown) => string | undefined; undo?: () => unknown; pending?: string }
+  /** `rejects`: the call rejects once Obeya's refusal shows, so a field that sent words with it keeps them. */
+  | { close: false; rejects?: true };
 
 /** An action the server is still at, after its card has folded: the answer confirms it or tells why not. */
 export type Pending = { card: string; title: string; answered: Promise<unknown> };
@@ -30,8 +33,8 @@ export type Act = (a: CardAction, done: ActDone) => Promise<void>;
 /** Any call for the open card, as `Act` goes: after its edits are saved, a failure shown on the card. */
 export type Run = (fn: () => Promise<unknown>, done: ActDone) => Promise<void>;
 
-/** Words typed into a field of the card: straight to its agent where one listens, else the Coordinator reads them like spoken ones; the panel does not wait. */
-export type Tell = (text: string, images: string[] | undefined, field: Field, replyTo?: number) => void;
+/** Words typed (or, `spoken`, dictated) into a field of the card: straight to its agent where one listens, else the Coordinator reads them like spoken ones; the panel does not wait. */
+export type Tell = (text: string, images: string[] | undefined, field: Field, replyTo?: number, spoken?: boolean) => void | Promise<void>;
 
 /** The head of an open card: what kind it is (a plain task says nothing of its kind), and its title, a field to type it into where `onEdit`. */
 export function CardHead({ item, kind, onEdit }: { item: Item; kind: string; onEdit?: false | ((p: CardPatch) => void) }) {
@@ -101,7 +104,7 @@ export function RepoDownBox({ item }: { item: Item }) {
 }
 
 /**
- * A card whose worker waits for its harness's limit while the other harness could take over: says so,
+ * A card whose worker waits for its harness's limit while another harness could take over: says so,
  * with "Continue with …", which has an agent there go on now instead of waiting.
  */
 export function MoveToBox({ item, act }: { item: Item; act: Act }) {
@@ -112,7 +115,7 @@ export function MoveToBox({ item, act }: { item: Item; act: Act }) {
     <div className="question move-to">
       <div className="q-text">{say(t.harnesses[m.from], snoozeWhen(m.until), t.harnesses[m.to.harness])}</div>
       <div className="actions">
-        <ContinueOn to={m.to} onGo={(agent) => act({ action: 'continueElsewhere', agent }, { close: false })} />
+        <ContinueOn from={m.from} to={m.to} onGo={(agent) => act({ action: 'continueElsewhere', agent }, { close: false })} />
       </div>
     </div>
   );
@@ -133,24 +136,20 @@ export function Later({ item, act }: { item: Item; act: Act }) {
   );
 }
 
-/** A button that starts the card (`children`), with the menu of what its agent runs on joined to it where `on`. */
-export function StartOn({ item, act, on = true, primary, children }: { item: Item; act: Act; on?: boolean; primary?: boolean; children: ReactNode }) {
-  if (!on || item.kind === 'project') return <>{children}</>;
-  return (
-    <AgentPick item={item} act={(a) => act(a, { close: false })} {...(primary === false ? { primary } : {})}>
-      {children}
-    </AgentPick>
-  );
+/**
+ * Among a card's buttons, after those that start an agent: what that agent runs on, whichever of them
+ * starts it, and where to change that for this card.
+ */
+export function CardAgentPick({ item, act }: { item: Item; act: Act }) {
+  return <AgentChoice item={item} act={(a) => act(a, { close: false })} />;
 }
 
-/** "Start" in its variants (`label`, `hint`): starts the card, with the menu of what its agent runs on joined to it where `on`. */
-export function StartButton({ item, act, label, hint, disabled, on }: { item: Item; act: Act; label: string; hint: string; disabled?: boolean; on?: boolean }) {
+/** "Start" in its variants (`label`, `hint`): starts the card. */
+export function StartButton({ act, label, hint, disabled }: { act: Act; label: string; hint: string; disabled?: boolean }) {
   return (
-    <StartOn item={item} act={act} on={on}>
-      <button className="btn primary" disabled={disabled} title={hint} onClick={() => act({ action: 'start' }, { close: false })}>
-        {label}
-      </button>
-    </StartOn>
+    <button className="btn primary" disabled={disabled} title={hint} onClick={() => act({ action: 'start' }, { close: false })}>
+      {label}
+    </button>
   );
 }
 

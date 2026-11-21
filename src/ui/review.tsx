@@ -22,7 +22,7 @@ export function ApproveReview({ item, act }: { item: Item; act: (a: CardAction, 
   const heldUp = Object.values(decided).some(holdsUp);
   // a PR in conflict with main is not merged: the confirmation says who resolves it
   const ackFor = (r: unknown) => {
-    const conflict = (r as ApproveResult)?.conflict;
+    const conflict = (r as Extract<ApproveResult, { conflict: unknown }> | undefined)?.conflict;
     return conflict === 'agent' ? t.review.conflictAgent(c.number) : conflict === 'contributor' ? t.review.conflictContributor(c.number, c.author) : undefined;
   };
   const go = (ack: string, pending: string) => act({ action: 'approve', ...(Object.keys(decided).length ? { findings: decided } : {}) }, { close: true, ack, ackFor, pending });

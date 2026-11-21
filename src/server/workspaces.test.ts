@@ -9,9 +9,9 @@ import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
 import { onStart } from './spawn';
 import { alive, commit, gitClone, gitRepo, identify, leftBehind, ownGlobalGitConfig, PATIENCE, removeDir, testBoard, until } from './testing';
-import { addTrailer, originFetch, pushRefusal, statusEntries, unlanded, Workspaces } from './workspaces';
+import { addTrailer, originFetch, type Pulled, pushRefusal, statusEntries, unlanded, Workspaces } from './workspaces';
 import { defaultBranch } from './branches';
-import { git, hasCommit, isAncestor } from './git';
+import { git, GIT, hasCommit, isAncestor } from './git';
 
 let dir: string;
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'obeya-branch-'))));
@@ -673,7 +673,9 @@ describe('the pull after a merge', () => {
     const own = edit(checkout, 'notes.md', 'mine\n');
     const merged = edit(origin, 'README.md', 'merged\n');
     const r = await spaces.pullMain();
-    expect(r).toEqual({ from: own, to: git(checkout, 'rev-parse', 'HEAD') });
+    const under = git(checkout, 'rev-parse', `${own}~1`);
+    // the commit has a new hash now, which the card that landed it is to name
+    expect(r).toEqual({ from: own, to: git(checkout, 'rev-parse', 'HEAD'), rewritten: { commits: { [own]: git(checkout, 'rev-parse', 'HEAD') }, bases: { [under]: merged, [own]: git(checkout, 'rev-parse', 'HEAD') } } });
     // the owner's commit on top of the merge, no merge commit
     expect(git(checkout, 'rev-parse', 'HEAD~1')).toBe(merged);
     expect(git(checkout, 'log', '-1', '--format=%s')).toBe('notes.md: mine');
@@ -684,7 +686,8 @@ describe('the pull after a merge', () => {
     git(checkout, 'config', 'pull.rebase', 'false');
     const own = edit(checkout, 'notes.md', 'mine\n');
     const merged = edit(origin, 'README.md', 'merged\n');
-    expect(await spaces.pullMain()).not.toHaveProperty('problem');
+    // a merge rewrites nothing
+    expect(await spaces.pullMain()).not.toHaveProperty('rewritten');
     expect(git(checkout, 'rev-parse', 'HEAD^1')).toBe(own);
     expect(git(checkout, 'rev-parse', 'HEAD^2')).toBe(merged);
   });
@@ -713,10 +716,37 @@ describe('the pull after a merge', () => {
     git(origin, 'fetch', '--quiet', checkout, own);
     git(origin, 'cherry-pick', own);
     edit(origin, 'README.md', 'then theirs\n');
+    const kept = edit(checkout, 'notes.md', 'mine\n');
     const r = await spaces.pullMain();
     expect(r).not.toHaveProperty('stopped');
     expect(r).not.toHaveProperty('problem');
     expect(readFileSync(join(checkout, 'README.md'), 'utf8')).toBe('then theirs\n');
+    // the commit after it is found again by its change
+    expect((r as Pulled).rewritten!.commits).toMatchObject({ [kept]: git(checkout, 'rev-parse', 'HEAD') });
+  });
+
+  test('a commit the remote has cherry-picked: the next one is found by its change, not by a subject they share, and starts after what is before it now', async () => {
+    const a = commit(checkout, 'a.md', 'a\n', 'Tidy up');
+    const b = commit(checkout, 'b.md', 'b\n', 'Tidy up');
+    edit(origin, 'README.md', 'theirs\n');
+    git(origin, 'fetch', '--quiet', checkout, a);
+    git(origin, 'cherry-pick', a);
+    const r = (await spaces.pullMain()) as Pulled;
+    const upstream = git(origin, 'rev-parse', 'HEAD');
+    const now = git(checkout, 'rev-parse', 'HEAD');
+    expect(git(checkout, 'rev-parse', 'HEAD~1')).toBe(upstream);
+    // the dropped one is not taken for the other; a range that started after it starts after the remote's main
+    expect(r.rewritten!.commits).toEqual({ [b]: now });
+    expect(r.rewritten!.bases[a]).toBe(upstream);
+  });
+
+  test('the pushed commit the unpushed ones stood on is no rewritten commit: only the start of ranges', async () => {
+    const pushed = git(checkout, 'rev-parse', 'HEAD');
+    edit(checkout, 'notes.md', 'mine\n');
+    edit(origin, 'README.md', 'theirs\n');
+    const r = (await spaces.pullMain()) as Pulled;
+    expect(r.rewritten!.commits[pushed]).toBeUndefined();
+    expect(r.rewritten!.bases[pushed]).toBe(git(origin, 'rev-parse', 'HEAD'));
   });
 
   test('where the owner pulls by a merge, the conflict is the merge’s as a whole', async () => {
@@ -743,8 +773,9 @@ describe('pushing main', () => {
   test('puts the unpushed commits on the remote, after what the remote has of its own', async () => {
     edit(checkout, 'notes.md', 'mine\n');
     const theirs = edit(origin, 'README.md', 'theirs\n');
+    const own = git(checkout, 'rev-parse', 'HEAD');
     const r = await spaces.pushMain();
-    expect(r).toEqual({ from: theirs, to: git(checkout, 'rev-parse', 'HEAD') });
+    expect(r).toEqual({ from: theirs, to: git(checkout, 'rev-parse', 'HEAD'), rewritten: { commits: { [own]: git(checkout, 'rev-parse', 'HEAD') }, bases: { [git(checkout, 'rev-parse', `${own}~1`)]: theirs, [own]: git(checkout, 'rev-parse', 'HEAD') } } });
     expect(git(origin, 'rev-parse', 'HEAD')).toBe(git(checkout, 'rev-parse', 'HEAD'));
     expect(git(origin, 'rev-parse', 'HEAD~1')).toBe(theirs);
   });
@@ -755,6 +786,58 @@ describe('pushing main', () => {
     expect(await spaces.pushMain()).toEqual({ problem: expect.stringContaining('README.md') });
     expect(git(origin, 'rev-parse', 'HEAD')).toBe(theirs);
     expect(git(checkout, 'rev-parse', 'HEAD')).toBe(own);
+  });
+});
+
+describe('the base of the first pull request', () => {
+  ownGlobalGitConfig();
+
+  test('goes to an origin that has no main branch yet, and nowhere where it has one', async () => {
+    const origin = join(dir, 'origin.git');
+    git(dir, 'init', '--quiet', '--bare', '--initial-branch=main', origin);
+    git(dir, 'clone', '--quiet', origin, 'checkout');
+    const checkout = join(dir, 'checkout');
+    identify(checkout);
+    edit(checkout, 'README.md', 'hello\n');
+    const spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'worktrees', repoPath: checkout, dir: join(dir, 'ws') });
+    expect(await spaces.baseOnOrigin()).toEqual({ pushed: 'main' });
+    expect(git(origin, 'rev-parse', 'main')).toBe(git(checkout, 'rev-parse', 'main'));
+    // known now: origin is not asked again
+    edit(checkout, 'notes.md', 'mine\n');
+    expect(await spaces.baseOnOrigin()).toBeNull();
+    expect(git(origin, 'rev-parse', 'main')).not.toBe(git(checkout, 'rev-parse', 'main'));
+  });
+
+  test("a clone of the empty remote starts from the checkout's first commit until origin has it", async () => {
+    const origin = join(dir, 'origin.git');
+    git(dir, 'init', '--quiet', '--bare', '--initial-branch=main', origin);
+    git(dir, 'clone', '--quiet', origin, 'checkout');
+    const checkout = join(dir, 'checkout');
+    identify(checkout);
+    const first = edit(checkout, 'README.md', 'hello\n');
+    const store = new Store(':memory:');
+    const board = testBoard({ store, path: checkout });
+    const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') });
+    await spaces.ensureClones(origin, 1);
+    const card = board.create({ title: 'A', x: 0, y: 0 }).id;
+    const { path: ws, ready } = spaces.lease(card, 'obeya/a');
+    await ready;
+    expect(git(ws, 'rev-parse', 'HEAD')).toBe(first);
+    expect(git(ws, 'branch', '--show-current')).toBe('obeya/a');
+  });
+
+  test('says why where origin refuses it, and does nothing without an origin', async () => {
+    const origin = join(dir, 'origin.git');
+    git(dir, 'init', '--quiet', '--bare', '--initial-branch=main', origin);
+    writeFileSync(join(origin, 'hooks', 'pre-receive'), '#!/bin/sh\necho "no pushes here" >&2\nexit 1\n', { mode: 0o755 });
+    git(dir, 'clone', '--quiet', origin, 'checkout');
+    const checkout = join(dir, 'checkout');
+    identify(checkout);
+    edit(checkout, 'README.md', 'hello\n');
+    const spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'worktrees', repoPath: checkout, dir: join(dir, 'ws') });
+    expect(await spaces.baseOnOrigin()).toEqual({ branch: 'main', problem: expect.stringContaining('no pushes here') });
+    const alone = gitRepo(join(dir, 'alone'));
+    expect(await new Workspaces(new Store(':memory:'), 'c', { mode: 'worktrees', repoPath: alone, dir: join(dir, 'ws2') }).baseOnOrigin()).toBeNull();
   });
 });
 
@@ -827,7 +910,7 @@ describe('a resolved pull lands', () => {
     const head = git(ws, 'rev-parse', 'HEAD');
     // the unpushed commit is found again by its new one
     const base = git(checkout, 'merge-base', at.main, at.upstream);
-    expect(await spaces.landResolution(ws, at)).toEqual({ from: at.main, to: head, rewritten: { [base]: at.upstream, [at.main]: head } });
+    expect(await spaces.landResolution(ws, at)).toEqual({ from: at.main, to: head, rewritten: { commits: { [at.main]: head }, bases: { [base]: at.upstream, [at.main]: head } } });
     expect(git(checkout, 'rev-parse', 'HEAD')).toBe(head);
     expect(git(checkout, 'rev-parse', 'HEAD~1')).toBe(at.upstream);
     expect(readFileSync(join(checkout, 'README.md'), 'utf8')).toBe('merged and mine\n');
@@ -939,8 +1022,8 @@ describe('clones the configuration no longer names', () => {
   });
 
   test('commits a tag holds, a branch deleted on origin, or files with odd names stay; a branch squashed onto main, or a tag origin has, count as landed', async () => {
-    const { spaces, paths } = await make(5);
-    const [tagged, deleted, squashed, odd, released] = paths as [string, string, string, string, string];
+    const { spaces, paths } = await make(6);
+    const [tagged, deleted, squashed, odd, released, moved] = paths as [string, string, string, string, string, string];
     git(tagged, 'checkout', '--quiet', '-b', 'try');
     commit(tagged, 'try.txt');
     git(tagged, 'tag', 'tried');
@@ -973,15 +1056,26 @@ describe('clones the configuration no longer names', () => {
     commit(released, 'fix.txt');
     git(released, 'tag', '-a', '-m', 'Release', 'v1.0.1');
     git(released, 'push', '--quiet', 'origin', 'hotfix', 'v1.0.1');
-    git(released, 'checkout', '--quiet', 'main');
+    // and HEAD left on it, which only the tag reaches
+    git(released, 'checkout', '--quiet', '--detach', 'v1.0.1');
     git(released, 'branch', '--quiet', '-D', 'hotfix');
     git(origin, 'branch', '--quiet', '-D', 'hotfix');
+    // beside it more tags of its own than a command line could name, on what origin has already
+    const main = git(released, 'rev-parse', 'main');
+    const tags = Array.from({ length: 600 }, (_, i) => `create refs/tags/local-${i} ${main}\n`).join('');
+    expect(Bun.spawnSync([GIT, '-C', released, 'update-ref', '--stdin'], { stdin: Buffer.from(tags) }).exitCode).toBe(0);
+    // the same release's tag, here at a commit of its own
+    git(moved, 'fetch', '--quiet', 'origin', 'tag', 'v1.0.1');
+    commit(moved, 'other-fix.txt');
+    git(moved, 'tag', '--force', 'v1.0.1');
+    git(moved, 'reset', '--quiet', '--hard', 'HEAD~1');
     spaces.keepOnly(null, []);
-    await until(() => !existsSync(squashed) && !existsSync(released) && spaces.pool([])[0]!.kept?.length === 3, 15_000 * PATIENCE);
+    await until(() => !existsSync(squashed) && !existsSync(released) && spaces.pool([])[0]!.kept?.length === 4, 15_000 * PATIENCE);
     const kept: KeptClone[] = [
       { path: tagged, lost: [{ what: 'commits', kind: 'tag', name: 'tried', n: 1 }] },
       { path: deleted, lost: [{ what: 'commits', kind: 'branch', name: 'obeya/gone', n: 1 }] },
       { path: odd, lost: [{ what: 'commits', kind: 'branch', name: 'odd', n: WINDOWS ? 1 : 2 }] },
+      { path: moved, lost: [{ what: 'commits', kind: 'tag', name: 'v1.0.1', n: 1 }] },
     ];
     const byPath = (a: KeptClone, b: KeptClone) => a.path.localeCompare(b.path);
     expect(spaces.pool([])[0]!.kept!.toSorted(byPath)).toEqual(kept.toSorted(byPath));

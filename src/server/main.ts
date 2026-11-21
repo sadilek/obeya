@@ -61,14 +61,16 @@ import { forgejoForge, originOf } from './forgejo';
 import { fileForge } from './file-forge';
 import { NarrationHost } from './narration';
 import { claudeExecutable, sdkRuntime } from './claude';
+import { geminiRuntime, geminiUsage } from './gemini';
 import { type AgentRuntime, byHarness, endAgentsHere, limitedRuntime, withRest } from './runtime';
+import type { Harness } from '../core/agents';
 import { claim, release, restarting, running, takenOver } from './instance';
 import { recordingRuntime, replayRuntime } from './replay';
 import { findClaude, MachineSetup, updateClaude, updateCodex, welcome } from './machine';
 import { codexRuntime, codexUsage } from './codex';
 import { HarnessLimits } from './limits';
-import { claudeModels, claudeNewest, codexNewest, Harnesses, hostClaude, hostCodex } from './harnesses';
-import { addToPath, extendPath } from './path';
+import { claudeModels, claudeNewest, codexNewest, Harnesses, hostGemini, hostClaude, hostCodex } from './harnesses';
+import { addToPath, extendPath, terminalPath } from './path';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, TAKEOVER, UPDATE, watchOwnCode } from './self-update';
 import { AppUpdates } from './app-update';
 import { SourceUpdates } from './source-update';
@@ -84,7 +86,7 @@ import { LocalTranscriber, VoiceIn } from './voice';
 import { cloudInUse } from './voice-cloud';
 import { VoiceSetup } from './voice-setup';
 import { useLib } from '../../plugin/skills/demo/lib/here.ts';
-import { DEMO_SETTINGS_FILE, expandHome, inLanguage, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
+import { DEMO_SETTINGS_FILE, demoDirectory, expandHome, inLanguage, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { DemoSpace } from './demo-space';
 import { qwen3Serve, speak, voiceSpec } from '../../plugin/skills/demo/lib/voices.ts';
 import { Voicing } from './walkthrough';
@@ -122,7 +124,8 @@ mkdirSync(home, { recursive: true, mode: 0o700 });
 if (process.platform !== 'win32' && (statSync(home).mode & 0o077) !== 0 && statSync(home).uid === process.getuid?.()) chmodSync(home, 0o700);
 // a machine that runs on a token runs on the newest one the owner gave Obeya (claude-token), not one its environment kept since
 if (process.env.CLAUDE_CODE_OAUTH_TOKEN) process.env.CLAUDE_CODE_OAUTH_TOKEN = claudeToken(home) ?? process.env.CLAUDE_CODE_OAUTH_TOKEN;
-// what the official installers and Homebrew install is found from a process the desktop started too
+// started from the desktop, the PATH a new terminal has; and what the official installers and Homebrew install
+await terminalPath();
 extendPath();
 // and from a checkout the bun this runs on, for the workers' and scripts' `bun` (the app's shell names it by its path)
 if (!COMPILED) addToPath(process.env, [dirname(process.execPath)]);
@@ -314,7 +317,7 @@ const config = new Config({
       }
     : {}),
 });
-// Claude Code and Codex on this machine: which one a group runs on when the owner chose none, and what the Configuration offers
+// Claude Code, Codex and Gemini on this machine: which one a group runs on when the owner chose none, and what the Configuration offers
 // which harness is at its limit, for every canvas: a group's fallback takes over where one is
 const limits = new HarnessLimits();
 const harnesses = new Harnesses({
@@ -331,7 +334,7 @@ const harnesses = new Harnesses({
   // the hosts the configuration names now, once a canvas has them registered
   hosts: () => {
     const names = new Set(config.current().flatMap((c) => c.repos.flatMap((r) => (r.hosts ?? []).map((h) => h.name))));
-    return [...names].map(hostNamed).filter((h) => !!h).flatMap((h) => [hostClaude(h), hostCodex(h)]);
+    return [...names].map(hostNamed).filter((h) => !!h).flatMap((h) => [hostClaude(h), hostCodex(h), hostGemini(h)]);
   },
 });
 // the agents that start right away (a canvas's cards resuming) start on what is there; a slow look is not waited for long
@@ -361,19 +364,21 @@ canvases = await Canvases.start(
     settings: (path) => config.repoSettings(path),
   },
   // the canvas the setup assistant created gets a first card that says what to try
-  (c) => welcome(home, [c]),
+  (c) => void welcome(home, [c]),
 );
-/** The agents' runtime: Claude Code's through the Agent SDK or Codex's app server, recorded (`--record`), or a recording played back (`--replay`). */
+/** The agents' runtime: Claude Code's through the Agent SDK, Codex's app server or Gemini's `agy acp`, recorded (`--record`), or a recording played back (`--replay`). */
 function agentRuntime() {
   // a session waiting longer than its prompt cache lives gives up its process, and its next message resumes it
   // (`OBEYA_REST_AFTER`, in seconds, for demos and live checks)
   const rest = process.env.OBEYA_REST_AFTER ? Number(process.env.OBEYA_REST_AFTER) * 1000 : undefined;
   // an alias goes to Claude Code (here, or on the host the agent runs on) as the newest model of its family it lists, which the alias may not name yet
   const newest: AgentRuntime = { start: (spec, ...more) => sdkRuntime.start(spec.model ? { ...spec, model: harnesses.claudeModel(spec.model, hostName(spec.cwd) ?? undefined) } : spec, ...more) };
-  // a harness that is at its usage limit for two hours from the start (`OBEYA_FAKE_LIMIT`: claude or codex), for demos and live checks of its fallback
+  // a harness that is at its usage limit for two hours from the start (`OBEYA_FAKE_LIMIT`: claude, codex or gemini), for demos and live checks of its fallback
   const fake = process.env.OBEYA_FAKE_LIMIT;
-  const atLimit = (h: 'claude' | 'codex', r: AgentRuntime) => (fake === h ? limitedRuntime(Date.now() + 2 * 3_600_000) : r);
-  const live = byHarness({ claude: atLimit('claude', withRest(newest, rest)), codex: atLimit('codex', withRest(codexRuntime, rest)) });
+  const atLimit = (h: Harness, r: AgentRuntime) => (fake === h ? limitedRuntime(Date.now() + 2 * 3_600_000) : r);
+  // a worker's demos and artifacts go to the demo directory, outside its workspace
+  const gemini = geminiRuntime({ dir: join(home, 'gemini'), writable: () => [demoDirectory(readDemoSettings(home))] });
+  const live = byHarness({ claude: atLimit('claude', withRest(newest, rest)), codex: atLimit('codex', withRest(codexRuntime, rest)), gemini: atLimit('gemini', withRest(gemini, rest)) });
   if (values.record) return recordingRuntime(live, resolve(values.record), home);
   if (!values.replay) return live;
   const refusedFile = join(home, 'replay-refused.txt');
@@ -393,13 +398,14 @@ const usage = new UsageMeters(
   [
     { harness: 'claude', meter: new UsageMeter(() => claudeUsage(home)) },
     { harness: 'codex', meter: new UsageMeter(() => codexUsage(home)) },
+    { harness: 'gemini', meter: new UsageMeter(() => geminiUsage()) },
   ],
   { on: switchView(home, 'usageMeter').on, ready: (h) => harnesses.ready(h) },
 );
 harnesses.onChange(() => (usage.update(), usage.changed()));
 const machine = new MachineSetup({ home, config, voice: voiceSetup, harnesses });
 // the canvas the assistant created gets a first card that says what to try
-welcome(home, canvases.all());
+void welcome(home, canvases.all());
 // Claude Code on the hosts the canvases registered, so the first menu of models has whether it is behind there
 harnesses.lookAtHosts();
 // other devices, when the owner lets them: the phone over the owner's own network

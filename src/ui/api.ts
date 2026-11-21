@@ -89,6 +89,8 @@ export const standalone = () => matchMedia('(display-mode: standalone)').matches
 const canvasApi = (canvas: string, path = '') => `/api/c/${encodeURIComponent(canvas)}${path}`;
 /** A path in the shown canvas's API. */
 export const at = (path: string) => canvasApi(canvasId, path);
+/** Where a file Obeya keeps for a message on `canvas` opens (`storedFiles.ts`): a whole address, as a link in markdown needs. */
+export const storedFile = (canvas: string, id: string, name: string) => new URL(canvasApi(canvas, `/files/stored/${id}/${encodeURIComponent(name)}`), location.href).href;
 /**
  * The canvas each card is on, where the page shows the cards of several (the phone view). A call
  * about a card goes to its canvas even once another is in view: the card closing puts Obeya's in
@@ -203,7 +205,7 @@ export const api = {
   setup: () => call<MachineView>('GET', '/api/setup'),
   setupInstall: (section: MachineSectionId, id: MachineItem['id']) => call<MachineView>('POST', '/api/setup/install', { section, id }),
   /** Opens a terminal that logs in (`token`: Claude's `claude setup-token`); `opened: false` where Obeya found none. */
-  setupLogin: (section: MachineSectionId, id: MachineItem['id'], token?: boolean) => call<{ opened: boolean; command: string }>('POST', '/api/setup/login', { section, id, ...(token ? { token } : {}) }),
+  setupLogin: (section: MachineSectionId, id: MachineItem['id'], token?: boolean, host?: string | null) => call<{ opened: boolean; command: string }>('POST', '/api/setup/login', { section, id, ...(token ? { token } : {}), ...(host ? { host } : {}) }),
   /** Starts a login to Codex here or on a host (`host`): the sign-in page for the browser, and the id to follow it by. */
   codexLogin: (host: string | null) => call<{ id: string; url: string }>('POST', '/api/setup/codex-login', { host }),
   codexLoginState: (id: string) => call<{ state: 'waiting' | 'done' | 'failed'; error?: string }>('GET', `/api/setup/codex-login?id=${encodeURIComponent(id)}`),
@@ -386,8 +388,9 @@ export const api = {
   /** The owner started speaking, or with `ahead` may speak or type a command soon: Obeya gets ready to read it. */
   warmVoice: (ahead = false) => fetch(at(`/voice/warm${ahead ? '?ahead=1' : ''}`), { method: 'POST' }).catch(() => {}),
   /** The same, typed; `field`: the field of the open card it was typed into. */
-  command: (text: string, where: Where, { images, field, replyTo, spot, place }: { images?: string[]; field?: Field; replyTo?: number | TalkRef; spot?: SpotInput; place?: Place } = {}) =>
-    call<Heard>('POST', whereAt(where, `/command${query(where)}${place ? `${where ? '&' : '?'}place=${placeParam(place)}` : ''}`), { text, ...(images?.length ? { images } : {}), ...(field ? { field } : {}), ...(replyTo ? { replyTo } : {}), ...(spot ? { spot } : {}) }),
+  /** `spoken`: the words were dictated into the field they come from (`Draft.dictated`), so they count as spoken rather than typed. */
+  command: (text: string, where: Where, { images, field, replyTo, spot, place, spoken }: { images?: string[]; field?: Field; replyTo?: number | TalkRef; spot?: SpotInput; place?: Place; spoken?: boolean } = {}) =>
+    call<Heard>('POST', whereAt(where, `/command${query(where)}${place ? `${where ? '&' : '?'}place=${placeParam(place)}` : ''}`), { text, ...(images?.length ? { images } : {}), ...(field ? { field } : {}), ...(replyTo ? { replyTo } : {}), ...(spot ? { spot } : {}), ...(spoken ? { spoken: true } : {}) }),
   /** A typed request to the Coordinator of another canvas, about nothing in view there. */
   commandOn: (canvas: string, text: string) => call<Heard>('POST', canvasApi(canvas, '/command'), { text }),
   undo: (token: string) => call<{ undone: boolean }>('POST', at('/command/undo'), { token }),

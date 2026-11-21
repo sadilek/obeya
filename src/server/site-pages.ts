@@ -20,6 +20,12 @@ import { sealedHeaders } from './serve-files';
 export const siteRoot = (site: DemoSite) => `${site.url.replace(/\/+$/, '')}/`;
 /** The page's URL on the site. */
 export const pageUrl = (site: DemoSite, slug: string) => `${siteRoot(site)}${slug}/`;
+/**
+ * Where a page's artifact lies on the site (`sub`: the directory of a later version, '' for the first),
+ * by the address its host answers `…/index.html` at too: the page's frame and the artifact's
+ * canonical name it, so search engines list it once.
+ */
+export const artifactPath = (sub: string) => `${sub ? `${sub}/` : ''}${ARTIFACT_DIR}/`;
 
 /** What a page's directory on the site keeps besides its files, for the overview. */
 export interface Meta {
@@ -174,7 +180,7 @@ export function pageHtml(site: DemoSite, slug: string, m: Meta, files: (dir: str
     };
     return stackedPageHtml({ ...parts, demos: [demo(m, ''), ...m.more.map((x) => ({ ...demo(x, x.dir), at: x.handed }))], ...(timeZone ? { timeZone } : {}) });
   }
-  if (m.kind === 'html') return artifactPageHtml({ ...parts, artifact: { src: `${ARTIFACT_DIR}/index.html` } });
+  if (m.kind === 'html') return artifactPageHtml({ ...parts, artifact: { src: artifactPath('') } });
   const own = files('');
   return demoPageHtml({
     ...parts,
