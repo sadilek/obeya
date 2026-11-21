@@ -563,6 +563,8 @@ describe('a Gemini session on a host', () => {
     expect(JSON.parse(readFileSync(join(there(), 'config', 'skills.json'), 'utf8'))).toEqual({ entries: [{ path: join(dir, 'net', 'home', '.obeya', 'remote', 'plugin', 'skills') }] });
     const grants = JSON.parse(readFileSync(join(there(), 'config', 'projects', 'default-cli-project.json'), 'utf8')).permissionGrants.permissionGrants.allow as string[];
     expect(grants).toContain(`write_file(${join(dir, 'net', 'home', 'demos')})`);
+    // by the real path too, which agy matches against: a temporary directory behind a link (/tmp on macOS)
+    expect(grants).toContain(`write_file(${realpathSync(tmpdir())})`);
     // read through a link, which agy writes the renewed token through
     expect(readlinkSync(join(there(), 'antigravity-cli', 'antigravity-oauth-token'))).toBe(login);
     // the hook ran there and Obeya answered it: a long wait is refused there as here

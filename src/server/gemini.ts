@@ -26,7 +26,7 @@
 // Gemini directory there (written over the connection), its hook and Obeya's tools reaching their
 // servers here through forwarded ports.
 
-import { copyFile, lstat, mkdir, readFile, readlink, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readFile, readlink, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -404,6 +404,39 @@ interface Grants {
 }
 
 /**
+ * The path with the links in it resolved, as far as it exists (the rest as given): agy matches a
+ * grant against the real path of what a tool touches, so a grant of `/tmp/x` lets nothing into
+ * `/private/tmp/x`, which is what `/tmp/x` is on macOS (measured 2026-11-21).
+ */
+async function realPath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch {
+    const parent = dirname(path);
+    return parent === path ? path : join(await realPath(parent), basename(path));
+  }
+}
+
+/** `grants` with each path also as its real path (`realPath`), where that differs. */
+async function withRealPaths(grants: Grants): Promise<Grants> {
+  const both = async (paths: string[]) => [...new Set((await Promise.all(paths.map(async (p) => [p, await realPath(p)]))).flat())];
+  return { read: await both(grants.read), write: await both(grants.write) };
+}
+
+/** `withRealPaths` for paths on a host, resolved there (a path that does not exist there stays as given). */
+async function realPathsThere(host: SshHost, grants: Grants): Promise<Grants> {
+  const all = [...new Set([...grants.read, ...grants.write])];
+  const r = await host.run(`for p in ${all.map(sh).join(' ')}; do r=$(realpath "$p" 2>/dev/null || readlink -f "$p" 2>/dev/null) || r=; printf '%s\\t%s\\n' "$p" "$r"; done`);
+  if (r.code === LOST) throw new HostError(`${host.name} does not answer`);
+  const real = new Map(r.stdout.split('\n').flatMap((l) => {
+    const [p, to] = l.split('\t');
+    return p && to ? [[p, to] as const] : [];
+  }));
+  const both = (paths: string[]) => [...new Set(paths.flatMap((p) => [p, real.get(p) ?? p]))];
+  return { read: both(grants.read), write: both(grants.write) };
+}
+
+/**
  * Obeya's own Gemini directory (`--gemini-dir`), shared by every session of this Obeya: Obeya's hook,
  * the sandbox's grants of the sessions that run, the skills of their plugins, and what of the owner's
  * own global configuration agy would read (`~/.gemini`: rules, skills, MCP servers), carried over at
@@ -548,6 +581,8 @@ const SECTION = '@@obeya-survey:';
 async function survey(host: SshHost, cwd: string, o: { skills: string[]; untrusted: boolean }): Promise<HostSurvey> {
   const section = (name: string) => `printf '%s\\n' ${sh(`${SECTION}${name}`)}`;
   const script = [
+    // where demos go there, which the sandbox grants by its real path, so it has to be there
+    'mkdir -p "$HOME/demos"',
     section('tmp'),
     'printf \'%s\\n\' "${TMPDIR:-/tmp}"',
     section('home'),
@@ -863,10 +898,10 @@ class GeminiSession implements AgentSession {
     const own = spec.untrusted ? await runsOwn(spec.cwd) : undefined;
     if (own) throw ownConfig(own);
     const common = spec.readOnly ? undefined : await gitCommonDir(spec.cwd);
-    const grants: Grants = {
+    const grants: Grants = await withRealPaths({
       read: await gitConfigFiles(spec.cwd),
       write: spec.readOnly ? [] : [...(spec.dirs ?? []), tmpdir(), ...(common ? [common] : []), ...this.writable()],
-    };
+    });
     if (this.closed) return undefined;
     await this.dir.prepare(this, grants, spec.plugins ?? []);
     if (this.closed) return undefined;
@@ -894,10 +929,10 @@ class GeminiSession implements AgentSession {
     this.carryable();
     const found = await survey(host, cwd, { skills: (spec.plugins ?? []).map((p) => `${dir}/${basename(p)}/skills`), untrusted: !!spec.untrusted });
     if (found.own) throw ownConfig(found.own);
-    const grants: Grants = {
+    const grants: Grants = await realPathsThere(host, {
       read: found.git,
       write: spec.readOnly ? [] : [...(spec.dirs ?? []), found.tmp, ...(found.common ? [found.common] : []), `${found.home}/demos`],
-    };
+    });
     let gemini = hostDirs.get(host);
     if (!gemini) hostDirs.set(host, (gemini = new HostGeminiDir(host, `${dir}/gemini`)));
     this.hostDir = gemini;

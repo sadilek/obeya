@@ -218,7 +218,7 @@ describe.skipIf(process.platform === 'win32')('a Gemini session through agy acp'
     expect(s.requests()).toEqual([]);
   });
 
-  test("the sandbox lets the agent write a worktree's git directory and read the git configuration, while it runs", async () => {
+  test("the sandbox lets the agent write a worktree's git directory and read the git configuration, by their real paths too, while it runs", async () => {
     const home = scratch();
     const repo = gitRepo(join(home, 'repo'));
     const worktree = join(home, 'wt');
@@ -229,6 +229,8 @@ describe.skipIf(process.platform === 'win32')('a Gemini session through agy acp'
     const allow: string[] = JSON.parse(readFileSync(project, 'utf8')).permissionGrants.permissionGrants.allow;
     expect(allow).toContain(`write_file(${join(realpathSync(repo), '.git')})`);
     expect(allow).toContain(`write_file(${tmpdir()})`);
+    // agy matches grants against real paths: the temporary directory by its own too (/private/var/… on macOS)
+    expect(allow).toContain(`write_file(${realpathSync(tmpdir())})`);
     expect(allow.some((a) => /^read_file\(.*\.gitconfig\)$/.test(a)) || !existsSync(join(process.env.HOME!, '.gitconfig'))).toBe(true);
     // the next session's start leaves out the grants of one that has ended
     s.session.close();

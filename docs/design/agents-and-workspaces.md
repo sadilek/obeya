@@ -131,7 +131,9 @@ every file it includes (so commits carry the owner's identity and signing; agy's
 reading outside the workspace, and an agent that could not read an include committed with the global
 configuration switched off), writable the git directory a worktree commits into, the agent's extra
 directories, the temporary directory and the demo directory (agy asks before its file tools write
-outside the workspace, so a worker's demo would otherwise be a question to the owner each time). Commands run in that sandbox; what would
+outside the workspace, so a worker's demo would otherwise be a question to the owner each time),
+each path also by its real one, which agy matches a grant against (a grant of `/tmp/x` lets
+nothing into `/private/tmp/x`, which it is on macOS; measured 2026-11-21). Commands run in that sandbox; what would
 leave it (a command run outside it, a file written outside the workspace) agy's own reviewer in auto
 mode allows or refuses, and what it leaves to a person becomes the question the card waits on.
 Obeya approves nothing of agy's on its own, but its own tools. agy ends a turn without a word to the
