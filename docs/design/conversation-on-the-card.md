@@ -348,8 +348,9 @@ the home itself, hidden folders left out; a file counts only with the same name,
 (within two seconds), and only if exactly one fits. Otherwise (a browser on another device, two
 copies, a file elsewhere) Obeya keeps a copy under its home (`files/<canvas>/`, at most 100 MB, in a
 folder of its own under its name made one word) and the copy's path goes in. In the conversation
-the path of such a copy shows as a link named by the file, which opens it in a new tab (shown, never
-run: no script of it runs; a PDF in the browser's viewer); the agent gets the path as it stands.
+the path of such a copy shows as a link named by the file, which opens it in a new tab: shown, never
+run as a page (no script of an HTML file runs); a PDF goes to the browser's viewer, as a card's PDF
+does (see The files beside the demo). The agent gets the path as it stands.
 
 The path goes into the field's text at the cursor while the field has it (⌘Z takes it back), else
 where the cursor last stood or at the end, parted by spaces, in quotes where it has a space; the
@@ -387,8 +388,9 @@ file"), on devices with a mouse or trackpad; the legend of keys lists it too.
 A message to an agent holds at most 20,000 characters (Obeya refuses a longer one as too long, not
 as empty). Text pasted into a field (or on the canvas) that would make its text longer than that
 goes in as a file instead: Obeya keeps it as a copy, `pasted-text.txt`, and its path goes in at the
-cursor as a dropped file's does (pasted on the canvas, where pasted text goes, see Pasted text), with a
-line under the field saying why while the path stands there. Where the copy cannot be made (no
+cursor as a dropped file's does (pasted on the canvas, where pasted text goes: at the end, in a
+paragraph of its own, see Pasted text), with a line under the field saying why while the path stands
+there. Where the copy cannot be made (no
 connection, say), the text goes in as text after all, and the field offers to move it as below. A text that grows too long
 otherwise (typed, dictated, pasted in pieces) does not send: under the field a line names its length
 and the limit, beside "Move into a file", which puts the whole text into a copy, `message.txt`, and

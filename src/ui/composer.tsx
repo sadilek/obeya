@@ -11,7 +11,7 @@
 import { type MouseEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { api } from './api';
 import { DictateButton, dictating, dictationLine, useSpaceToTalk } from './dictation';
-import { dropDraft, insert, typeInto, updateDraft, useDraft, useDraftField } from './draft';
+import { dropDraft, typeInto, updateDraft, useDraft, useDraftField } from './draft';
 import { setHeight, textHeight, useFitHeight } from './fitHeight';
 import { Quote } from './message';
 import { type Reply, replyOn, setReply, useReply } from './reply';
@@ -205,7 +205,7 @@ export function Composer({
             // text that would make the message too long goes in as a file, by its path
             if (pasted && el.value.length - (el.selectionEnd - el.selectionStart) + pasted.length > MAX_MESSAGE_CHARS) {
               e.preventDefault();
-              void textAsFile(key, pasted, { otherwise: () => insert(key, pasted) });
+              void textAsFile(key, pasted);
               return;
             }
             shots.onPaste(e);

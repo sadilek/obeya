@@ -47,14 +47,14 @@ export interface Picks {
 /** Which questions picks belong to: they count only while the same questions stand. */
 export const questionsKey = (questions: unknown[]) => JSON.stringify(questions);
 
-type Kept = Pick<Draft, 'text' | 'images' | 'picks' | 'reply' | 'files' | 'pasted' | 'findings'>;
-const keptOf = ({ text, images, picks, reply, files, pasted, findings }: Draft): Kept | null => {
+type Kept = Pick<Draft, 'text' | 'images' | 'picks' | 'reply' | 'files' | 'pasted' | 'findings' | 'pastedAsFile'>;
+const keptOf = ({ text, images, picks, reply, files, pasted, findings, pastedAsFile }: Draft): Kept | null => {
   const picked = picks?.picks.some((p) => p.length) ? picks : undefined;
   const decided = findings && Object.keys(findings).length ? findings : undefined;
   const standing = filesIn(text, files);
   const texts = filesIn(text, pasted);
   return text.trim() || images.length || picked || reply || decided
-    ? { text, images, ...(picked ? { picks: picked } : {}), ...(reply ? { reply } : {}), ...(standing.length ? { files: standing } : {}), ...(texts.length ? { pasted: texts } : {}), ...(decided ? { findings: decided } : {}) }
+    ? { text, images, ...(picked ? { picks: picked } : {}), ...(reply ? { reply } : {}), ...(standing.length ? { files: standing } : {}), ...(texts.length ? { pasted: texts } : {}), ...(decided ? { findings: decided } : {}), ...(pastedAsFile && text.includes(pastedAsFile) ? { pastedAsFile } : {}) }
     : null;
 };
 
@@ -208,12 +208,13 @@ export function moveImages(from: string, to: string) {
  * wrote around them stay.
  */
 export function moveFiles(from: string, to: string) {
-  const { text, files, pasted } = draftOf(from);
+  const { text, files, pasted, pastedAsFile } = draftOf(from);
   if ((!files && !pasted) || from === to) return;
   const moving = filesIn(text, files);
   const texts = filesIn(text, pasted);
-  updateDraft(from, { text: withoutPasted(withoutWords(text, moving), texts), files: [], pasted: [] });
-  if (moving.length) updateDraft(to, (d) => ({ text: appended(d.text, moving.join(' ')) }));
+  const asFile = pastedAsFile && moving.includes(pastedAsFile) ? { pastedAsFile } : {};
+  updateDraft(from, { text: withoutPasted(withoutWords(text, moving), texts), files: [], pasted: [], ...(asFile.pastedAsFile ? { pastedAsFile: undefined } : {}) });
+  if (moving.length) updateDraft(to, (d) => ({ text: appended(d.text, moving.join(' ')), ...asFile }));
   insertPasted(to, texts);
 }
 
@@ -360,6 +361,25 @@ export function insertFilesAt(home: DraftsHome, key: string, words: string[]) {
   if (!home || keptAt(home)) return insertFiles(key, words);
   if (!words.length) return;
   updateDraftAt(home, key, (d) => ({ text: d.text + spaced(d.text, words.join(' '), ''), files: [...(d.files ?? []), ...words] }));
+}
+
+/** `insert` for the drafts kept at `home`: after a switch of canvas, at the end of the draft the canvas left behind has written down. */
+export function insertAt(home: DraftsHome, key: string, words: string) {
+  if (!home || keptAt(home)) return insert(key, words);
+  updateDraftAt(home, key, (d) => ({ text: appended(d.text, words) }));
+}
+
+/** Paths of files put at the end of the draft at `home`, in a paragraph of their own, as a text pasted outside a field goes in (`insertPasted`), and known there as files'. */
+export function insertFilesAfter(home: DraftsHome, key: string, words: string[]) {
+  if (!words.length) return;
+  updateDraftAt(home, key, (d) => ({ text: paragraphAfter(d.text, words.join(' ')), files: [...(d.files ?? []), ...words] }));
+}
+
+/** `insertPasted` for the drafts kept at `home`: after a switch of canvas, into the draft the canvas left behind has written down. */
+export function insertPastedAt(home: DraftsHome, key: string, texts: string[]) {
+  if (!home || keptAt(home)) return insertPasted(key, texts);
+  texts = texts.map((s) => s.trim()).filter(Boolean);
+  if (texts.length) updateDraftAt(home, key, (d) => ({ text: texts.reduce(paragraphAfter, d.text), pasted: [...(d.pasted ?? []), ...texts] }));
 }
 
 /** `text` with `piece` after it, in a paragraph of its own. */

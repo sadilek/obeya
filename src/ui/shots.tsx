@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import { IMAGE_TYPES, MAX_FILE_BYTES, MAX_IMAGE_BYTES } from '../core/types';
 import { api, ApiError, at, failText } from './api';
 import { droppedPath, withBytes } from './appDrop';
-import { draftOf, type DraftsHome, draftsHome, dropDraft, insertFilesAt, markupOf, pathWord, setMarkup, updateDraft, updateDraftAt, useDraft } from './draft';
+import { draftOf, type DraftsHome, draftsHome, dropDraft, insertAt, insertFilesAfter, insertFilesAt, insertPastedAt, markupOf, pathWord, setMarkup, updateDraft, updateDraftAt, useDraft } from './draft';
 import { useKnown } from './stored';
 import { badgeOf, CLICK_PX, drawMarks, EDGE, type Mark, markOf, markSize, type Point, RED, roundedRect } from './marks';
 import { confirmPasteHint, pastedShots, pickedShots, usePasteHint } from './pasteHint';
@@ -102,30 +102,35 @@ const fileTo = (key: string, files: File[], put?: (path: string) => void) =>
 
 /**
  * A text too long for a message (`MAX_MESSAGE_CHARS`) as a file Obeya keeps, named `name`: its path
- * goes into the draft's text as a dropped file's does (`fileTo`), in place of `replaces` where the
- * text still holds it; a pasted one (no `replaces`) is noted as such, for the field to say why its
- * path stands there. Where the upload fails, `otherwise` puts the text in as text, so nothing pasted
- * is lost (the field then offers to move it into a file). Whether it arrived; until then the field
- * shows it uploading and does not send.
+ * goes into the draft's text in place of `replaces` where the text still holds it; else, pasted, it
+ * goes in where the text would have, at the cursor as a dropped file's does (`fileTo`), or for a text
+ * pasted outside a field (`outside`) at the end in a paragraph of its own (`insertPasted`), and is
+ * noted as a paste's, for the field to say why its path stands there. Where the upload fails, a
+ * pasted text goes in as text after all, so nothing pasted is lost (the field then offers to move it
+ * into a file), before the draft stops counting it as uploading, so a recording waiting for it takes
+ * it. Whether it arrived; until then the field shows it uploading and does not send.
  */
-export const textAsFile = async (key: string, text: string, { name = 'pasted-text.txt', replaces, otherwise }: { name?: string; replaces?: string; otherwise?: () => void } = {}) => {
-  const arrived =
-    (await eachFile(key, [new File([text], name, { type: 'text/plain' })], async (f, home) => {
-      const word = pathWord(await api.uploadFile(f));
-      let swapped = false;
-      if (replaces)
-        updateDraftAt(home, key, (d) => {
-          if (!d.text.includes(replaces)) return {};
-          swapped = true;
-          return { text: d.text.replace(replaces, () => word), files: [...(d.files ?? []), word] };
-        });
-      if (swapped) return;
-      insertFilesAt(home, key, [word]);
-      updateDraftAt(home, key, { pastedAsFile: word });
-    })) > 0;
-  if (!arrived) otherwise?.();
-  return arrived;
-};
+export const textAsFile = async (key: string, text: string, { name = 'pasted-text.txt', replaces, outside = false }: { name?: string; replaces?: string; outside?: boolean } = {}) =>
+  (await eachFile(key, [new File([text], name, { type: 'text/plain' })], async (f, home) => {
+    let word: string;
+    try {
+      word = pathWord(await api.uploadFile(f));
+    } catch (e) {
+      if (!replaces) outside ? insertPastedAt(home, key, [text]) : insertAt(home, key, text);
+      throw e;
+    }
+    let swapped = false;
+    if (replaces)
+      updateDraftAt(home, key, (d) => {
+        if (!d.text.includes(replaces)) return {};
+        swapped = true;
+        return { text: d.text.replace(replaces, () => word), files: [...(d.files ?? []), word] };
+      });
+    if (swapped) return;
+    if (outside) insertFilesAfter(home, key, [word]);
+    else insertFilesAt(home, key, [word]);
+    if (!replaces) updateDraftAt(home, key, { pastedAsFile: word });
+  })) > 0;
 
 /**
  * Pasted or dropped files for a draft: the screenshots as screenshots (`added` hears each), the

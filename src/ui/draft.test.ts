@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { appended, cardDraft, pathWord, wordsOf, draftOf, draftsHome, dropDraft, giveBack, insert, insertFiles, insertPasted, keepDrafts, MIC_DRAFT, markupOf, moveFiles, moveImages, OBEYA_DRAFT, pastedIn, setMarkup, updateDraft, updateDraftAt, withPasted, withoutPasted, withoutWords } from './draft';
+import { appended, cardDraft, pathWord, wordsOf, draftOf, draftsHome, dropDraft, giveBack, insert, insertFiles, insertPasted, keepDrafts, MIC_DRAFT, markupOf, moveFiles, moveImages, OBEYA_DRAFT, pastedIn, setMarkup, updateDraft, updateDraftAt, uploaded, withPasted, withoutPasted, withoutWords } from './draft';
 import { api } from './api';
 import { filesTo, textAsFile } from './shots';
 import { memoryStorage } from './testing';
@@ -233,17 +233,20 @@ test('a text too long for a message goes in as a file; where the upload fails, a
     return `/home/me/.obeya/files/shop/0b8f3c1e-5d2a-4e7b-9c1d-2f3a4b5c6d7e/${f.name}`;
   };
   const key = cardDraft('long');
+  const path = '/home/me/.obeya/files/shop/0b8f3c1e-5d2a-4e7b-9c1d-2f3a4b5c6d7e/pasted-text.txt';
   try {
-    // pasted: its path goes in, noted as a paste's for the field to say why
+    // pasted: its path goes in, noted as a paste's for the field to say why, also after a reload
     updateDraft(key, { text: 'the log:' });
-    expect(await textAsFile(key, 'x'.repeat(30_000), { otherwise: () => insert(key, 'never') })).toBe(true);
-    const path = '/home/me/.obeya/files/shop/0b8f3c1e-5d2a-4e7b-9c1d-2f3a4b5c6d7e/pasted-text.txt';
+    expect(await textAsFile(key, 'x'.repeat(30_000))).toBe(true);
     expect(draftOf(key)).toMatchObject({ text: `the log: ${path}`, pastedAsFile: path, uploading: 0 });
-    // the upload fails: the text goes in as text after all, beside the refusal
+    expect(JSON.parse(s.getItem('obeya-drafts-shop')!)[key].pastedAsFile).toBe(path);
+    // the upload fails: the text goes in as text after all, beside the refusal, before the draft stops counting it as uploading
     fails = true;
     updateDraft(key, { text: 'the log:', pastedAsFile: undefined });
-    expect(await textAsFile(key, 'y'.repeat(30_000), { otherwise: () => insert(key, 'y'.repeat(30_000)) })).toBe(false);
+    const pending = textAsFile(key, 'y'.repeat(30_000));
+    await uploaded(key);
     expect(draftOf(key).text).toBe(`the log: ${'y'.repeat(30_000)}`);
+    expect(await pending).toBe(false);
     expect(draftOf(key).error).not.toBe('');
     // moved into a file: its path takes the text's place, and no line about a paste
     fails = false;
@@ -256,8 +259,44 @@ test('a text too long for a message goes in as a file; where the upload fails, a
   }
 });
 
-test('text pasted outside a field counts with what the field holds already', () => {
-  updateDraft(OBEYA_DRAFT, { text: 'a'.repeat(15_000) });
-  expect(withPasted(OBEYA_DRAFT, ` ${'b'.repeat(10_000)} `).length).toBe(25_002);
-  dropDraft(OBEYA_DRAFT);
+test('a text pasted outside a field counts with what the field holds, and goes in as a file at its end', async () => {
+  const was = api.uploadFile;
+  api.uploadFile = async (f) => `/home/me/.obeya/files/shop/0b8f3c1e-5d2a-4e7b-9c1d-2f3a4b5c6d7e/${f.name}`;
+  try {
+    updateDraft(OBEYA_DRAFT, { text: 'a'.repeat(15_000) });
+    expect(withPasted(OBEYA_DRAFT, ` ${'b'.repeat(10_000)} `).length).toBe(25_002);
+    // the cursor stood in the middle when the field lost it: the path still goes at the end, in a paragraph of its own
+    updateDraft(OBEYA_DRAFT, { text: 'first half second half' });
+    expect(await textAsFile(OBEYA_DRAFT, 'b'.repeat(25_000), { outside: true })).toBe(true);
+    expect(draftOf(OBEYA_DRAFT).text).toBe('first half second half\n\n/home/me/.obeya/files/shop/0b8f3c1e-5d2a-4e7b-9c1d-2f3a4b5c6d7e/pasted-text.txt');
+    // the path moves beside the microphone with the line that says why it stands there
+    moveFiles(OBEYA_DRAFT, MIC_DRAFT);
+    expect(draftOf(MIC_DRAFT).pastedAsFile).toContain('pasted-text.txt');
+    expect(draftOf(OBEYA_DRAFT).pastedAsFile).toBeUndefined();
+  } finally {
+    api.uploadFile = was;
+    dropDraft(OBEYA_DRAFT);
+    dropDraft(MIC_DRAFT);
+  }
+});
+
+test('a long paste whose upload fails after a switch of canvas goes as text into the draft it was pasted into', async () => {
+  const was = api.uploadFile;
+  let fail = (_: Error) => {};
+  api.uploadFile = () => new Promise((_, no) => (fail = no));
+  try {
+    updateDraft(OBEYA_DRAFT, { text: 'see' });
+    const pending = textAsFile(OBEYA_DRAFT, 'z'.repeat(25_000));
+    keepDrafts(s, 'web');
+    updateDraft(OBEYA_DRAFT, { text: 'on the website' });
+    fail(new Error('offline'));
+    expect(await pending).toBe(false);
+    expect(draftOf(OBEYA_DRAFT).text).toBe('on the website');
+    expect(JSON.parse(s.getItem('obeya-drafts-shop')!)[OBEYA_DRAFT].text).toBe(`see ${'z'.repeat(25_000)}`);
+    keepDrafts(s, 'shop');
+  } finally {
+    api.uploadFile = was;
+    dropDraft(OBEYA_DRAFT);
+    s.removeItem('obeya-drafts-web');
+  }
 });

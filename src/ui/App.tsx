@@ -934,7 +934,7 @@ function Canvas({
       e.preventDefault();
       pastedText();
       // what would make the field's text too long for a message goes in as a file, by its path; as text where the upload fails
-      if (withPasted(key, text).trim().length > MAX_MESSAGE_CHARS) return void textAsFile(key, text, { otherwise: () => insertPasted(key, [text]) });
+      if (withPasted(key, text).trim().length > MAX_MESSAGE_CHARS) return void textAsFile(key, text, { outside: true });
       insertPasted(key, [text]);
     };
     addEventListener('keyup', up, true);
