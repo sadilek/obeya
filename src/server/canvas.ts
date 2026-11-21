@@ -16,7 +16,7 @@ import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
 import type { Awaited, CardAction, CardPatch, Item, PendingRestart, RepoRef, ProposedSetting, Skill, SpotInput } from '../core/types';
-import { agentListens, awaited, awaitsContributorNext, untouched, finished, nameless, needsYou, pausable, halted, snoozable, laterTime, plannedToStart } from '../core/card';
+import { agentListens, awaited, awaitsContributorNext, deletable, untouched, finished, nameless, needsYou, pausable, halted, snoozable, laterTime, plannedToStart } from '../core/card';
 import { AGENT_DEFAULTS, agentDefault, type AgentRole, type AgentSetting, type Harness, HARNESSES, replacement } from '../core/agents';
 import { type CanvasConfig, layerSettings, type RepoConfig, repoShape, type RepoSettings, type SettingsShared, SHARED_FIELDS, type DemoSite } from '../core/config';
 import { holdsNotes } from '../core/queue';
@@ -2246,16 +2246,16 @@ export class CanvasRuntime {
       case 'merge':
         return void this.merge(c.card, c.others, c.title);
       case 'delete':
-        this.untouched(c.card);
+        this.untouched(c.card, deletable);
         return void this.remove(c.card);
     }
   }
 
-  /** A planned task nobody has worked on yet, still as when the Coordinator chose it; else why not. */
-  private untouched(cardId: string): Item {
+  /** A planned task nobody has worked on yet (`still`), still as when the Coordinator chose it; else why not. */
+  private untouched(cardId: string, still: (i: Item) => boolean = untouched): Item {
     const card = this.board.item(cardId);
     if (!card) throw new BadRequest('unknownCard', 'unknown card');
-    if (!untouched(card)) throw new BadRequest('notUntouched', `"${card.title}" is no planned task nobody has worked on any more`);
+    if (!still(card)) throw new BadRequest('notUntouched', `"${card.title}" is no planned task nobody has worked on any more`);
     return card;
   }
 

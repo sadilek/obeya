@@ -91,6 +91,12 @@ export class Coordinator {
 
   /** Set once its canvas stopped (`shutdown`): it decides and starts nothing more. */
   private ended = false;
+
+  /**
+   * How often each card's check began since this Coordinator runs: a judgement read for a check the
+   * owner took back (or deleted the card) applies to no start of the card made after it.
+   */
+  private checks = new Map<string, number>();
   private unwatch: () => void;
 
   constructor(private o: CoordinatorOptions) {
@@ -213,7 +219,10 @@ export class Coordinator {
     // one the owner set aside to start later goes with them, so a workstream building on it waits for it
     for (const w of open) if (w.snoozed?.start) this.o.board.unsnooze(w.id, 'owner');
     const now = Date.now();
-    open.forEach((w, n) => this.o.board.work(w.id, { queue: toJson({ checking: true, together: project.id, since: new Date(now + n).toISOString() }) }));
+    open.forEach((w, n) => {
+      this.began(w.id);
+      this.o.board.work(w.id, { queue: toJson({ checking: true, together: project.id, since: new Date(now + n).toISOString() }) });
+    });
     this.o.board.log(project.id, 'state', 'owner', this.o.board.t.coordinator.allStarted(open.map((w) => w.label ?? w.title).join(', ')));
     setTimeout(() => this.serial(() => this.decideAll(project.id)), this.o.holdMs ?? UNDO_HOLD_MS);
   }
@@ -419,6 +428,7 @@ export class Coordinator {
     const card = this.o.board.item(cardId);
     // taken out of the queue or deleted while waiting for its turn
     if (!card || card.state !== 'planned' || !card.queue || !('checking' in card.queue)) return;
+    const check = this.checks.get(cardId);
     if (card.repoDown) return this.repoGone(card);
     const active = this.inProgress(card.repo);
     const ahead = this.ahead(card);
@@ -448,7 +458,8 @@ export class Coordinator {
       scope = { files: [], conflictsWith: [], buildsOn: [], reason: '' };
     }
     const now = this.o.board.item(cardId);
-    if (!now?.queue) return;
+    // taken out of the queue or deleted while the Coordinator read; started again since, the card is judged afresh
+    if (!now?.queue || this.checks.get(cardId) !== check) return;
     // its repository stopped running while the Coordinator read
     if (now.repoDown) return this.repoGone(now);
     this.o.board.work(cardId, { scope: toJson({ files: scope.files, reason: scope.reason }) });
@@ -506,6 +517,9 @@ export class Coordinator {
     const t = this.o.board.t.coordinator;
     if (!batch.length) return;
     if (batch[0]!.repoDown) return batch.forEach((w) => this.repoGone(w));
+    // what the turn reads is for these checks: one taken back and started again meanwhile is another's
+    const checks = new Map(batch.map((w) => [w.id, this.checks.get(w.id)]));
+    const ours = (id: string) => checks.has(id) && this.checks.get(id) === checks.get(id);
     if (batch.length === 1) {
       // one is judged as any card
       this.setQueue(batch[0]!.id, { checking: true });
@@ -525,9 +539,11 @@ export class Coordinator {
       plan = await this.schedule(project, batch, active, ahead);
     } catch (e) {
       // judged one by one instead, each seeing the others it may build on
+      // only those still waiting for it: taken out of the queue or deleted meanwhile, a card stays so
+      const left = this.unplanned(key).filter((w) => ours(w.id));
       if (project) this.o.board.log(key, 'error', 'obeya', t.togetherFailed(messageOf(e)));
-      else for (const w of batch) this.o.board.log(w.id, 'error', 'obeya', t.freedFailed(messageOf(e)));
-      for (const w of batch) {
+      else for (const w of left) this.o.board.log(w.id, 'error', 'obeya', t.freedFailed(messageOf(e)));
+      for (const w of left) {
         this.setQueue(w.id, { checking: true });
         this.serial(() => this.decide(w.id));
       }
@@ -537,7 +553,7 @@ export class Coordinator {
     // taken out of the queue or started anyway meanwhile
     const still = (id: string) => {
       const q = this.o.board.item(id)?.queue;
-      return !!q && 'checking' in q && q.together === key;
+      return !!q && 'checking' in q && q.together === key && ours(id);
     };
     // the turn's order becomes the queue's: a card waits only for what comes before it, so none
     // wait for each other
@@ -548,7 +564,8 @@ export class Coordinator {
     plan.forEach((p, n) => {
       const id = p.card;
       if (!still(id)) return before.add(id);
-      const behind = p.waitsFor.filter((b) => before.has(b) && this.blocks(b));
+      // what it builds on holds it until landed, as in the queue: taken out of the queue meanwhile, too
+      const behind = p.waitsFor.filter((b) => before.has(b) && (this.blocks(b) || (p.buildsOn.includes(b) && unlanded(this.o.board.item(b)))));
       before.add(id);
       this.o.board.work(id, { scope: toJson({ files: p.files, reason: p.reason }), queue: toJson({ checking: true, together: key, since: times[n]! }) });
       const buildsOn = behind.filter((b) => p.buildsOn.includes(b));
@@ -982,8 +999,15 @@ export class Coordinator {
 
   /** A card keeps the time it came to the Coordinator for as long as it stays queued. */
   private setQueue(cardId: string, q: Wait | null, keep?: string) {
-    const since = keep ?? this.o.board.item(cardId)?.queue?.since ?? new Date().toISOString();
+    const was = this.o.board.item(cardId)?.queue;
+    if (q && 'checking' in q && !(was && 'checking' in was)) this.began(cardId);
+    const since = keep ?? was?.since ?? new Date().toISOString();
     this.o.board.work(cardId, { queue: q ? toJson({ ...q, since }) : null });
+  }
+
+  /** A check of the card begins: what was read for an earlier one is not for it (`checks`). */
+  private began(cardId: string) {
+    this.checks.set(cardId, (this.checks.get(cardId) ?? 0) + 1);
   }
 
   private card(id: string): Item {

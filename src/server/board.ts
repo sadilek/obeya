@@ -2159,10 +2159,13 @@ export class Board {
     this.changed();
   }
 
-  /** Manual cards only; a plan card goes away with its workstream. */
+  /**
+   * Manual cards only; a plan card goes away with its workstream. One in the queue, also while Obeya
+   * still checks it, leaves it: brought back, it waits for the owner's start.
+   */
   remove(id: string) {
     if (this.own(id).plan_ref) throw new BadRequest('planCard', 'plan cards are removed in the plan doc');
-    this.store.update(id, { deleted_at: new Date().toISOString() });
+    this.store.update(id, { deleted_at: new Date().toISOString(), queue: null });
     this.changed();
   }
 

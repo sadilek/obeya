@@ -1339,6 +1339,10 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .question.failed { border-color: var(--error); background: color-mix(in srgb, var(--error) 6%, transparent); }
 .question.queue .actions { margin-top: 10px; }
 .question.queue .btn { background: var(--card); border: 1px solid var(--line); }
+/* while Obeya checks: the stop beside the text, muted but always in view */
+.question.queue.checking { display: flex; align-items: flex-start; gap: 10px; }
+.question.queue.checking .turn-pause { color: var(--muted); border-color: var(--line); }
+.question.queue.checking .turn-pause:hover, .question.queue.checking .turn-pause:focus-visible { color: var(--ink); border-color: var(--muted); }
 .q-place { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 10px; }
 .q-place > .hint { margin: 0; }
 .q-place .why { flex-basis: 100%; }

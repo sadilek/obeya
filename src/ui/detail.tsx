@@ -11,7 +11,7 @@ import { Branch, type CardChange, useCardDiff } from './diff';
 import type { CardDiff } from '../core/diff';
 import { ResultFiles } from './files';
 import { DiscardChanges, FolderBox, FolderLine } from './folder';
-import { landedRef } from './parts';
+import { landedRef, StopMark } from './parts';
 import { holdsNotes } from '../core/queue';
 import { forcedText, QueueList, scrollerOf, useQueueMove, useQueueSort, waitText, type Behind } from './queue';
 import { Body, plain } from './markdown';
@@ -560,14 +560,21 @@ function Where({ item, parent, worked, inFolder, change, onReadPlan }: { item: I
   );
 }
 
-/** What a card in the queue waits for, with the buttons that start it anyway or take it out of the queue. */
+/**
+ * What a card in the queue waits for, with the buttons that start it anyway or take it out of the
+ * queue. While Obeya still checks it, a stop beside the text takes the start back: a rare step, so
+ * it stays in the background, but always in view, since the box shows too seldom to learn it on hover.
+ */
 function QueueBox({ item, all, act, onClones }: { item: Item; all: Item[]; act: Act; onClones?: ((repo: string, field: 'clones' | 'slots') => void) | undefined }) {
   const q = item.queue;
   if (item.state !== 'planned' || !q) return null;
   if ('checking' in q)
     return (
-      <div className="question queue">
+      <div className="question queue checking">
         <div className="q-text">{t.queue.checkingLong}</div>
+        <button className="turn-pause" title={t.queue.cancelCheckHint} aria-label={t.queue.cancelCheck} onClick={() => act({ action: 'dequeue' }, { close: false })}>
+          <StopMark />
+        </button>
       </div>
     );
   return (
