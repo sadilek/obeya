@@ -378,6 +378,11 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
       const fresh = applied ? await api.config() : null;
       savedSeq.current++;
       setSaved(checked);
+      // a canvas new in the draft takes the id it was saved under, by its place in the list: never by its
+      // text, which saving may have tidied (a path's spaces trimmed, say), so it never shows twice
+      const pins = checked;
+      if (pins && pins.resolved.length === draft.length)
+        setRows((rows) => (rows.length === pins.resolved.length ? rows.map((r, i) => (r.origin ? r : { ...r, origin: pins.resolved[i]?.id ?? null })) : rows));
       setView({ ...(fresh ?? view!), canvases: draft, restarting });
       checkSaved();
       setStatus(restarting ? c.saved : applied ? (restartsAgents(view!.canvases, draft) ? c.savedRestarts : c.savedApplied) : c.savedOnly);
@@ -395,12 +400,16 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   const [leaving, setLeaving] = useState(false);
   // ×, Esc and a press on the margin close the dialog, asking first where something is not saved; Esc while it asks stays
   const requestClose = () => {
-    if (leaving) return setLeaving(false);
+    if (leaving) return choosing ? undefined : setLeaving(false);
     if (unsaved().length) return setLeaving(true);
     onClose();
   };
   if (closeRef) closeRef.current = requestClose;
+  // while the choice is carried out (Save saving the canvases or the demo settings), the dialog's buttons wait
+  const [choosing, setChoosing] = useState(false);
   const choose = async (choice: LeaveChoice) => {
+    if (choosing) return false;
+    setChoosing(true);
     const closed = await leave(choice, {
       save: async () => {
         if (changed) {
@@ -421,7 +430,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
         demoDraft.current?.discard();
       },
       close: onClose,
-    });
+    }).finally(() => setChoosing(false));
     setLeaving(false);
     return closed;
   };
@@ -562,7 +571,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
           </section>
         </div>
       </div>
-      {on && leaving && <LeaveDialog what={unsaved()} busy={busy} onChoose={(choice) => void choose(choice)} />}
+      {on && leaving && <LeaveDialog what={unsaved()} busy={busy || choosing} onChoose={(choice) => void choose(choice)} />}
     </div>
   );
 }
@@ -2561,8 +2570,8 @@ function DeletePanel({ id, name, repos, othersChanged, onDelete, onCancel }: { i
         <ul>
           {facts.running.map((x) => (
             <li key={x.id}>
-              <a href={`${canvasPath(id)}/card/${x.short ?? x.id}`}>{x.title}</a>
-              {x.statusLine && <span className="hint"> · {x.statusLine}</span>}
+              {x.lookUp ? x.title : <a href={`${canvasPath(id)}/card/${x.short ?? x.id}`}>{x.title}</a>}
+              {(x.lookUp || x.statusLine) && <span className="hint"> · {x.lookUp ? d.lookingUp : x.statusLine}</span>}
             </li>
           ))}
         </ul>

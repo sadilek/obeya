@@ -41,6 +41,8 @@ export class Canvases extends Listeners {
   private saved: Map<string, CanvasConfig> | null = null;
   /** Whether every canvas of the configuration as last saved resolved: one not among them has left it. */
   private savedWhole = true;
+  /** By canvas's id: a deletion still moving its folders aside, which a canvas started again under that id waits for. */
+  private deleting = new Map<string, Promise<void>>();
   /** The ids of canvases starting while Obeya runs. */
   private starting = new Set<string>();
 
@@ -130,6 +132,8 @@ export class Canvases extends Listeners {
     let now: CanvasConfig | undefined;
     let tried = config;
     try {
+      // a canvas deleted under the same id a moment ago: its folders go out of the way first
+      await this.deleting.get(id);
       // one that did not start tries again with a configuration saved meanwhile
       for (;;) {
         [c] = await this.start([tried]);
@@ -161,19 +165,19 @@ export class Canvases extends Listeners {
    * go to the first canvas. Settles once what they left on disk is out of the way of a canvas added
    * again under the same id, its folders removed in the background (`removed`).
    */
-  async delete(ids: string[], saved: () => void): Promise<{ removed: Promise<void> }> {
+  async delete(ids: string[], saved: () => CanvasConfig[]): Promise<{ removed: Promise<void> }> {
     const atWork = ids.flatMap((id) => {
       if (this.starting.has(id)) return [`${id} (starting)`];
       const c = this.get(id);
-      const cards = c?.atWork() ?? [];
-      return cards.length ? [`${c!.board.canvas.name}: ${cards.map((i) => `“${i.title}”`).join(', ')}`] : [];
+      const titles = c?.atWorkTitles() ?? [];
+      return titles.length ? [`${c!.board.canvas.name}: ${titles.map((title) => `“${title}”`).join(', ')}`] : [];
     });
     if (atWork.length) throw new BadRequest('canvasAtWork', `agents are at work on ${atWork.join('; ')}`);
-    saved();
-    // whatever the configuration lists stays, on any canvas, wherever it lies
+    const written = saved();
+    // whatever the configuration lists stays, on any canvas, wherever it lies: as it ran, and as just saved
     const keep = [
       ...this.list.flatMap((c) => c.ownPaths()),
-      ...[...(this.saved?.values() ?? [])].flatMap((c) => c.repos.flatMap((r) => [r.path, ...(r.workspaces ?? [])])).map((p) => resolve(p)),
+      ...[...(this.saved?.values() ?? []), ...written].flatMap((c) => c.repos.flatMap((r) => [r.path, ...(r.workspaces ?? [])])).map((p) => resolve(p)),
     ];
     const remains: CanvasRemains[] = [];
     for (const id of ids) {
@@ -185,7 +189,17 @@ export class Canvases extends Listeners {
       this.deps.store.deleteCanvas(id);
     }
     this.emit();
-    const done = await Promise.all(remains.map((r) => removeCanvasRemains(r)));
+    const moving = remains.map((r) => removeCanvasRemains(r));
+    // a canvas added again under one of these ids meanwhile starts once its folders are out of the way
+    ids.forEach((id, i) => {
+      const aside = moving[i]!.then(
+        () => {},
+        () => {},
+      );
+      this.deleting.set(id, aside);
+      void aside.then(() => this.deleting.get(id) === aside && this.deleting.delete(id));
+    });
+    const done = await Promise.all(moving);
     return { removed: Promise.all(done.map((d) => d.removed)).then(() => {}) };
   }
 

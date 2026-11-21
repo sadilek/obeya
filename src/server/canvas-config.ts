@@ -174,9 +174,12 @@ export function resolveCanvas(
       return () => settings;
     });
   let repos = config.repos.map((r, i) => ({ config: r, read: reads[i]!, adapter: repoAdapter(r, reads[i]!.info, settings(r), sharedOf(reads[i]!.info.path)) }));
-  // a canvas without a name is its first repository's (`namedAfter`): the id it was given there first stays
-  const namedAfter = config.id || config.name ? undefined : reads[0]!.info.path;
-  const id = config.id ? slug(config.id) : config.name ? slug(config.name) : unnamedId(store, reads[0]!.info);
+  // a canvas without a name is its first repository's (`namedAfter`): the id it was given there first stays;
+  // so is one whose name or id gives no id that names a folder of its own (`usableId`: a name in another
+  // script than Latin, punctuation alone)
+  const given = config.id ? slug(config.id) : config.name ? slug(config.name) : '';
+  const namedAfter = usableId(given) ? undefined : reads[0]!.info.path;
+  const id = namedAfter ? unnamedId(store, reads[0]!.info) : given;
   const kept = keptRepoIds(store, id);
   const refsOf = () => uniqueRefs(repos.map((x) => x.read.info), repos.map((x) => x.adapter), kept, () => store.cardRepos(id).concat(store.setting(id, 'home_repo') ?? []));
   let refs = refsOf();
@@ -275,8 +278,9 @@ function uniqueRefs(infos: RepoInfo[], adapters: RepoAdapter[], kept: Record<str
  */
 function unnamedId(store: Store, info: RepoInfo): string {
   const kept = store.canvasNamedAfter(info.path);
-  if (kept) return kept;
-  const id = slug(repoName(info));
+  if (kept && usableId(kept)) return kept;
+  const named = slug(repoName(info));
+  const id = usableId(named) ? named : 'canvas';
   const before = slug(basename(info.path));
   if (!before || before === id || store.namedAfter(before) || !store.hasCards(before) || store.hasCards(id)) return id;
   const home = store.setting(before, 'home_repo');
@@ -395,6 +399,13 @@ export function setShare(ref: RepoRef, share: ShareRef) {
   for (const f of SHARE_FIELDS) delete ref[f];
   Object.assign(ref, share);
 }
+
+/**
+ * Whether `id` can be a canvas's id: it names the canvas's folders under Obeya's home (its
+ * workspaces, read trees, files), so it is one name of its own there, neither empty nor `.` or `..`,
+ * which would name the folder of every canvas or Obeya's home itself.
+ */
+export const usableId = (id: string) => id !== '' && !/^\.+$/.test(id) && !/[\\/]/.test(id);
 
 export const slug = (s: string) =>
   s

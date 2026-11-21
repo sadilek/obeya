@@ -2,9 +2,10 @@
 // rows left the database. Its repositories or folders, the clones the owner listed, pushed branches
 // and open pull requests stay as they are.
 
-import { lstat, readdir, rename, rm } from 'node:fs/promises';
+import { lstat, readdir, realpath, rename, rm } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { messageOf } from '../core/text';
+import { usableId } from './canvas-config';
 import { gitTry } from './git';
 
 /** Obeya's own directories that hold something per canvas, each in a directory named by the canvas's id. */
@@ -38,8 +39,12 @@ export interface CanvasRemains {
  */
 export async function removeCanvasRemains(r: CanvasRemains): Promise<{ removed: Promise<void> }> {
   await Promise.all(r.repos.map((repo) => repo.quiet().catch((e) => console.error(`Obeya: ending what runs in the workspaces of ${repo.path}: ${messageOf(e)}`))));
-  const keep = [...r.keep, ...r.repos.flatMap((repo) => [repo.path, ...repo.listed])].map((p) => resolve(p));
-  const trash = (await Promise.all(CANVAS_DIRS.map((d) => moveAside(join(r.home, d, r.canvas), keep)))).flat();
+  // each also as it really lies, where a link leads to it: what is kept is kept by either name
+  const named = [...r.keep, ...r.repos.flatMap((repo) => [repo.path, ...repo.listed])].map((p) => resolve(p));
+  const keep = [...new Set([...named, ...(await Promise.all(named.map((p) => realpath(p).catch(() => p))))])];
+  // an id that is no folder of its own (empty, `.`, `..`) would name every canvas's folder, or Obeya's home: nothing goes
+  const trash = usableId(r.canvas) ? (await Promise.all(CANVAS_DIRS.map((d) => moveAside(join(r.home, d, r.canvas), keep)))).flat() : [];
+  if (!usableId(r.canvas)) console.error(`Obeya: the canvas id "${r.canvas}" names no folder of its own; its folders stay`);
   for (const repo of r.repos) {
     if (!repo.git || !(await there(repo.path))) continue;
     // the worktrees moved aside are no longer there: git forgets them, and then lets their branches go
@@ -58,8 +63,11 @@ export async function removeCanvasRemains(r: CanvasRemains): Promise<{ removed: 
 async function moveAside(dir: string, keep: string[]): Promise<string[]> {
   const at = await lstat(dir).catch(() => null);
   if (!at) return [];
-  const inside = keep.filter((k) => k === dir || k.startsWith(dir + sep));
-  if (inside.includes(dir)) return [];
+  // by its name here, and where it really lies (a folder of Obeya's home reached through a link)
+  const real = await realpath(dir).catch(() => dir);
+  const under = (k: string, d: string) => k === d || k.startsWith(d + sep);
+  const inside = keep.filter((k) => under(k, dir) || under(k, real));
+  if (inside.some((k) => k === dir || k === real)) return [];
   if (inside.length) {
     // a link is never followed: what it leads to is not Obeya's
     if (!at.isDirectory()) return [];

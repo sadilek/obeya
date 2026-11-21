@@ -482,7 +482,7 @@ export interface CanvasDeletion {
   /** Cards with a pull request still open: it stays open on the forge, no longer followed. */
   prs: number;
   /** The cards whose agent is at work now (starting, working, landing): while there are any, the canvas is not deleted. */
-  running: { id: string; short?: string; title: string; statusLine?: string }[];
+  running: { id: string; short?: string; title: string; statusLine?: string; /** A question being looked up in the Coordinator's sheet, not a card. */ lookUp?: true }[];
   /** It has a folder without git: the folder keeps whatever the agents changed in it. */
   folder: boolean;
   /** It is the only canvas, and Obeya needs one: it is not deleted. */

@@ -57,7 +57,7 @@ export type Command = (
   /** `revise`: the owner's words on a proposal, which an agent reworks it by. */
   | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'prototype' | 'revise'; card: string; text: string; spoken?: boolean }
   /** Saves Obeya's configuration, which then starts again with it. */
-  | { do: 'configure'; canvases: CanvasConfig[] }
+  | { do: 'configure'; canvases: CanvasConfig[]; /** The ids of the canvases it deletes, which it leaves out: no other may be missing once it runs. */ deletes?: string[] }
   /**
    * Records a rule every agent follows, active at once, or with `repos` files it for those
    * repositories' CLAUDE.md; `replaces`: the rule (id) it changes, `card`: the card open when the owner said it.
@@ -975,23 +975,33 @@ export class Commander {
                 name: 'configure',
                 description: [
                   "Change Obeya's configuration on the owner's word: canvases is the whole new list as config shows it (keep what the owner did not ask to change). It is saved after the undo window and applies while Obeya runs, without a restart: a new canvas or repository starts at once; a repository whose agents now work elsewhere (clones, workspaces, slots, hosts, workspaces in its settings) or that leaves has its agents restarted or stopped once they paused, the others working on.",
-                  "A canvas left out of canvases is deleted, with all its cards, their conversations and workspaces (its repositories or folders stay as they are); refused while an agent works on it. Leave one out only when the owner asks to delete or remove it, and say so in confirm.",
-                  "A canvas's id follows its name (without one, the first repository's name), unless id is set: to rename a canvas, set id to its current id (from resolved), or the canvas under its current id counts as left out (deleted with its cards) and a new, empty one takes its place. The first repository a canvas was served with stays its home and must stay listed. Server settings (port, permission mode) are not part of it; they come from the command line.",
+                  "delete: the ids (from resolved) of the canvases the owner asked to delete or remove; each goes with all its cards, their conversations and workspaces (its repositories or folders stay as they are), refused while an agent works on it, and confirm says so. Those are left out of canvases; every other canvas stays in it.",
+                  "A canvas's id follows its name (without one, the first repository's name), unless id is set: to rename a canvas, set id to its current id (from resolved). The first repository a canvas was served with stays its home and must stay listed. Server settings (port, permission mode) are not part of it; they come from the command line.",
                   `confirm: one short sentence in the owner's language saying what changes and, where a repository's agents restart for it, that they do once they paused, e.g. ${say.configure}`,
                 ].join('\n'),
                 schema: {
                   canvases: configShape,
+                  delete: z.array(z.string()).optional(),
                   confirm: z.string(),
                 },
-                run: async ({ canvases, confirm }: Record<string, unknown>) => {
+                run: async ({ canvases, delete: named, confirm }: Record<string, unknown>) => {
+                  const deletes = (named as string[] | undefined) ?? [];
                   const { problems: all, canvases: checked, resolved } = await config.check(canvases);
                   const problems = all.filter(blocksSaving);
                   if (problems.length)
                     return `Nothing recorded, the configuration does not work: ${problems.map((p) => p.detail).join('; ')}. Fix it and call configure again, or reply to the owner.`;
-                  const busy = (await config.leftOut(resolved)).filter((l) => l.atWork.length);
+                  const left = await config.leftOut(resolved);
+                  // a canvas goes only where it is named: one left out otherwise (renamed without its id, say) is a slip
+                  const missing = left.filter((l) => !deletes.includes(l.id));
+                  if (missing.length)
+                    return `Nothing recorded: ${missing.map((l) => `${l.name} (id ${l.id})`).join(', ')} missing from canvases but not in delete. To rename a canvas, keep it with id set to its current id; to delete it, name its id in delete. Call configure again.`;
+                  const kept = deletes.filter((id) => !left.some((l) => l.id === id));
+                  if (kept.length)
+                    return `Nothing recorded: ${kept.join(', ')} in delete, but still in canvases (or no such canvas). Leave a canvas to delete out of canvases, or drop it from delete. Call configure again.`;
+                  const busy = left.filter((l) => l.atWork.length);
                   if (busy.length)
                     return `Nothing recorded: a canvas is not deleted while an agent works on it, and agents are at work on ${busy.map((l) => `${l.name} (${l.atWork.map((title) => `“${title}”`).join(', ')})`).join('; ')}. Tell the owner with reply: once those agents are done or stopped (or the canvas's agents paused), it can be deleted.`;
-                  return finish([{ do: 'configure', canvases: checked }], String(confirm));
+                  return finish([{ do: 'configure', canvases: checked, ...(deletes.length ? { deletes } : {}) }], String(confirm));
                 },
               },
             ]

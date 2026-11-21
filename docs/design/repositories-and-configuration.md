@@ -43,7 +43,10 @@ stays with its first repository's path, whatever that repository's `origin` beco
 name shown follows the `origin`. A canvas that came back under a new id before ids were kept (its
 first repository given an `origin` that names it otherwise) gets its directory's name back where the
 database still has cards under it, unless that canvas's home is another repository or the canvas
-under the new id has cards already. Which canvas a repository is on is this machine's alone.
+under the new id has cards already. A canvas's id names its folders in Obeya's home, so a name (or a
+set id) that gives none of its own, one in another script than Latin, punctuation alone, `.` or `..`,
+counts as no name for the id: the canvas keeps the name shown and takes its id as one without a name
+would, from its first repository (`canvas` where that gives none either). Which canvas a repository is on is this machine's alone.
 
 A repository's id on its canvas (what its cards, its plan-doc references `<repo>:<path>` and the
 canvas's home go by) is given once, when the repository first runs there: its name (the name in its
@@ -443,7 +446,9 @@ request still open ("it stays open, but Obeya no longer follows it"), and that t
 as it is (a folder without git keeps whatever the agents changed in it); "Delete Shop" in the
 destructive style beside "Cancel", and, where the draft holds other changes, that they stay in it.
 The counts come from the server when the panel opens and every few seconds while it is open:
-unlanded work is what git finds in the cards' workspaces, not guessed from their states. "Delete"
+unlanded work is what git finds, not guessed from the cards' states: in the workspaces they hold, on
+a card's branch in the repository that has commits main lacks, and work a card set aside in a clone
+(archived, or its clone given to another card). "Delete"
 takes effect at once: the canvas leaves the configuration's file, stops and is gone from every list;
 the draft's other changes stay, waiting for Save. A page showing it (another tab, the phone) goes to
 the first canvas; where that is the page the dialog deleted it from, the dialog opens again there
@@ -451,9 +456,10 @@ with the draft and "Shop deleted.".
 
 While an agent of the canvas is at work, starting (its workspace being made ready), in a turn,
 landing or being approved, or an idea's or a Question card's agent replying, the panel has no Delete:
-it names those cards as links (with their status lines) and says to stop them or wait, with "Pause
-its 2 running agents", the canvas's pause (see Pausing a canvas's agents in Communication); it shows
-Delete once they are done. Cards waiting for the owner, in a pull request, queued, paused or snoozed
+it names those cards as links (with their status lines), and a question being looked up in Obeya's
+sheet with "Obeya is looking this up", and says to stop them or wait, with "Pause its 2 running
+agents", the canvas's pause (see Pausing a canvas's agents in Communication); it shows Delete once
+they are done. Cards waiting for the owner, in a pull request, queued, paused or snoozed
 hold nothing: they go with the canvas. The delete is a request of its own and the server decides,
 not the page: it looks for agents at work at that moment and refuses with their names where one
 started since the panel counted, and nothing lies between that look and the canvas stopping, so no
@@ -463,22 +469,28 @@ What goes: every row the canvas has in the database (its cards, archived and del
 their logs, decisions, friction and costs; groups; the Coordinator's sheet, threads and memory;
 proposals of settings; commands in their undo window; its settings), and the canvas itself, so that
 anything of it still under way writes nothing back; cards of other canvases that came from one of
-its cards keep no reference to it. Its folders in Obeya's home (`workspaces/`, `read/`, `images/`,
+its cards keep no reference to it, and cards that moved on to another canvas keep their decisions,
+friction and costs there. Its agents stop, look-ups in its sheet included. Its folders in Obeya's home (`workspaces/`, `read/`, `images/`,
 `files/`, `answers/` and `undo/`, each under the canvas's id) move aside at once and are removed in
 the background, after the apps and processes running from its workspaces ended: the clones and
 worktrees Obeya made for it, read trees, screenshots, files, looked-up answers and a folder's undo
 snapshots. Git forgets its worktrees, and the cards' local branches go from the repository (a branch
 of the owner's that a card took over stays). Never touched: the repository or folder itself, clones
 the owner listed, clones on other machines, branches pushed to a remote, open pull requests and
-shared demo pages; nor anything a canvas of the configuration lists, wherever it lies, and a link in
-those folders is not followed. A repository that had left the canvas before keeps the branches its
+shared demo pages; nor anything a canvas of the configuration lists (as it ran, and as the delete
+saves it), wherever it lies and by whatever link it is reached, and a link in those folders is not
+followed; nor are apps stopped in a clone the owner listed. A canvas added again under the same id
+while the folders are still being moved aside starts once they are. A repository that had left the canvas before keeps the branches its
 cards made there. Its cards' numbers are not given again (see Card numbers in The canvas). A canvas
 added again under the same name starts empty.
 
-The Coordinator's `configure` follows the same rules: a canvas left out of the list is deleted, as
-with the bin, and refused while one of its agents is at work, both when the Coordinator calls it
-(so it tells the owner) and when it runs after the undo window, which passes before anything is
-deleted. A command that deleted its own canvas ends the commands said with it.
+The Coordinator's `configure` follows the same rules, and deletes only canvases it names: each one to
+delete is named by id and left out of the list, as with the bin, refused while one of its agents is
+at work, both when the Coordinator calls it (so it tells the owner) and when it runs after the undo
+window, which passes before anything is deleted. A canvas missing from the list that the command does
+not name (renamed without its id, or added in the dialog while the command waited for its undo
+window) is never deleted: the command records nothing, or fails once it runs, and the configuration
+stays as it was. A command that deleted its own canvas ends the commands said with it.
 
 A repository's page is its path, its problems, then its settings in groups under a small heading
 each, always shown: where its agents work ("Agents work in": worktrees or clones, with its
@@ -815,7 +827,9 @@ its status lines in German).
   Save (O3): each kept the delete in the draft, so a routine Save carried it along, Save needed a
   label of its own ("Save and delete"), and an agent that started between the bin and Save turned
   the whole save away. Leaving the dialog with a draft not saved asks (Save, Discard changes, Stay),
-  since the draft only survived silently before.
+  since the draft only survived silently before. The Coordinator's `configure` deletes only the
+  canvases it names by id (2026-11-21): rejected, deleting whatever its list leaves out, which made
+  a rename that forgot the id, or a canvas added during the undo window, a silent delete.
 - **The configuration shows before its check, whose git calls run in parallel off the server's
   thread** (2026-10-15): run one after another (109 calls for three canvases), they froze the server,
   every page load included, for seconds; now 41 calls take about 60 ms.

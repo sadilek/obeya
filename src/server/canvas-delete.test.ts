@@ -43,7 +43,7 @@ async function open(configs: CanvasConfig[]) {
     server: { port: 4417, home, permissionMode: 'auto' },
     apply: (c, ids) => set.apply(c, ids),
     deleteCanvases: (ids, s) => set.delete(ids, s),
-    atWork: (id) => set.get(id)?.atWork().map((i) => i.title) ?? [],
+    atWork: (id) => set.get(id)?.atWorkTitles() ?? [],
     deletion: (id) => set.get(id)?.deletion(),
   });
   set = await Canvases.start(configs, { store, home, runtime: new FakeRuntime(), workerRuntime: workers, forge: noForge, restartIntervalMs: 5 });
@@ -98,7 +98,7 @@ test('a canvas is not deleted while an agent works on it, also one that started 
   expect(store.card(card.id)).not.toBeNull();
   // so is the Coordinator's configure that leaves it out
   expect((await config.leftOut((await config.check([both()[1]])).resolved)).map((l) => [l.id, l.atWork])).toEqual([['shop', ['Checkout']]]);
-  expect(await refusal(() => config.save([both()[1]], { deletes: true }))).toBe('canvasAtWork');
+  expect(await refusal(() => config.save([both()[1]], { deletes: ['shop'] }))).toBe('canvasAtWork');
   // once it waits for the owner it no longer holds the canvas
   await handOver();
   await config.deleteCanvas('shop');
@@ -186,12 +186,79 @@ test('saving removes no canvas; the only canvas is not deleted', async () => {
   expect((await config.deletion('blog')).last).toBe(true);
 });
 
-test("the Coordinator's configure deletes a canvas it leaves out, as the bin does", async () => {
+test("the Coordinator's configure deletes a canvas it names and leaves out, as the bin does; one left out it does not name stops the save", async () => {
   await open(both());
   set.get('shop')!.board.create({ title: 'Gone with it', x: 0, y: 0 });
-  await config.save([both()[1]], { deletes: true });
+  // renamed without its id: Shop counts as left out, but the command named nothing to delete
+  expect(await refusal(() => config.save([{ ...both()[0]!, name: 'Store' }, both()[1]!], { deletes: [] }))).toBe('canvasLeft');
+  expect(set.get('shop')!.board.items().map((i) => i.title)).toContain('Gone with it');
+  expect(saved().map((c) => c.name)).toEqual(['Shop', 'Blog']);
+  await config.save([both()[1]], { deletes: ['shop'] });
   expect(set.all().map((c) => c.id)).toEqual(['blog']);
   expect(store.everyCard('shop')).toEqual([]);
+});
+
+test('a configure recorded before a canvas was added deletes only what it named, never the canvas added meanwhile', async () => {
+  await open(both());
+  // recorded as Shop and Blog, then Wiki added before it runs
+  const recorded = both();
+  const wiki = gitRepo(join(dir, 'wiki'));
+  await config.save([...both(), { name: 'Wiki', repos: [{ path: wiki, settings: { land: 'pr' } }] }]);
+  await until(() => !!set.get('wiki'));
+  expect(await refusal(() => config.save(recorded, { deletes: [] }))).toBe('canvasLeft');
+  expect(set.get('wiki')).toBeDefined();
+  expect(saved().map((c) => c.name)).toEqual(['Shop', 'Blog', 'Wiki']);
+});
+
+test('a canvas whose name names no folder of its own gets its id from its repository, and deleting it leaves the other canvases alone', async () => {
+  await open([{ name: '商店', repos: [{ path: shop, settings: { land: 'pr' } }] }, both()[1]!]);
+  expect(set.all().map((c) => c.id).sort()).toEqual(['blog', 'shop']);
+  for (const d of ['workspaces', 'files']) {
+    mkdirSync(join(home, d, 'blog'), { recursive: true });
+    writeFileSync(join(home, d, 'blog', 'x'), 'x');
+  }
+  await config.deleteCanvas('shop');
+  for (const d of ['workspaces', 'files']) expect(readFileSync(join(home, d, 'blog', 'x'), 'utf8')).toBe('x');
+  expect(existsSync(home)).toBe(true);
+});
+
+test('work a card set aside in a clone, or left on its branch without a workspace, counts as lost', async () => {
+  await open([{ name: 'Shop', repos: [{ path: shop, settings: { land: 'pr' } }] }, both()[1]!]);
+  const c = set.get('shop')!;
+  const parked = c.board.create({ title: 'Parked', x: 0, y: 0 });
+  store.update(parked.id, { kept_in: join(home, 'workspaces', 'shop', 'repo', '1') });
+  // a branch with a commit main does not have, its worktree gone
+  const branched = c.board.create({ title: 'Branched', x: 0, y: 0 });
+  git(shop, 'branch', 'obeya/branched');
+  git(shop, 'worktree', 'add', join(dir, 'tmp-wt'), 'obeya/branched');
+  commit(join(dir, 'tmp-wt'), 'more.ts');
+  git(shop, 'worktree', 'remove', '--force', join(dir, 'tmp-wt'));
+  store.update(branched.id, { branch: 'obeya/branched' });
+  // a branch main already has
+  const landed = c.board.create({ title: 'Landed', x: 0, y: 0 });
+  git(shop, 'branch', 'obeya/landed');
+  store.update(landed.id, { branch: 'obeya/landed' });
+  expect((await config.deletion('shop')).unlanded).toBe(2);
+});
+
+test('a look-up in the sheet holds the canvas as an agent at work does, and ends with the delete', async () => {
+  await open(both());
+  const c = set.get('shop')!;
+  const talk = c.board.sheet.add('What is in the plan?', '', { lookUp: { question: 'What is in the plan?', about: null } });
+  (c.answers as unknown as { busy: Set<number> }).busy.add(talk);
+  expect((await config.deletion('shop')).running.map((r) => [r.title, r.lookUp])).toEqual([['What is in the plan?', true]]);
+  expect(await refusal(() => config.deleteCanvas('shop'))).toBe('canvasAtWork');
+});
+
+test("cards that moved to another canvas keep their decisions, friction and costs once the canvas they came from is deleted", async () => {
+  await open(both());
+  const project = set.get('shop')!.board.create({ title: 'Project', x: 0, y: 0 });
+  const moved = set.get('shop')!.board.create({ title: 'Moves', x: 0, y: 0 });
+  store.addDecision({ canvas_id: 'shop', project_id: project.id, card_id: moved.id, question: 'Q?', answer: 'A', by: 'owner' } as never);
+  store.moveCard(moved.id, 'blog', { x: 0, y: 0 });
+  await config.deleteCanvas('shop');
+  expect(store.card(moved.id)).not.toBeNull();
+  expect(store.cardDecisions('blog', moved.id).map((d) => d.answer)).toEqual(['A']);
 });
 
 test('a delete while another save changed the configuration meanwhile is refused, and nothing of the canvas goes', async () => {

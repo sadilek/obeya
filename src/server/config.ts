@@ -219,9 +219,9 @@ export interface ConfigOptions {
   failures?: () => StartFailure[];
   /**
    * Deletes canvases with their cards (`Canvases.delete`), refused while one of their agents is at
-   * work: `saved` writes the configuration without them, right after that check.
+   * work: `saved` writes the configuration without them, right after that check, and returns what it wrote.
    */
-  deleteCanvases?: (ids: string[], saved: () => void) => Promise<{ removed: Promise<void> }>;
+  deleteCanvases?: (ids: string[], saved: () => CanvasConfig[]) => Promise<{ removed: Promise<void> }>;
   /** The titles of the running canvas's cards whose agent is at work now (`CanvasRuntime.atWork`). */
   atWork?: (id: string) => string[];
   /** What deleting a running canvas takes with it, counted now (`CanvasRuntime.deletion`); none for one that does not run. */
@@ -652,21 +652,24 @@ export class Config {
    * Saves a configuration that works, and the running canvases take it over (design: Live
    * configuration). Where they came from the command line, Obeya starts again with it where
    * something restarts it. It removes no canvas that was saved before (`canvasLeft`): the dialog
-   * deletes one on its own (`deleteCanvas`), and only the Coordinator's `configure` (`deletes`)
-   * deletes those it leaves out, with their cards, as that does.
+   * deletes one on its own (`deleteCanvas`), and only the Coordinator's `configure` deletes those it
+   * leaves out, with their cards, as that does, and only those it names (`deletes`, by id): one left
+   * out that it does not name (renamed without its id, or added since the command was recorded)
+   * keeps the whole save from happening.
    */
-  async save(input: unknown, o: { deletes?: boolean } = {}): Promise<ConfigSaved> {
+  async save(input: unknown, o: { deletes?: string[] } = {}): Promise<ConfigSaved> {
     const { canvases, resolved, problems: all } = await this.check(input);
     const problems = all.filter(blocksSaving);
     if (problems.length) throw new BadRequest('config', problems.map((p) => p.detail).join('; '));
     const left = await this.leftOut(resolved);
-    if (left.length && !o.deletes)
-      throw new BadRequest('canvasLeft', `saving removes no canvas: ${left.map((l) => l.name).join(', ')} missing from what was sent; a canvas is deleted with the bin beside its name`);
+    const unnamed = left.filter((l) => !o.deletes?.includes(l.id));
+    if (unnamed.length)
+      throw new BadRequest('canvasLeft', `saving removes no canvas: ${unnamed.map((l) => l.name).join(', ')} missing from what was sent; a canvas is deleted with the bin beside its name`);
     if (left.length) {
       if (!this.o.deleteCanvases) throw new BadRequest('config', 'this Obeya does not delete canvases while it runs');
       await this.o.deleteCanvases(
         left.map((l) => l.id),
-        () => this.write(canvases),
+        () => (this.write(canvases), canvases),
       );
     } else this.write(canvases);
     if (this.o.source === 'file' && !this.restarting && this.o.apply) {
@@ -696,7 +699,9 @@ export class Config {
     await this.o.deleteCanvases([id], () => {
       // saved meanwhile (the dialog of another tab, the Coordinator): what was read is no longer the configuration
       if (this.current() !== read) throw new BadRequest('config', 'the configuration changed meanwhile; try again');
-      this.write(canvases.filter((_, j) => j !== i));
+      const rest = canvases.filter((_, j) => j !== i);
+      this.write(rest);
+      return rest;
     });
     console.log(`Obeya: the canvas ${id} is deleted, and saved without it to ${this.o.file}`);
     if (this.o.source !== 'file') this.restartForFile();

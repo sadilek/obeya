@@ -1077,8 +1077,10 @@ describe("the Coordinator and Obeya's configuration", () => {
       return { canvases, resolved: [], problems };
     },
     checkSaved: () => config.check(view.canvases),
-    leftOut: async () => [] as { id: string; name: string; atWork: string[] }[],
+    // a canvas named Obeya missing from the list counts as left out
+    leftOut: async () => (left ? [{ id: 'obeya', name: 'Obeya', atWork: [] as string[] }] : []),
   };
+  let left = false;
   const withConfig = () => new Commander({ board, runtime, cwd: '/r', execute: (c) => void executed.push(c), delayMs: 20, config });
 
   test('reads it for a question and replies', async () => {
@@ -1107,6 +1109,25 @@ describe("the Coordinator and Obeya's configuration", () => {
     expect(executed).toEqual([]);
     await ran(k);
     expect(executed).toEqual([{ do: 'configure', canvases: good }]);
+  });
+
+  test('deletes a canvas only where the command names it: one left out otherwise (a rename without its id) records nothing', async () => {
+    const k = withConfig();
+    const heard = k.hear('nenn die Leinwand Werkstatt', {});
+    await settle();
+    const s = runtime.last;
+    left = true;
+    const renamed = [{ name: 'Werkstatt', repos: [{ path: '/r' }] }];
+    expect(await s.call('configure', { canvases: renamed, confirm: 'Umbenannt.' })).toContain('Obeya (id obeya) missing from canvases but not in delete');
+    left = false;
+    expect(await s.call('configure', { canvases: [{ id: 'obeya', name: 'Werkstatt', repos: [{ path: '/r' }] }], delete: ['obeya'], confirm: 'Umbenannt.' })).toContain('in delete, but still in canvases');
+    left = true;
+    await s.call('configure', { canvases: renamed, delete: ['obeya'], confirm: 'Obeya wird gelöscht, Werkstatt kommt neu dazu.' });
+    left = false;
+    s.emit({ type: 'idle' });
+    k.arm((await heard).token!);
+    await ran(k);
+    expect(executed).toEqual([{ do: 'configure', canvases: renamed, deletes: ['obeya'] }]);
   });
 
   test('without it, the Coordinator has no such tools', async () => {

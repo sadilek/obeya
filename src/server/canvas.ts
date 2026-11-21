@@ -59,7 +59,7 @@ import { dimensions } from '../core/page-tags';
 import { type DueRestart, finishedRow, PLANNED_AGAIN, releaseHeld, Workers } from './workers';
 import { type CardWorkspaces, type FileAt, type Landed, Workspaces } from './workspaces';
 import { useBranchSetting } from './branches';
-import { githubToken, gitRun, NO_PROMPT, useGitLogin } from './git';
+import { githubToken, gitRun, gitTry, NO_PROMPT, useGitLogin } from './git';
 import { FolderWorkspaces } from './folder';
 import { claudeToken, hostName, registerHost } from './hosts';
 import { messageOf } from '../core/text';
@@ -2233,8 +2233,8 @@ export class CanvasRuntime {
         if ((c.do === 'start' || c.do === 'force') && c.images?.length) this.ideas.addTaskImages(c.card, c.images);
         return done(this.act(c.card, { action: c.do }));
       case 'configure':
-        // a canvas left out is deleted, as with its bin in the dialog
-        return done(this.deps.config?.save(c.canvases, { deletes: true }));
+        // the canvases it names and leaves out are deleted, as with their bin in the dialog; any other missing now keeps it from saving
+        return done(this.deps.config?.save(c.canvases, { deletes: c.deletes ?? [] }));
       case 'remember':
         return this.remember(c.text, c);
       case 'workRetro':
@@ -2389,6 +2389,14 @@ export class CanvasRuntime {
     return this.board.items().filter((i) => (busy.has(i.id) && (i.inTurn || !needsYou(i))) || pausableNow(i) || !!i.proposal?.revising);
   }
 
+  /**
+   * What keeps the canvas from being deleted, by title: its cards at work (`atWork`) and the
+   * questions being looked up in the Coordinator's sheet, whose agents are at work too.
+   */
+  atWorkTitles(): string[] {
+    return [...this.atWork().map((i) => i.title), ...this.answers.lookingUp().map((l) => l.question)];
+  }
+
   /** The repositories it runs and the clones they list: what deleting another canvas never touches. */
   ownPaths(): string[] {
     return this.repos.flatMap((r) => [r.info.path, ...(r.config.workspaces ?? [])].map((p) => resolve(p)));
@@ -2398,12 +2406,22 @@ export class CanvasRuntime {
   async deletion(): Promise<Omit<CanvasDeletion, 'id' | 'name' | 'last'>> {
     const rows = this.deps.store.everyCard(this.id).filter((r) => !r.deleted_at);
     const items = this.board.items();
-    // what git finds in the workspaces they hold, not what their states suggest
+    // the cards' branches in each repository, which deleting the canvas deletes: asked once per repository
+    const branches = new Map(
+      await Promise.all(this.repos.filter((r) => !r.info.folder).map(async (r) => [r.ref.id, new Set((await gitTry(r.info.path, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/'))?.split('\n') ?? [])] as const)),
+    );
+    // what git finds in the workspaces they hold and on their branches, not what their states suggest
     const holds = await Promise.all(
       rows.map(async (r) => {
         const repo = this.repo(r.repo ?? this.repos[0]?.ref.id);
         if (!repo || repo.workspaces.mode === 'folder') return false;
-        return repo.workspaces.hasWork(r.id).catch(() => true);
+        if (await repo.workspaces.hasWork(r.id).catch(() => true)) return true;
+        // work set aside in a clone (archived, or the clone given to another card) stays on its branch there, which goes with the canvas
+        if (r.kept_in) return true;
+        // a branch without a workspace (its worktree gone) with commits main does not have
+        if (!r.branch || r.adopted || !branches.get(repo.ref.id)?.has(r.branch)) return false;
+        const ahead = await gitTry(repo.info.path, 'rev-list', '--count', '--cherry-pick', '--right-only', `${repo.info.branch}...${r.branch}`);
+        return ahead !== '0';
       }),
     );
     return {
@@ -2411,7 +2429,10 @@ export class CanvasRuntime {
       archived: rows.filter((r) => r.archived_at).length,
       unlanded: holds.filter(Boolean).length,
       prs: items.filter((i) => !finished(i.state) && [i.pr, ...(i.morePrs ?? [])].some((p) => p && !p.merged && !p.closed)).length,
-      running: this.atWork().map((i) => ({ id: i.id, title: i.title, ...(i.short ? { short: i.short } : {}), ...(i.statusLine ? { statusLine: i.statusLine } : {}) })),
+      running: [
+        ...this.atWork().map((i) => ({ id: i.id, title: i.title, ...(i.short ? { short: i.short } : {}), ...(i.statusLine ? { statusLine: i.statusLine } : {}) })),
+        ...this.answers.lookingUp().map((l) => ({ id: `look-up-${l.id}`, title: l.question, lookUp: true as const })),
+      ],
       folder: this.repos.some((r) => r.workspaces.mode === 'folder'),
     };
   }
@@ -2437,6 +2458,8 @@ export class CanvasRuntime {
     this.retiring = null;
     this.stopped = true;
     this.shutdown();
+    // its look-ups too, which a canvas that only stops leaves to finish
+    this.answers.shutdown();
     console.log(`Obeya: the canvas ${this.id} is deleted; it stopped`);
     return remains;
   }
