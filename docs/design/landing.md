@@ -56,7 +56,8 @@ A pull request needs its base on `origin`. Where the checkout knows no main bran
 `origin` confirms it has none, Obeya pushes the local main there at the approval, never forced, so
 the worker's pull request has a base; the card's log says so. A refused push goes into the log as an
 error, and the worker hears why with the approval. Where `origin` cannot be asked, nothing is pushed
-and the pull request goes as it would.
+and the pull request goes as it would. Until `origin` has the main branch, a card's clone starts from the
+checkout's main instead of `origin`'s.
 
 Where a `pr` repository's settings allow `direct`, the owner may approve "Straight to main": in the
 card's clone or worktree Obeya fetches, rebases onto `origin/<default>` and runs `git push origin

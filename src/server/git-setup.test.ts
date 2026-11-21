@@ -42,7 +42,7 @@ describe('setting up git in a folder', () => {
   });
 
   test('the first commit holds every file not ignored, without node_modules and .env', () => {
-    expect(setUpGit(folder)).toEqual({ branch: 'main' });
+    expect(setUpGit(folder)).toMatchObject({ branch: 'main' });
     expect(git(folder, 'ls-tree', '-r', '--name-only', 'HEAD').split('\n')).toEqual(['.gitignore', 'README.md', 'data.bin', 'src/app.ts']);
     expect(git(folder, 'symbolic-ref', '--short', 'HEAD')).toBe('main');
     expect(git(folder, 'log', '-1', '--format=%an <%ae>')).toBe('Ada Lovelace <ada@example.com>');
@@ -71,16 +71,27 @@ describe('setting up git in a folder', () => {
 
   test('a repository without a commit gets its first one on the branch HEAD names, with what was staged', () => {
     git(folder, 'init', '--quiet', '--initial-branch=trunk');
-    git(folder, 'add', 'README.md');
+    git(folder, 'add', 'README.md', '.env');
     writeFileSync(join(folder, '.git', 'info', 'exclude'), 'data.bin\n');
     expect(withoutCommit(folder)).toBe('trunk');
     const p = previewGitSetup(folder);
-    expect(p).toMatchObject({ repo: true, branch: 'trunk', gitignore: DEFAULT_GITIGNORE, files: 3 });
-    expect(p.ignored).toEqual(['.env', 'data.bin', 'node_modules/']);
-    expect(setUpGit(folder)).toEqual({ branch: 'trunk' });
-    expect(git(folder, 'ls-tree', '-r', '--name-only', 'trunk').split('\n')).toEqual(['.gitignore', 'README.md', 'src/app.ts']);
+    // a staged file goes in, though the .gitignore would keep it out
+    expect(p).toMatchObject({ repo: true, branch: 'trunk', gitignore: DEFAULT_GITIGNORE, files: 4 });
+    expect(p.entries.map((e) => e.path)).toContain('.env');
+    expect(p.ignored).toEqual(['data.bin', 'node_modules/']);
+    expect(setUpGit(folder)).toMatchObject({ branch: 'trunk' });
+    expect(git(folder, 'ls-tree', '-r', '--name-only', 'trunk').split('\n')).toEqual(['.env', '.gitignore', 'README.md', 'src/app.ts']);
     expect(withoutCommit(folder)).toBeNull();
     expect(() => setUpGit(folder)).toThrow(expect.objectContaining({ code: 'invalid' }));
+  });
+
+  test('the first commit in a repository is taken back with what was staged as it was', () => {
+    git(folder, 'init', '--quiet', '--initial-branch=main');
+    git(folder, 'add', 'README.md');
+    setUpGit(folder).undo();
+    expect(withoutCommit(folder)).toBe('main');
+    expect(git(folder, 'diff', '--cached', '--name-only')).toBe('README.md');
+    expect(existsSync(join(folder, '.gitignore'))).toBe(false);
   });
 
   test('a failed first commit in a repository leaves what was staged as it was', () => {

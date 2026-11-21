@@ -1026,6 +1026,8 @@ export class Workers {
     if (shared) this.pageHeard(cardId);
     // a remote without the main branch yet (a clone of an empty one) gets it, so the pull request has a base
     const base = await this.o.workspaces.baseOnOrigin?.().catch(() => null);
+    // Obeya shut down or the card went while origin was asked: no worker starts for it now
+    if (this.shut || !this.o.board.item(cardId)) return;
     const t = this.o.board.t.worker;
     if (base && 'pushed' in base) this.o.board.log(cardId, 'state', 'obeya', t.pushedBase(base.pushed));
     if (base && 'problem' in base) this.o.board.log(cardId, 'error', 'obeya', t.baseRefused(base.branch, base.problem));

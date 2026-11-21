@@ -808,6 +808,24 @@ describe('the base of the first pull request', () => {
     expect(git(origin, 'rev-parse', 'main')).not.toBe(git(checkout, 'rev-parse', 'main'));
   });
 
+  test("a clone of the empty remote starts from the checkout's first commit until origin has it", async () => {
+    const origin = join(dir, 'origin.git');
+    git(dir, 'init', '--quiet', '--bare', '--initial-branch=main', origin);
+    git(dir, 'clone', '--quiet', origin, 'checkout');
+    const checkout = join(dir, 'checkout');
+    identify(checkout);
+    const first = edit(checkout, 'README.md', 'hello\n');
+    const store = new Store(':memory:');
+    const board = testBoard({ store, path: checkout });
+    const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') });
+    await spaces.ensureClones(origin, 1);
+    const card = board.create({ title: 'A', x: 0, y: 0 }).id;
+    const { path: ws, ready } = spaces.lease(card, 'obeya/a');
+    await ready;
+    expect(git(ws, 'rev-parse', 'HEAD')).toBe(first);
+    expect(git(ws, 'branch', '--show-current')).toBe('obeya/a');
+  });
+
   test('says why where origin refuses it, and does nothing without an origin', async () => {
     const origin = join(dir, 'origin.git');
     git(dir, 'init', '--quiet', '--bare', '--initial-branch=main', origin);

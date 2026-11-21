@@ -552,9 +552,10 @@ with a `.gitignore` and "Look again". Confirming runs `git init` on git's `init.
 `main`, and commits every file not ignored (workers see only committed files) under git's name and
 e-mail (none: it says so and does nothing). A failed step undoes the ones before. A repository
 without a commit gets no choice, since it has git already: the same preview shows at once, with the
-repository's own exclusions (`.git/info/exclude`) heeded, and confirming makes only the commit, on
-the branch HEAD names (a clone of an empty remote names the remote's), with what the owner had
-staged; a failed commit puts the staged files back as they were. The commit stays local: the
+repository's own exclusions (`.git/info/exclude`) heeded and what the owner had staged listed as
+going in (ignored or not, as `git add` keeps it), and confirming makes only the commit, on the
+branch HEAD names (a clone of an empty remote names the remote's); a failed commit puts the staged
+files back as they were. The commit stays local: the
 remote gets the main branch when the first pull request needs it as its base (see How work lands). Building a card
 in a new repository sets git up the same way, without the preview (see Building in a new
 repository).

@@ -634,7 +634,7 @@ export class MachineSetup {
 
   /** Sets up git in a folder that has none, or makes the first commit of a repository without one; the owner saw the preview. */
   gitSetup(input: unknown): { branch: string } {
-    return setUpGit(folderOf(input));
+    return { branch: setUpGit(folderOf(input)).branch };
   }
 
   /** The first canvas: a repository's folder, saved at once; or a clone of one, in the background. */

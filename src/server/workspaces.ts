@@ -1451,7 +1451,7 @@ export class Workspaces implements CardWorkspaces {
       if ((await gitAsync(from, 'branch', '--show-current')) === branch) {
         // only a free clone leaves the branch; one a card took meanwhile is on that card's own
         if (!this.list().some((w) => w.path === from && !w.card_id)) return;
-        await gitAsync(from, 'checkout', '--quiet', '--detach', `origin/${base}`);
+        await gitAsync(from, 'checkout', '--quiet', '--detach', await this.mainIn(from, base));
       }
       await gitAsync(from, 'branch', '--quiet', '-D', branch);
     }).catch(() => {});
@@ -2013,7 +2013,7 @@ export class Workspaces implements CardWorkspaces {
       if (await existsAsync(ws)) {
         await gitAsync(ws, 'reset', '--quiet', '--hard');
         await gitAsync(ws, 'clean', '--quiet', '-fd');
-        await gitAsync(ws, 'checkout', '--quiet', '--detach', `origin/${await this.mainAsync(ws)}`);
+        await gitAsync(ws, 'checkout', '--quiet', '--detach', await this.mainIn(ws, await this.mainAsync(ws)));
         await deleteBranch(ws, branch, '-D');
       }
       this.release(cardId);
@@ -2258,7 +2258,7 @@ export class Workspaces implements CardWorkspaces {
           await gitAsync(path, 'checkout', '--quiet', branch);
           // a copy left in this clone that is behind the owner's branch goes forward to it; one with commits of its own stays
           if (adopted && !kept && (await gitAsync(path, 'rev-parse', 'HEAD')) !== adopted && (await isAncestor(path, 'HEAD', adopted, false))) await gitAsync(path, 'merge', '--quiet', '--ff-only', adopted);
-        } else await gitAsync(path, 'checkout', '--quiet', '-b', branch, adopted ?? (await this.startIn(path, start)) ?? `origin/${base}`);
+        } else await gitAsync(path, 'checkout', '--quiet', '-b', branch, adopted ?? (await this.startIn(path, start)) ?? (await this.mainIn(path, base)));
         // the work it had not committed when its workspace was taken is uncommitted again, unless the
         // card was stopped meanwhile: then the clone goes back clean and the one that kept the branch keeps it
         if (from && !this.releasing.has(cardId) && (await gitAsync(path, 'log', '-1', '--format=%B')).includes(SAVED)) await gitAsync(path, 'reset', '--quiet', 'HEAD~1');
@@ -2386,6 +2386,17 @@ export class Workspaces implements CardWorkspaces {
    * there from the checkout where a clone lacks it; none where there is none, or a clone on another
    * machine lacks it.
    */
+  /**
+   * Where a clone `ws` stands on the main branch `base`: `origin`'s, which it fetched. Where
+   * `origin` has none yet (a clone of an empty remote, whose first commit is only in the checkout
+   * until the first pull request's approval pushes it), the checkout's.
+   */
+  private async mainIn(ws: string, base: string): Promise<string> {
+    const there = `origin/${base}`;
+    if ((await gitTry(ws, 'rev-parse', '--verify', '--quiet', `refs/remotes/${there}^{commit}`)) != null) return there;
+    return (await this.startIn(ws, () => gitTry(this.o.repoPath, 'rev-parse', '--verify', '--quiet', `refs/heads/${base}^{commit}`))) ?? there;
+  }
+
   private async startIn(ws: string, start?: () => Promise<string | null>): Promise<string | null> {
     const at = await start?.().catch(() => null);
     if (!at) return null;

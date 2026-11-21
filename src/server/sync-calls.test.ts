@@ -66,8 +66,8 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     calls: { existsSync: 2, spawnSync: 3 },
   },
   'git-setup.ts': {
-    why: "server path, rare: setting up git or the first commit in a folder the owner chose (setup, a card's new repository) runs git init, add and commit with the server waiting, the staged index kept aside meanwhile; a candidate for spawnOutput",
-    calls: { copyFileSync: 2, existsSync: 4, mkdtempSync: 1, rmSync: 5, spawnSync: 1, statSync: 2, writeFileSync: 2 },
+    why: "server path, rare: setting up git or the first commit in a folder the owner chose (setup, a card's new repository) runs git init, add and commit with the server waiting, what was staged kept to put back; a candidate for spawnOutput",
+    calls: { existsSync: 4, mkdtempSync: 1, readFileSync: 1, rmSync: 4, spawnSync: 1, statSync: 2, writeFileSync: 3 },
   },
   'hosts.ts': {
     why: "cheap: the ssh socket directory checked per command, a session's files listed and stamped before it starts there, a host's copy replaced, Claude's token file",

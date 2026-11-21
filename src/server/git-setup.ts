@@ -6,7 +6,7 @@
 // `.gitignore` where the folder has none, and the first commit with every file not ignored, since
 // workers only see committed files and cards start from a commit.
 
-import { copyFileSync, existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { type GitSetupPreview, LARGE_FILE } from '../core/types';
@@ -105,7 +105,9 @@ export function previewGitSetup(path: string): GitSetupPreview {
       if (!r.ok) throw new Error(`git ls-files in ${path}: ${r.err}`);
       return r.out.split('\0').filter(Boolean);
     };
-    const files = list().map((f) => ({ path: f, bytes: size(join(path, f)) }));
+    // what the owner staged in a repository already goes in, ignored or not, as `git add` keeps it
+    const staged = needs.init ? [] : run(['-C', path, 'ls-files', '-z', '--cached']).out.split('\0').filter(Boolean);
+    const files = [...new Set([...list(), ...staged])].map((f) => ({ path: f, bytes: size(join(path, f)) }));
     // the default .gitignore goes in with the files
     if (!own) files.push({ path: '.gitignore', bytes: Buffer.byteLength(DEFAULT_GITIGNORE) });
     const entries = new Map<string, { path: string; dir: boolean; files: number; bytes: number }>();
@@ -125,7 +127,9 @@ export function previewGitSetup(path: string): GitSetupPreview {
       bytes: files.reduce((n, f) => n + f.bytes, 0),
       entries: [...entries.values()].sort((a, b) => Number(b.dir) - Number(a.dir) || a.path.localeCompare(b.path)),
       large: files.filter((f) => f.bytes >= LARGE_FILE).sort((a, b) => b.bytes - a.bytes),
-      ignored: list('--ignored', '--directory').sort(),
+      ignored: list('--ignored', '--directory')
+        .filter((f) => !staged.includes(f))
+        .sort(),
     };
   } finally {
     rmSync(scratch, { recursive: true, force: true });
@@ -144,9 +148,9 @@ function size(file: string): number {
  * Gives the folder its first commit, making it a repository first where it is none: on git's
  * `init.defaultBranch` (else `main`) in a new repository, on the branch HEAD names in one without
  * a commit; with the default `.gitignore` where it has none, every file not ignored, under git's
- * name and e-mail. Undone where the commit fails, so the folder is as it was.
+ * name and e-mail. Undone where the commit fails, so the folder is as it was; `undo` takes it back later.
  */
-export function setUpGit(path: string): { branch: string } {
+export function setUpGit(path: string): { branch: string; undo: () => void } {
   const needs = needsSetup(path);
   // a repository's own name and e-mail count too
   const at = needs.init ? [] : ['-C', path];
@@ -156,25 +160,27 @@ export function setUpGit(path: string): { branch: string } {
   const branch = needs.init ? initialBranch() : needs.branch;
   const gitignore = join(path, '.gitignore');
   const wrote = !existsSync(gitignore);
-  // what the owner staged in a repository without a commit, to put back where the commit fails
+  // what the owner staged in a repository without a commit, to put back where the commit fails or is undone
   const index = needs.init ? null : resolve(path, run(['-C', path, 'rev-parse', '--git-path', 'index']).out.trim());
-  const kept = index && existsSync(index) ? `${index}.obeya-${process.pid}` : null;
-  if (kept) copyFileSync(index!, kept);
+  const staged = index && existsSync(index) ? readFileSync(index) : null;
+  /** The folder as it was: without git, or without the commit, with what was staged. */
+  const undo = () => {
+    if (needs.init) rmSync(join(path, '.git'), { recursive: true, force: true });
+    else {
+      run(['-C', path, 'update-ref', '-d', `refs/heads/${branch}`]);
+      if (staged) writeFileSync(index!, staged);
+      else rmSync(index!, { force: true });
+    }
+    if (wrote) rmSync(gitignore, { force: true });
+  };
   if (wrote) writeFileSync(gitignore, DEFAULT_GITIGNORE);
   const steps = [...(needs.init ? [['init', '--quiet', `--initial-branch=${branch}`]] : []), ['add', '--all'], ['commit', '--quiet', '--allow-empty', '-m', 'First commit']];
-  try {
-    for (const step of steps) {
-      const r = run(['-C', path, ...step]);
-      if (r.ok) continue;
-      if (needs.init) rmSync(join(path, '.git'), { recursive: true, force: true });
-      else if (kept) copyFileSync(kept, index!);
-      else if (index) rmSync(index, { force: true });
-      if (wrote) rmSync(gitignore, { force: true });
-      throw new BadRequest('gitSetup', `git ${step[0]} in ${path}: ${r.err}`);
-    }
-  } finally {
-    if (kept) rmSync(kept, { force: true });
+  for (const step of steps) {
+    const r = run(['-C', path, ...step]);
+    if (r.ok) continue;
+    undo();
+    throw new BadRequest('gitSetup', `git ${step[0]} in ${path}: ${r.err}`);
   }
   console.log(`Obeya: ${needs.init ? 'set up git' : 'made the first commit'} in ${path} on ${branch}`);
-  return { branch };
+  return { branch, undo };
 }

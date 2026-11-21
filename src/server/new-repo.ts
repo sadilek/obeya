@@ -50,9 +50,9 @@ export function makeRepo(path: string, t: Words): MadeRepo {
     const top = gitOrNull(path, 'rev-parse', '--show-toplevel');
     // git names the folder by its real path (on macOS the temp directory's /private/var, say)
     if (top && realpathSync(top) === realpathSync(path)) {
-      // one without a commit yet gets its first, since cards start from a commit
-      if (withoutCommit(path)) setUpGit(path);
-      return { path, made: false, undo: () => {} };
+      // one without a commit yet gets its first, since cards start from a commit; taken back with the rest
+      const first = withoutCommit(path) ? setUpGit(path) : null;
+      return { path, made: false, undo: () => first?.undo() };
     }
     if (top) throw new BadRequest('newRepoPath', t.inside(path, top));
   } else notInside(path, t);
