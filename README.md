@@ -81,8 +81,11 @@ knows. The top bar shows how much of the session and weekly limits you have used
 your agents run on: Claude, ChatGPT (which Codex runs on) or Google AI (which Gemini runs on). If
 you switch it on in Configuration, the top bar also shows what the agents cost, per card and per
 canvas. In "Agents and models" you choose which harness (Claude Code, Codex or Gemini) and model
-each group of agents runs on. The menu beside a card's start button sets them for that card
-alone. When Claude Code or Codex has an update, Obeya offers it at a click; Gemini (the Antigravity
+each group of agents runs on, and in its "At the limit" column another harness for the group to
+switch to while its own is at its usage limit; without one, its agents wait until the limit resets.
+If the limit stops a worker in the middle of its work, its card offers "Continue with Codex" (or
+another harness). The chip button among a card's buttons sets harness and model for that card alone.
+When Claude Code or Codex has an update, Obeya offers it at a click; Gemini (the Antigravity
 CLI) keeps itself up to date.
 
 ![An Obeya canvas: a project with its workstreams, one at work and one in the queue. Beside it are a demo and a question waiting for you, a task at work, an approved and a live one, and an idea](site/img/canvas.png)
