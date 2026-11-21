@@ -423,10 +423,14 @@ async function withRealPaths(grants: Grants): Promise<Grants> {
   return { read: await both(grants.read), write: await both(grants.write) };
 }
 
-/** `withRealPaths` for paths on a host, resolved there (a path that does not exist there stays as given). */
+/**
+ * `withRealPaths` for paths on a host, resolved there (a path that does not exist there stays as
+ * given): with `realpath` or GNU's `readlink -f`, else (an older macOS) by the shell, a directory
+ * whole and a file by its directory.
+ */
 async function realPathsThere(host: SshHost, grants: Grants): Promise<Grants> {
   const all = [...new Set([...grants.read, ...grants.write])];
-  const r = await host.run(`for p in ${all.map(sh).join(' ')}; do r=$(realpath "$p" 2>/dev/null || readlink -f "$p" 2>/dev/null) || r=; printf '%s\\t%s\\n' "$p" "$r"; done`);
+  const r = await host.run(`for p in ${all.map(sh).join(' ')}; do r=$(realpath "$p" 2>/dev/null || readlink -f "$p" 2>/dev/null || { [ -d "$p" ] && cd "$p" 2>/dev/null && pwd -P; } || { [ -e "$p" ] && cd "$(dirname "$p")" 2>/dev/null && printf '%s/%s' "$(pwd -P)" "$(basename "$p")"; }) || r=; printf '%s\\t%s\\n' "$p" "$r"; done`);
   if (r.code === LOST) throw new HostError(`${host.name} does not answer`);
   const real = new Map(r.stdout.split('\n').flatMap((l) => {
     const [p, to] = l.split('\t');
@@ -947,7 +951,9 @@ class GeminiSession implements AgentSession {
     const hooks = (this.hooks = new Hooks((h) => this.hook(h)));
     this.tools = spec.tools.length ? toolServer.open({ tools: spec.tools, after: () => spec.contextUpdate?.() }) : undefined;
     const hookPort = portThere();
-    const toolPort = portThere();
+    let toolPort = portThere();
+    // two forwards of one session on one port would end it as a lost connection
+    while (toolPort === hookPort) toolPort = portThere();
     const tools = this.tools ? new URL(this.tools.url) : undefined;
     const start = host.session({
       cwd,

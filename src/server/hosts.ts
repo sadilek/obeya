@@ -550,7 +550,10 @@ export class SshHost {
         // only the narration's port: whoever is on that machine reaches the forward too
         const here = s.env.OBEYA_URL ? Number(new URL(s.env.OBEYA_URL).port) : 0;
         // a port of its own per session, so that sessions ending do not take another's forward along
-        const there = here ? 30_000 + Math.floor(Math.random() * 30_000) : 0;
+        // and none of the session's own forwards takes (a clash would end the session as a lost connection)
+        const taken = new Set((o.forwards ?? []).map((f) => Number(f.split(':')[1])));
+        let there = 0;
+        while (here && (!there || taken.has(there))) there = 30_000 + Math.floor(Math.random() * 30_000);
         // a session cut off by a dropped connection may still run there: the one that resumes it ends it first;
         // not itself, whose pid a host that restarted since (a container, say) may give out again
         const pid = dir && o.cwd ? sh(`${dir}/sessions/${o.cwd.replace(/[^\w.-]+/g, '-')}.pid`) : undefined;
