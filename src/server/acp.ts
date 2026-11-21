@@ -28,6 +28,9 @@ export class AcpError extends Error {
   }
 }
 
+/** A process that runs an ACP agent: one started here, or one over `ssh` (`SshHost.session`). */
+export type AcpProcess = Pick<ChildProcess, 'stdin' | 'stdout' | 'kill'> & { stderr?: ChildProcess['stderr'] | null; once(event: string, listener: (...a: any[]) => void): unknown };
+
 /** The message a request to an agent whose process has ended fails with. */
 const ENDED = 'the ACP agent ended';
 
@@ -37,11 +40,13 @@ const ENDED = 'the ACP agent ended';
  * for), answered by `onRequest`.
  */
 export class AcpConnection {
-  private proc: ChildProcess;
+  private proc: AcpProcess;
   private next = 0;
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private buffer = '';
   private dead = false;
+  /** Started here, rather than given (one over `ssh`, say). */
+  private here: boolean;
   stderr = '';
   onNotification: (method: string, params: Record<string, unknown>) => void = () => {};
   onRequest: (method: string, params: Record<string, unknown>) => Promise<unknown> = async (method) => {
@@ -50,14 +55,21 @@ export class AcpConnection {
   /** Settles with the exit code once the process has ended. */
   readonly exited: Promise<number | null>;
 
-  constructor(o: { bin: string; args: string[]; cwd: string; env: Env }) {
-    const argv = startArgv(o.bin, o.args);
-    const p = spawn(argv[0]!, argv.slice(1), { cwd: o.cwd, env: o.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: OWN_GROUP, ...spawnOptions(argv) });
-    trackHere(p);
-    this.proc = p;
+  /** Starts the agent here, or speaks to one a process given runs (on another machine, say). */
+  constructor(o: { bin: string; args: string[]; cwd: string; env: Env } | { process: AcpProcess }) {
+    this.here = !('process' in o);
+    if ('process' in o) this.proc = o.process;
+    else {
+      const argv = startArgv(o.bin, o.args);
+      const p = spawn(argv[0]!, argv.slice(1), { cwd: o.cwd, env: o.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: OWN_GROUP, ...spawnOptions(argv) });
+      trackHere(p);
+      this.proc = p;
+    }
+    const p = this.proc;
     this.exited = new Promise((resolve) => {
       p.once('error', (e: Error) => ((this.stderr += e.message), resolve(null)));
-      p.once('close', (code: number | null) => resolve(code));
+      // a process here has closed its pipes too once it is done; one given may have none of its own
+      p.once(this.here ? 'close' : 'exit', (code: number | null) => resolve(code));
     });
     void this.exited.then(() => {
       this.dead = true;
@@ -65,7 +77,7 @@ export class AcpConnection {
       this.pending.clear();
     });
     p.stdout!.setEncoding('utf8').on('data', (d: string) => this.take(d));
-    p.stderr!.setEncoding('utf8').on('data', (d: string) => (this.stderr = stderrTail(this.stderr, d)));
+    p.stderr?.setEncoding('utf8').on('data', (d: string) => (this.stderr = stderrTail(this.stderr, d)));
     // a closed pipe as the process ends is no error of Obeya's
     p.stdin!.on('error', () => {});
   }
@@ -90,7 +102,8 @@ export class AcpConnection {
 
   /** Ends the process, and what it runs. */
   close() {
-    endTree(this.proc);
+    if (this.here) endTree(this.proc as ChildProcess);
+    else this.proc.kill();
   }
 
   private write(m: unknown) {

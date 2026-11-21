@@ -9,9 +9,10 @@
 // in the background so the menus never wait for it, and an alias stands for the newest of its family
 // among them, which an agent then runs on even where Claude Code's alias still names an older one.
 // Whether a newer Claude Code or Codex is out, npm says; Obeya updates it at the owner's click. The
-// same for Claude Code and Codex on each host, asked over the connection. Gemini runs on this
-// machine only, and updates itself: agy looks for a newer version each time it runs as a command
-// (Obeya's own looks at its models and quota are such runs), at most every 15 minutes.
+// same for Claude Code and Codex on each host, asked over the connection, and Gemini's version and
+// login there. Gemini updates itself: agy looks for a newer version each time it runs as a command
+// (Obeya's own looks at its version, models and quota are such runs, here and on the hosts), at most
+// every 15 minutes.
 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -19,7 +20,7 @@ import { AGENT_MODELS, type AgentModel, HARNESSES, type Harness, type HarnessHos
 import { Kept } from '../core/kept';
 import { Listeners } from '../core/watched';
 import { codexExecutable, codexLogin, codexModels, codexVersion } from './codex';
-import { geminiExecutable, geminiLogin, geminiModels, geminiVersion } from './gemini';
+import { geminiExecutable, geminiLogin, geminiModels, geminiVersion, geminiOn } from './gemini';
 import type { SshHost } from './hosts';
 import { idleClaude } from './claude';
 import { messageOf } from '../core/text';
@@ -34,6 +35,8 @@ export interface HarnessFound {
 
 /** How long Codex's and Gemini's lists of models are kept before they are asked again, and a harness looked at again. */
 const MODELS_FOR_MS = 10 * 60_000;
+/** How long a host's look that found its harness not logged in there counts, when a view asks. */
+const LOGIN_LOOK_MS = 20_000;
 /** How long npm's newest version of a harness is kept before it is asked again. */
 const NEWEST_FOR_MS = 60 * 60_000;
 
@@ -46,22 +49,22 @@ export interface ClaudeListed {
 /** The channel Claude Code updates from (`autoUpdatesChannel` in its settings). */
 export type ClaudeChannel = 'latest' | 'stable';
 
-/** The harnesses Obeya runs on hosts: Gemini runs on this machine only. */
-export type HostHarnessId = Exclude<Harness, 'gemini'>;
-
 /** A harness on another machine (a host, `hostClaude`, `hostCodex`), as Obeya asks it over the connection. */
 export interface HostHarness {
   /** The host's name. */
   name: string;
-  harness: HostHarnessId;
+  harness: Harness;
   /** Whether the host answered the last time it was asked; one that did not is looked at once it does. */
   reachable(): boolean;
-  /** Its version, and for Claude Code the channel it updates from; null: not installed there. Fails where the host does not answer. */
-  look(): Promise<{ version: string; channel?: ClaudeChannel } | null>;
-  /** The models Claude Code lists there; none for Codex, whose models the menus take from this machine's. */
+  /**
+   * Its version, for Claude Code the channel it updates from, for Gemini whether it is logged in
+   * there; null: not installed there. Fails where the host does not answer.
+   */
+  look(): Promise<{ version: string; channel?: ClaudeChannel; loggedIn?: boolean } | null>;
+  /** The models Claude Code lists there; none for Codex and Gemini, whose models the menus take from this machine's. */
   models?(): Promise<ClaudeListed[]>;
-  /** Brings it up to date there. */
-  update(): Promise<void>;
+  /** Brings it up to date there; none for Gemini, which updates itself. */
+  update?(): Promise<void>;
 }
 
 const NAMES: Record<Harness, string> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini' };
@@ -204,7 +207,7 @@ export class Harnesses extends Listeners {
    * Each harness on the hosts, by harness and host name: when it was last looked at there, whether
    * it is installed there.
    */
-  private there = new Map<string, { host: HostHarness; install: Install; at: number; looking?: boolean; installed?: boolean }>();
+  private there = new Map<string, { host: HostHarness; install: Install; at: number; looking?: boolean; installed?: boolean; loggedIn?: boolean }>();
 
   constructor(
     private o: {
@@ -312,6 +315,7 @@ export class Harnesses extends Listeners {
           const at = this.there.get(key);
           if (at?.host !== host) return;
           at.installed = !!found;
+          at.loggedIn = found?.loggedIn;
           at.install.found(found?.version, found?.channel);
         };
         const newest = host.harness === 'claude' ? this.o.claudeNewest : this.o.codexNewest;
@@ -320,7 +324,7 @@ export class Harnesses extends Listeners {
           host: host.name,
           ...(host.models ? { models: () => host.models!() } : {}),
           ...(newest ? { newest } : {}),
-          update: () => host.update(),
+          ...(host.update ? { update: () => host.update!() } : {}),
           look,
           ready: () => !!this.there.get(key)?.installed,
           changed: () => this.emit(),
@@ -328,15 +332,17 @@ export class Harnesses extends Listeners {
         on = { host, install, at: 0 };
         this.there.set(key, on);
       }
-      if (on.looking || !host.reachable() || Date.now() - on.at <= MODELS_FOR_MS) continue;
+      // one not logged in there is looked at again sooner, so a login the owner just gave shows soon
+      if (on.looking || !host.reachable() || Date.now() - on.at <= (on.loggedIn === false ? LOGIN_LOOK_MS : MODELS_FOR_MS)) continue;
       const it = on;
       it.looking = true;
       it.at = Date.now();
       void (async () => {
         try {
-          const version = it.install.version;
+          const { version } = it.install;
+          const { loggedIn } = it;
           await it.install.look();
-          if (it.install.version !== version) this.emit();
+          if (it.install.version !== version || it.loggedIn !== loggedIn) this.emit();
         } catch {
           // asked again once it answers
           it.at = 0;
@@ -378,7 +384,7 @@ export class Harnesses extends Listeners {
     };
     const [codexListed, geminiListed] = await Promise.all((['codex', 'gemini'] as const).map((h) => (this.ready(h) ? this.listed(h) : [])));
     const codex: HarnessView = { id: 'codex', ready: this.ready('codex'), ...this.version('codex'), models: newestOfFamilies(codexListed!), ...this.updates('codex') };
-    const gemini: HarnessView = { id: 'gemini', ready: this.ready('gemini'), ...this.version('gemini'), models: newestOfFamilies(geminiListed!) };
+    const gemini: HarnessView = { id: 'gemini', ready: this.ready('gemini'), ...this.version('gemini'), models: newestOfFamilies(geminiListed!), ...this.updates('gemini') };
     return [claude, codex, gemini];
   }
 
@@ -387,7 +393,7 @@ export class Harnesses extends Listeners {
     return v ? { version: v } : {};
   }
 
-  /** A harness's update here, and its version and update on each host that has it. */
+  /** A harness's update here, and its version and update on each host that has it (and whether it is logged in there, where the look says). */
   private updates(h: Harness): Pick<HarnessView, 'update' | 'hosts'> {
     const update = this.here[h].offer();
     const hosts: HarnessHost[] = [];
@@ -395,7 +401,7 @@ export class Harnesses extends Listeners {
       const version = on.install.version;
       if (on.host.harness !== h || !version) continue;
       const offer = on.install.offer();
-      hosts.push({ name: on.host.name, version, ...(offer ? { update: offer } : {}) });
+      hosts.push({ name: on.host.name, version, ...(offer ? { update: offer } : {}), ...(on.loggedIn === false ? { loggedIn: false as const } : {}) });
     }
     return { ...(update ? { update } : {}), ...(hosts.length ? { hosts } : {}) };
   }
@@ -513,16 +519,17 @@ async function npmNewest(pkg: string, tag: string): Promise<string | undefined> 
   return typeof version === 'string' ? version : undefined;
 }
 
-const onHosts = new WeakMap<SshHost, Record<HostHarnessId, HostHarness>>();
+const onHosts = new WeakMap<SshHost, Record<Harness, HostHarness>>();
 
 /** A host's harnesses, asked over its connection: the same ones for each host, which `Harnesses` knows them by. */
-function onHost(host: SshHost): Record<HostHarnessId, HostHarness> {
+function onHost(host: SshHost): Record<Harness, HostHarness> {
   let them = onHosts.get(host);
   if (!them) {
     const reachable = () => !host.unreachable;
     them = {
       claude: { name: host.name, harness: 'claude', reachable, look: () => host.claude(), models: () => claudeModels('/', host), update: () => host.updateClaude() },
       codex: { name: host.name, harness: 'codex', reachable, look: () => host.codex(), update: () => host.updateCodex() },
+      gemini: { name: host.name, harness: 'gemini', reachable, look: () => geminiOn(host) },
     };
     onHosts.set(host, them);
   }
@@ -534,3 +541,6 @@ export const hostClaude = (host: SshHost): HostHarness => onHost(host).claude;
 
 /** Codex on a host, asked over its connection. */
 export const hostCodex = (host: SshHost): HostHarness => onHost(host).codex;
+
+/** Gemini on a host, asked over its connection. */
+export const hostGemini = (host: SshHost): HostHarness => onHost(host).gemini;

@@ -69,7 +69,7 @@ import { recordingRuntime, replayRuntime } from './replay';
 import { findClaude, MachineSetup, updateClaude, updateCodex, welcome } from './machine';
 import { codexRuntime, codexUsage } from './codex';
 import { HarnessLimits } from './limits';
-import { claudeModels, claudeNewest, codexNewest, Harnesses, hostClaude, hostCodex } from './harnesses';
+import { claudeModels, claudeNewest, codexNewest, Harnesses, hostGemini, hostClaude, hostCodex } from './harnesses';
 import { addToPath, extendPath, terminalPath } from './path';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, TAKEOVER, UPDATE, watchOwnCode } from './self-update';
 import { AppUpdates } from './app-update';
@@ -334,7 +334,7 @@ const harnesses = new Harnesses({
   // the hosts the configuration names now, once a canvas has them registered
   hosts: () => {
     const names = new Set(config.current().flatMap((c) => c.repos.flatMap((r) => (r.hosts ?? []).map((h) => h.name))));
-    return [...names].map(hostNamed).filter((h) => !!h).flatMap((h) => [hostClaude(h), hostCodex(h)]);
+    return [...names].map(hostNamed).filter((h) => !!h).flatMap((h) => [hostClaude(h), hostCodex(h), hostGemini(h)]);
   },
 });
 // the agents that start right away (a canvas's cards resuming) start on what is there; a slow look is not waited for long

@@ -290,6 +290,10 @@ const de = {
     running: (name: string, host?: string) => (host ? `${name} wird auf ${host} aktualisiert …` : `${name} wird aktualisiert …`),
     failed: (why: string, host?: string) => (host ? `Aktualisieren auf ${host} ging nicht: ${why}` : `Aktualisieren ging nicht: ${why}`),
     again: 'Nochmal versuchen',
+    /** A host whose harness (Gemini) is not logged in there, with the button that logs it in from a terminal here. */
+    notLoggedIn: (name: string, host: string) => `${name} ist auf ${host} nicht angemeldet`,
+    logIn: 'Anmelden',
+    logInHint: (name: string, host: string) => `Öffnet auf diesem Rechner ein Terminal, das sich über SSH bei ${name} auf ${host} anmeldet: dort mit Google anmelden und den Code einfügen.`,
   },
   /** The state of a task the owner stopped, in place of „Geplant“. */
   stoppedState: 'Gestoppt',
@@ -1507,7 +1511,7 @@ const de = {
       title: 'Agenten und Modelle',
       /** By what a group the owner chose nothing for runs on here (`AgentsView.preset`). */
       hint: (preset: Harness) =>
-        `Worauf jede Gruppe von Agenten läuft (Claude Code, Codex oder Gemini, mit deinem Abo dort), welches Modell sie nimmt und wie viel es nachdenkt (Effort). Voreingestellt ist überall ${preset === 'codex' ? 'Codex mit Sol, da auf diesem Rechner Claude Code nicht eingerichtet ist' : preset === 'gemini' ? 'Gemini mit Neon, da auf diesem Rechner nur Gemini eingerichtet ist' : 'Claude Code mit Opus'}, mit hohem Effort für Agenten an Aufgaben und Explorations-Agenten, sonst mittlerem. Ein Codex- oder Gemini-Modell steht für seine Familie: Ein Agent läuft auf ihrer neuesten Version auf dem Rechner, auf dem er arbeitet. Gemini gibt es bisher nur auf diesem Rechner: Agenten auf anderen Rechnern laufen dort auf dem, worauf ihre Gruppe am Limit ausweicht, sonst auf Claude Code. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann. „Am Limit“: Worauf eine Gruppe ausweicht, solange die Laufzeit, auf der sie läuft, an ihrem Nutzungslimit oder nicht erreichbar ist; mit „Warten“ warten ihre Agenten bis dahin.`,
+        `Worauf jede Gruppe von Agenten läuft (Claude Code, Codex oder Gemini, mit deinem Abo dort), welches Modell sie nimmt und wie viel es nachdenkt (Effort). Voreingestellt ist überall ${preset === 'codex' ? 'Codex mit Sol, da auf diesem Rechner Claude Code nicht eingerichtet ist' : preset === 'gemini' ? 'Gemini mit Neon, da auf diesem Rechner nur Gemini eingerichtet ist' : 'Claude Code mit Opus'}, mit hohem Effort für Agenten an Aufgaben und Explorations-Agenten, sonst mittlerem. Ein Codex- oder Gemini-Modell steht für seine Familie: Ein Agent läuft auf ihrer neuesten Version auf dem Rechner, auf dem er arbeitet. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann. „Am Limit“: Worauf eine Gruppe ausweicht, solange die Laufzeit, auf der sie läuft, an ihrem Nutzungslimit oder nicht erreichbar ist; mit „Warten“ warten ihre Agenten bis dahin.`,
       harness: 'Läuft auf',
       /** The column of each group's fallback while its harness is at its usage limit. */
       fallback: 'Am Limit',
@@ -2720,6 +2724,9 @@ const en: Strings = {
     running: (name: string, host?: string) => (host ? `Updating ${name} on ${host}…` : `Updating ${name}…`),
     failed: (why: string, host?: string) => (host ? `Update on ${host} failed: ${why}` : `Update failed: ${why}`),
     again: 'Try again',
+    notLoggedIn: (name: string, host: string) => `${name} is not logged in on ${host}`,
+    logIn: 'Log in',
+    logInHint: (name: string, host: string) => `Opens a terminal on this machine that logs in to ${name} on ${host} over SSH: sign in with Google there and paste the code.`,
   },
   stoppedState: 'Stopped',
   startAgain: 'Start again',
@@ -3828,7 +3835,7 @@ const en: Strings = {
     agents: {
       title: 'Agents and models',
       hint: (preset: Harness) =>
-        `What each group of agents runs on (Claude Code, Codex or Gemini, with your plan there), which model it uses and how much it thinks (effort). Preset is ${preset === 'codex' ? 'Codex with Sol throughout, since Claude Code is not set up on this machine' : preset === 'gemini' ? 'Gemini with Neon throughout, since only Gemini is set up on this machine' : 'Claude Code with Opus throughout'}, with high effort for agents on tasks and exploration agents, medium for the rest. A Codex or Gemini model stands for its family: an agent runs on its newest version on the machine it works on. Gemini runs on this machine only so far: agents on other machines run there on their group’s fallback, else on Claude Code. Applies at once to every agent that starts afterwards; one at work keeps what it started with. “At the limit”: what a group switches to while the harness it runs on is at its usage limit or cannot be reached; with “Wait” its agents wait until then.`,
+        `What each group of agents runs on (Claude Code, Codex or Gemini, with your plan there), which model it uses and how much it thinks (effort). Preset is ${preset === 'codex' ? 'Codex with Sol throughout, since Claude Code is not set up on this machine' : preset === 'gemini' ? 'Gemini with Neon throughout, since only Gemini is set up on this machine' : 'Claude Code with Opus throughout'}, with high effort for agents on tasks and exploration agents, medium for the rest. A Codex or Gemini model stands for its family: an agent runs on its newest version on the machine it works on. Applies at once to every agent that starts afterwards; one at work keeps what it started with. “At the limit”: what a group switches to while the harness it runs on is at its usage limit or cannot be reached; with “Wait” its agents wait until then.`,
       harness: 'Runs on',
       fallback: 'At the limit',
       wait: 'Wait',

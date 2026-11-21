@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import type { CardAction, Item } from '../core/types';
 import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, byFamily, type HarnessUpdate as HarnessUpdateState, type CardAgent, type Harness, HARNESSES, modelChoices, type ModelChoice, modelName } from '../core/agents';
 import { useMenuClose, usePlaced } from './menu';
-import { api } from './api';
+import { api, failText } from './api';
 import { usePoll } from './act';
 import { t } from './strings';
 
@@ -334,6 +334,7 @@ export function ModelPicker({ label, name, className, disabled, menu }: { label:
 export function HarnessUpdate({ harness, view, onView }: { harness: Harness; view: AgentsView; onView: (view: AgentsView) => void }) {
   const found = view.harnesses.find((h) => h.id === harness);
   const hosts = (found?.hosts ?? []).filter((h) => h.update);
+  const logins = (found?.hosts ?? []).filter((h) => h.loggedIn === false);
   const running = !!found?.update?.running || hosts.some((h) => h.update?.running);
   const [asked, setAsked] = useState<string | null>(null);
   usePoll(running, () => agentsView().then(onView, () => {}), 1500);
@@ -359,12 +360,53 @@ export function HarnessUpdate({ harness, view, onView }: { harness: Harness; vie
       </div>
     );
   };
-  if (!found?.update && !hosts.length) return null;
+  if (!found?.update && !hosts.length && !logins.length) return null;
   return (
     <>
       {found?.update && line(found.update, found.version)}
       {hosts.map((h) => line(h.update!, h.version, h.name))}
+      {logins.map((h) => (
+        <HostLogin key={`login ${h.name}`} harness={harness} host={h.name} onView={onView} />
+      ))}
     </>
+  );
+}
+
+/**
+ * A host whose Gemini is not logged in there, with a button that logs it in: a terminal here runs
+ * agy's login there over SSH, where the owner signs in with Google and pastes the code. The view is
+ * then asked again until the host's next look finds it logged in, and the line goes.
+ */
+function HostLogin({ harness, host, onView }: { harness: Harness; host: string; onView: (view: AgentsView) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
+  const [opened, setOpened] = useState(false);
+  usePoll(opened, () => agentsView().then(onView, () => {}), 5000);
+  const u = t.harnessUpdate;
+  const name = t.harnesses[harness];
+  const login = async () => {
+    setBusy(true);
+    setStatus('');
+    try {
+      const r = await api.setupLogin('needed', 'geminiLogin', false, host);
+      setOpened(true);
+      setStatus(r.opened ? t.setup.terminalOpen : `${t.setup.noTerminal} ${r.command}`);
+    } catch (e) {
+      setStatus(failText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="harness-update">
+      <span className="harness-update-text">
+        {u.notLoggedIn(name, host)}
+        {status && <span className="harness-update-status" role="status">{status}</span>}
+      </span>
+      <button className="btn" disabled={busy} title={u.logInHint(name, host)} onClick={() => void login()}>
+        {u.logIn}
+      </button>
+    </div>
   );
 }
 

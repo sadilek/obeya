@@ -324,7 +324,7 @@ function Line({
       {stamp(turn.e.at)} · <Linked text={eventText(turn.e)} />
       {turn.e.kind === 'error' && !explained && claudeLoginFailed(turn.e.text) && <Reauthenticate token={turn.e.token} />}
       {turn.e.kind === 'error' && !explained && codexLoginLost(turn.e.text) && <CodexLogin host={codexLoginLost(turn.e.text)!.host} />}
-      {turn.e.kind === 'error' && !explained && geminiLoginLost(turn.e.text) && <Reauthenticate gemini />}
+      {turn.e.kind === 'error' && !explained && geminiLoginLost(turn.e.text) && <Reauthenticate gemini={geminiLoginLost(turn.e.text)!} />}
     </div>
   ) : (
     <Message turn={turn} {...rest} />
@@ -872,7 +872,7 @@ export function LastFailure({ item }: { item: Item }) {
         {eventText(last)}
         {claudeLoginFailed(last.text) && <Reauthenticate start token={last.token} />}
         {codexLoginLost(last.text) && <CodexLogin start host={codexLoginLost(last.text)!.host} />}
-        {geminiLoginLost(last.text) && <Reauthenticate start gemini />}
+        {geminiLoginLost(last.text) && <Reauthenticate start gemini={geminiLoginLost(last.text)!} />}
       </div>
     </div>
   );

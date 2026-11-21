@@ -205,7 +205,7 @@ export const api = {
   setup: () => call<MachineView>('GET', '/api/setup'),
   setupInstall: (section: MachineSectionId, id: MachineItem['id']) => call<MachineView>('POST', '/api/setup/install', { section, id }),
   /** Opens a terminal that logs in (`token`: Claude's `claude setup-token`); `opened: false` where Obeya found none. */
-  setupLogin: (section: MachineSectionId, id: MachineItem['id'], token?: boolean) => call<{ opened: boolean; command: string }>('POST', '/api/setup/login', { section, id, ...(token ? { token } : {}) }),
+  setupLogin: (section: MachineSectionId, id: MachineItem['id'], token?: boolean, host?: string | null) => call<{ opened: boolean; command: string }>('POST', '/api/setup/login', { section, id, ...(token ? { token } : {}), ...(host ? { host } : {}) }),
   /** Starts a login to Codex here or on a host (`host`): the sign-in page for the browser, and the id to follow it by. */
   codexLogin: (host: string | null) => call<{ id: string; url: string }>('POST', '/api/setup/codex-login', { host }),
   codexLoginState: (id: string) => call<{ state: 'waiting' | 'done' | 'failed'; error?: string }>('GET', `/api/setup/codex-login?id=${encodeURIComponent(id)}`),

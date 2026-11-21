@@ -98,7 +98,7 @@ const de = {
     /** Codex lost its login on `host` (null: this machine); the card's error line offers to log in again. */
     codexNotLoggedIn: (host: string | null) => `Codex ist ${host ? `auf ${host}` : 'auf diesem Rechner'} nicht mehr angemeldet: „Bei Codex anmelden“ in der Meldung auf der Karte.`,
     /** Gemini lost its login on this machine; the card's error line offers to log in again in a terminal. */
-    geminiNotLoggedIn: 'Gemini ist auf diesem Rechner nicht mehr angemeldet: „Erneut anmelden“ in der Meldung auf der Karte.',
+    geminiNotLoggedIn: (host: string | null) => `Gemini ist ${host ? `auf ${host}` : 'auf diesem Rechner'} nicht mehr angemeldet: „Erneut anmelden“ in der Meldung auf der Karte.`,
     session: (message: string) => `Die Sitzung des Agenten brach mit einem Fehler ab: ${message}`,
     /** The Claude API could not be reached or did not serve the request (`claudeUnreachable`): Claude Code's own words in brackets. */
     unreachable: (message: string) => `Claude ist gerade nicht erreichbar (${message}). Meist ist das eine Störung bei Anthropic, die status.claude.com zeigt, kein Fehler deiner Einrichtung.`,
@@ -748,7 +748,7 @@ const en: Messages = {
   failure: {
     notLoggedIn: 'Claude is not logged in on this machine: run “claude” in a terminal and then “/login”.',
     codexNotLoggedIn: (host: string | null) => `Codex is no longer logged in ${host ? `on ${host}` : 'on this machine'}: “Log in to Codex” in the card’s message.`,
-    geminiNotLoggedIn: 'Gemini is no longer logged in on this machine: “Reauthenticate” in the card’s message.',
+    geminiNotLoggedIn: (host: string | null) => `Gemini is no longer logged in ${host ? `on ${host}` : 'on this machine'}: “Reauthenticate” in the card’s message.`,
     session: (message: string) => `The agent's session failed with an error: ${message}`,
     unreachable: (message: string) => `Claude cannot be reached right now (${message}). Usually that is an outage at Anthropic, which status.claude.com shows, not a fault of your setup.`,
   },

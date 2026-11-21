@@ -219,6 +219,12 @@ export function codexManager(real: string): string[] | null {
 }
 
 /** A command as a shell shows it, its program quoted when its path has spaces. */
+/**
+ * Gemini's login on a host, as a terminal here runs it there: the installer's agy where it is, else
+ * the one on the PATH. Without `$`, which the terminal's shell here would expand.
+ */
+const GEMINI_LOGIN_THERE = 'test -x ~/.local/bin/agy && exec ~/.local/bin/agy acp --login || exec agy acp --login';
+
 const shown = (argv: string[]) => argv.map((a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)).join(' ');
 
 /** Starts a program that goes on by itself, Obeya waiting for nothing of it; false where it does not start. */
@@ -545,10 +551,16 @@ export class MachineSetup {
   /**
    * Opens a terminal that logs in; `opened: false` where Obeya finds none, and the command is to be
    * run by hand. `token`: Claude's login for the sessions that run on a token, `claude setup-token`,
-   * whose token the owner then gives Obeya (`saveToken`).
+   * whose token the owner then gives Obeya (`saveToken`). `host`: Gemini's login on that host, in a
+   * terminal here that reaches it over SSH (`agy acp --login` there, its code pasted in the terminal).
    */
   async login(input: unknown): Promise<{ opened: boolean; command: string }> {
-    const { section, id, token } = (input ?? {}) as { section?: MachineSectionId; id?: MachineItem['id']; token?: boolean };
+    const { section, id, token, host } = (input ?? {}) as { section?: MachineSectionId; id?: MachineItem['id']; token?: boolean; host?: unknown };
+    if (host !== undefined && host !== null) {
+      if (id !== 'geminiLogin' || token) throw new BadRequest('invalid', `${id} is not logged in on a host from here`);
+      const argv = this.host(host).terminal(GEMINI_LOGIN_THERE);
+      return { opened: await openTerminal(argv, this.platform, this.env), command: shown(argv) };
+    }
     const { item, found } = await this.item(section!, id!);
     const login = found.logins[item.id];
     if (!login || (item.act !== 'login' && item.id !== 'claudeLogin' && item.id !== 'geminiLogin')) throw new BadRequest('invalid', `${id} needs no login`);
@@ -563,16 +575,18 @@ export class MachineSetup {
    */
   async codexLogin(input: unknown): Promise<{ id: string; url: string }> {
     const { host } = (input ?? {}) as { host?: unknown };
-    let there: SshHost | null = null;
-    if (host !== undefined && host !== null) {
-      if (typeof host !== 'string' || !/^[\w.-]+$/.test(host)) throw new BadRequest('invalid', 'not a host');
-      try {
-        there = remote(onHost(host, '/'))!.host;
-      } catch {
-        throw new BadRequest('invalid', `no host ${host}`);
-      }
-    }
+    const there = host !== undefined && host !== null ? this.host(host) : null;
     return (this.codexLogins ??= new CodexLogins(this.env)).start(there);
+  }
+
+  /** The host of the configuration a request names. */
+  private host(name: unknown): SshHost {
+    if (typeof name !== 'string' || !/^[\w.-]+$/.test(name)) throw new BadRequest('invalid', 'not a host');
+    try {
+      return remote(onHost(name, '/'))!.host;
+    } catch {
+      throw new BadRequest('invalid', `no host ${name}`);
+    }
   }
 
   /** Where a login to Codex stands (`codexLogin`). */

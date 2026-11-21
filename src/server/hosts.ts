@@ -189,6 +189,14 @@ export class SshHost {
     return [this.o.program ?? process.env.OBEYA_SSH ?? 'ssh', ...this.options(!!o.local), ...forwards, this.o.ssh, `exec sh -c ${sh(script)}`];
   }
 
+  /**
+   * The argv of `ssh` running the shell line `line` there with a terminal (`-t`), for a terminal here
+   * in which the owner answers what it asks (a login's code): `ssh` may ask for a password there too.
+   */
+  terminal(line: string): string[] {
+    return [this.o.program ?? process.env.OBEYA_SSH ?? 'ssh', '-t', this.o.ssh, line];
+  }
+
   /** The environment line for a command in `cwd`: the GitHub login of the repository it is in. */
   private envLine(cwd: string | undefined, extra: Record<string, string | undefined> = {}): string {
     const token = cwd ? this.token(cwd) : undefined;
@@ -401,18 +409,21 @@ export class SshHost {
 
   /**
    * A session's transcript there (Claude Code's, under the directory it ran in; a Codex thread's,
-   * under Codex's sessions or archived ones), copied here for the work retrospective; null when there
-   * is none or the host does not answer.
+   * under Codex's sessions or archived ones; a Gemini session's, in Obeya's Gemini directory there),
+   * copied here for the work retrospective; null when there is none or the host does not answer.
    */
   async transcript(sessionId: string, cwd: string): Promise<string | null> {
     const thread = sessionId.startsWith('codex:') ? sessionId.slice('codex:'.length) : null;
-    if (thread ? !/^[\da-f-]{36}$/i.test(thread) : !/^[\w-]+$/.test(sessionId)) return null;
+    const gemini = sessionId.startsWith('gemini:') ? sessionId.slice('gemini:'.length) : null;
+    if (thread ? !/^[\da-f-]{36}$/i.test(thread) : !/^[\w-]+$/.test(gemini ?? sessionId)) return null;
     const read = thread
       ? `f=$(find "\${CODEX_HOME:-$HOME/.codex}/sessions" "\${CODEX_HOME:-$HOME/.codex}/archived_sessions" -name ${sh(`rollout-*-${thread}.jsonl`)} 2>/dev/null | head -n 1); [ -n "$f" ] && cat "$f"`
-      : `cat "$HOME"/.claude/projects/${sh(cwd.replace(/[^a-zA-Z0-9]/g, '-'))}/${sh(`${sessionId}.jsonl`)}`;
+      : gemini
+        ? `cat "$HOME"/${sh(`${HOST_DIR}/gemini/antigravity-cli/brain/${gemini}/.system_generated/logs/transcript.jsonl`)}`
+        : `cat "$HOME"/.claude/projects/${sh(cwd.replace(/[^a-zA-Z0-9]/g, '-'))}/${sh(`${sessionId}.jsonl`)}`;
     const r = await this.run(read);
     if (r.code !== 0 || !r.stdout) return null;
-    const file = join(this.o.home, 'hosts', this.name, 'transcripts', `${thread ?? sessionId}.jsonl`);
+    const file = join(this.o.home, 'hosts', this.name, 'transcripts', `${thread ?? gemini ?? sessionId}.jsonl`);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, r.stdout);
     return file;

@@ -208,8 +208,6 @@ export interface Placed extends AgentSetting {
  * or its fallback's harness, else that harness's preset model, so a card goes on with its
  * conversation. A new one on this machine whose harness is at its limit here (`avail`) starts on the
  * group's fallback instead (`replacement`), where that harness is ready and not at its limit itself.
- * One on a host chosen for Gemini, which runs on this machine only, runs on the group's fallback
- * there, else on Claude Code.
  */
 export function placeAgent(spec: Pick<AgentSpec, 'role' | 'agent' | 'resume' | 'cwd'>, group: AgentSetting, avail?: Availability): Placed {
   const own = spec.agent;
@@ -225,11 +223,6 @@ export function placeAgent(spec: Pick<AgentSpec, 'role' | 'agent' | 'resume' | '
     if (on === chosen.harness) return chosen;
     const other = replacement(group, chosen.harness, chosen.effort);
     return other?.harness === on ? other : { ...agentDefault(role, on), effort: chosen.effort };
-  }
-  // Gemini runs on this machine only: on a host the agent takes the group's fallback, else Claude Code
-  if (hostName(spec.cwd) && chosen.harness === 'gemini') {
-    const other = replacement(group, 'gemini', chosen.effort);
-    return other && other.harness !== 'gemini' ? other : { ...agentDefault(role, 'claude'), effort: chosen.effort };
   }
   // on a host, whose harnesses and logins are its own, the agent waits for the limit there
   const limit = hostName(spec.cwd) ? undefined : avail?.limit(chosen.harness);
@@ -860,7 +853,8 @@ export function failureReason(message: string, t: Messages): string {
   if (claudeUnreachable(message)) return t.failure.unreachable(message);
   const codex = codexLoginLost(message);
   if (codex) return t.failure.codexNotLoggedIn(codex.host);
-  if (geminiLoginLost(message)) return t.failure.geminiNotLoggedIn;
+  const gemini = geminiLoginLost(message);
+  if (gemini) return t.failure.geminiNotLoggedIn(gemini.host);
   return t.failure.session(message);
 }
 

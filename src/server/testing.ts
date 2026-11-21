@@ -645,8 +645,10 @@ done
 exec 3<&0
 sh -c "$*" <&3 3<&- & command=$!
 trap 'kill $proxy $command 2>/dev/null; exit 255' TERM INT
-wait $command
+wait $command; code=$?
 kill $proxy 2>/dev/null
+# as ssh does: the command's exit code
+exit $code
 `,
     { mode: 0o755 },
   );

@@ -175,7 +175,7 @@ describe.skipIf(process.platform === 'win32')('a Gemini session through agy acp'
     const s = start({}, 'unauthorized');
     await until(() => s.idles() === 1);
     const error = s.events.find((e) => e.type === 'error') as { message: string };
-    expect(geminiLoginLost(error.message)).toBe(true);
+    expect(geminiLoginLost(error.message)).toEqual({ host: null });
   });
 
   test("reports the session's cost so far after each turn, its tokens at Google's list prices", async () => {
@@ -252,15 +252,13 @@ describe.skipIf(process.platform === 'win32')('a Gemini session through agy acp'
     expect(JSON.parse(readFileSync(join(home, 'gemini', 'config', 'skills.json'), 'utf8'))).toEqual({ entries: [{ path: join(plugin, 'skills') }] });
   });
 
-  test('on a host, Gemini does not start', async () => {
-    const s = start({ cwd: scratch() }, 'hello');
-    await until(() => s.idles() === 1);
+  test('in a workspace on a host the configuration does not name, the agent does not start', async () => {
     const events: AgentEvent[] = [];
     const runtime = geminiRuntime({ dir: join(scratch(), 'gemini') });
-    const h = runtime.start({ cwd: 'ssh://build-box/home/ada/work', system: '', tools: [], onEvent: (e) => events.push(e), env: { OBEYA_AGY: FAKE } }, 'hello');
+    const h = runtime.start({ cwd: 'ssh://nowhere-box/home/ada/work', system: '', tools: [], onEvent: (e) => events.push(e), env: { OBEYA_AGY: FAKE } }, 'hello');
     sessions.push(h);
-    await until(() => events.length > 0);
-    expect(events[0]).toMatchObject({ type: 'error', message: expect.stringContaining('only on this machine') });
+    await h.done;
+    expect(events).toEqual([{ type: 'error', message: 'no host nowhere-box in the configuration' }]);
   });
 });
 

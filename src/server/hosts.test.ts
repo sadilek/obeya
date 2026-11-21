@@ -14,6 +14,8 @@ import { Store } from './db';
 import { HostError, hostName, onHost, registerHost, remote, sessionFiles, type SshHost } from './hosts';
 import { runAppCommand } from './app-command';
 import { codexRuntime } from './codex';
+import { geminiOn, geminiRuntime } from './gemini';
+import { z } from 'zod';
 import { claudeModels } from './harnesses';
 import { sdkRuntime } from './claude';
 import type { AgentEvent } from './runtime';
@@ -516,6 +518,107 @@ describe('a Codex session on a host', () => {
     const file = await host.transcript(`codex:${id}`, join(dir, 'ws'));
     expect(readFileSync(file!, 'utf8')).toBe('{"type":"session_meta"}\n');
     expect(await host.transcript('codex:../../x', join(dir, 'ws'))).toBeNull();
+  });
+});
+
+describe('a Gemini session on a host', () => {
+  /** What the host's agy was asked, a JSON line each (`fixtures/fake-agy.ts`). */
+  let requests: string;
+  const asked = () => readFileSync(requests, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { method: string; params: any });
+  /** Obeya's Gemini directory there. */
+  const there = () => join(dir, 'net', 'home', '.obeya', 'remote', 'gemini');
+  beforeEach(() => {
+    // the host's agy: the stand-in for Antigravity's CLI, where its installer puts it
+    const bin = join(dir, 'net', 'home', '.local', 'bin');
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, 'agy'), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(import.meta.dir, 'fixtures', 'fake-agy.ts'))} "$@"\n`, { mode: 0o755 });
+    mkdirSync(join(dir, 'ws'));
+    mkdirSync(join(dir, 'plugin', 'skills'), { recursive: true });
+    requests = join(dir, 'requests.jsonl');
+  });
+  const start = (first: string, o: { tools?: boolean; env?: Record<string, string> } = {}) => {
+    const events: AgentEvent[] = [];
+    const runtime = geminiRuntime({ dir: join(dir, 'home', 'gemini') });
+    const tools = o.tools ? [{ name: 'report', description: 'A status line.', schema: { status: z.string() }, run: (a: { status: string }) => `shown: ${a.status}` }] : [];
+    const session = runtime.start({ cwd: onHost(name, join(dir, 'ws')), system: 'You are a test agent.', tools, plugins: [join(dir, 'plugin')], model: 'gemini-#-neon', env: { FAKE_AGY_LOG: requests, ...o.env }, onEvent: (e) => events.push(e) }, first);
+    const idles = () => events.filter((e) => e.type === 'idle').length;
+    return { session, events, idles };
+  };
+
+  overSsh("runs agy acp there on Obeya's Gemini directory there, its hook and Obeya's tools reaching Obeya here, and no Claude login", async () => {
+    const s = start('tool report {"status":"on the host"}', { tools: true });
+    await until(() => s.idles() === 1, 15_000);
+    expect(s.events).toContainEqual({ type: 'text', text: 'tool said: shown: on the host' });
+    const opened = asked().find((r) => r.method === 'session/new')!.params;
+    expect(opened.cwd).toBe(join(dir, 'ws'));
+    // the tools' server as the host reaches it: a port there forwarded to the one here
+    expect(opened.mcpServers[0].url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp\/\S+$/);
+    expect(s.events[0]).toMatchObject({ type: 'session', model: 'gemini-4-neon' });
+    // Obeya's directory there: its hook, the plugin's skills as copied there, and the grants of the session
+    expect(JSON.parse(readFileSync(join(there(), 'config', 'hooks.json'), 'utf8')).obeya.PreToolUse).toHaveLength(1);
+    expect(JSON.parse(readFileSync(join(there(), 'config', 'skills.json'), 'utf8'))).toEqual({ entries: [{ path: join(dir, 'net', 'home', '.obeya', 'remote', 'plugin', 'skills') }] });
+    const grants = JSON.parse(readFileSync(join(there(), 'config', 'projects', 'default-cli-project.json'), 'utf8')).permissionGrants.permissionGrants.allow as string[];
+    expect(grants).toContain(`write_file(${join(dir, 'net', 'home', 'demos')})`);
+    // the hook ran there and Obeya answered it: a long wait is refused there as here
+    s.session.send('run sleep 45');
+    await until(() => s.idles() === 2, 15_000);
+    expect(s.events).toContainEqual({ type: 'denied', name: 'Bash', input: { command: 'sleep 45' }, by: 'obeya' });
+    expect(s.events).toContainEqual({ type: 'text', text: expect.stringContaining('denied: ') });
+    // a screenshot goes there with the message, named by its path there
+    writeFileSync(join(dir, 'shot.png'), 'png');
+    s.session.send(`look at ${join(dir, 'shot.png')}`, [join(dir, 'shot.png')]);
+    await until(() => s.idles() === 3, 15_000);
+    const images = join(dir, 'net', 'home', '.obeya', 'remote', 'images');
+    expect(s.events).toContainEqual({ type: 'text', text: `echo: look at ${images}/shot.png` });
+    expect(readFileSync(join(images, 'shot.png'), 'utf8')).toBe('png');
+    expect(log()).not.toContain('sk-claude');
+    s.session.close();
+    await s.session.done;
+  }, 30_000);
+
+  overSsh("a turn that fails for the quota waits for the reset of the host's own quota; one without the login says so for the host", async () => {
+    const s = start('quota');
+    await until(() => s.events.some((e) => e.type === 'error'), 15_000);
+    expect(s.events.find((e) => e.type === 'error')).toMatchObject({ limit: { resetsAt: Date.parse('2030-01-01T15:00:00Z') } });
+    s.session.send('unauthorized');
+    await until(() => s.events.filter((e) => e.type === 'error').length === 2, 15_000);
+    expect(s.events.filter((e) => e.type === 'error')[1]).toMatchObject({ message: expect.stringMatching(new RegExp(`^Gemini is not logged in on ${name}\\. \\(`)) });
+    s.session.close();
+  }, 30_000);
+
+  overSsh('a host unreachable before agy starts there loses the connection rather than failing the session', async () => {
+    writeFileSync(join(dir, 'net', 'down'), '');
+    const s = start('hello');
+    await s.session.done;
+    expect(s.events).toEqual([{ type: 'lost', message: `the connection to ${name} was lost` }]);
+  });
+
+  overSsh('a host without agy says so', async () => {
+    rmSync(join(dir, 'net', 'home', '.local', 'bin', 'agy'));
+    // the stand-in's host is this machine: an agy on its PATH would be found
+    writeFileSync(join(dir, 'net', 'home', '.local', 'bin', 'agy'), '#!/bin/sh\nexit 127\n', { mode: 0o755 });
+    const s = start('hello');
+    await s.session.done;
+    expect(s.events.at(-1)).toMatchObject({ type: 'error', message: expect.stringContaining(`not installed on ${name}`) });
+  });
+
+  overSsh("is looked at there: its version and whether it is logged in there; null where it is not installed", async () => {
+    expect(await geminiOn(host)).toEqual({ version: '1.5.13', loggedIn: true, how: 'Google' });
+    writeFileSync(join(dir, 'net', 'home', '.local', 'bin', 'agy'), `#!/bin/sh\nFAKE_AGY_QUOTA=loggedout exec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(import.meta.dir, 'fixtures', 'fake-agy.ts'))} "$@"\n`);
+    expect(await geminiOn(host)).toEqual({ version: '1.5.13', loggedIn: false });
+    writeFileSync(join(dir, 'net', 'home', '.local', 'bin', 'agy'), '#!/bin/sh\nexit 127\n');
+    expect(await geminiOn(host)).toBeNull();
+    writeFileSync(join(dir, 'net', 'down'), '');
+    await expect(geminiOn(host)).rejects.toThrow('Connection refused');
+  });
+
+  overSsh("a Gemini session's transcript there is found by its id for the work retrospective", async () => {
+    const logs = join(there(), 'antigravity-cli', 'brain', 'session-7', '.system_generated', 'logs');
+    mkdirSync(logs, { recursive: true });
+    writeFileSync(join(logs, 'transcript.jsonl'), '{"type":"USER_INPUT"}\n');
+    const file = await host.transcript('gemini:session-7', join(dir, 'ws'));
+    expect(readFileSync(file!, 'utf8')).toBe('{"type":"USER_INPUT"}\n');
+    expect(await host.transcript('gemini:../x', join(dir, 'ws'))).toBeNull();
   });
 });
 

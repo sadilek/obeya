@@ -247,11 +247,12 @@ export interface HarnessUpdate {
   error?: string;
 }
 
-/** A harness on a host: the version it is at there, and its update. */
+/** A harness on a host: the version it is at there, its update, and `loggedIn: false` where it is not logged in there (Gemini, whose login there Obeya looks at). */
 export interface HarnessHost {
   name: string;
   version: string;
   update?: HarnessUpdate;
+  loggedIn?: false;
 }
 
 /** The harness, model and effort of each group of agents, as they apply (`settings.json` over `AGENT_DEFAULTS`). */

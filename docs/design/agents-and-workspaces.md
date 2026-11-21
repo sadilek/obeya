@@ -147,12 +147,12 @@ and lets the call run.
 
 A turn that fails for the quota (agy's wording of Google's `RESOURCE_EXHAUSTED`, a weekly quota, a
 spend cap; not seen yet, as no quota ran out during the checks) waits for its reset as Claude Code's
-does: Obeya asks agy for the quota (`agy -p /quota --output-format json`, which starts no turn) and
-takes the earliest reset of a window used up among those the model counts against, else the
-earliest of those begun (an untouched window has no reset yet). A missing login ("Authentication required") offers to log in again on the card,
-in a terminal on this machine (`agy acp --login`, a code pasted there). Gemini runs on this machine
-only for now: an agent on a host whose group runs on Gemini runs there on the group's fallback, else
-on Claude Code.
+does: Obeya asks agy for the quota (`agy -p /quota --output-format json`, which starts no turn; on a
+host, that host's agy over the connection) and takes the earliest reset of a window used up among
+those the model counts against, else the earliest of those begun (an untouched window has no reset
+yet). A missing login ("Authentication required") offers to log in again on the card, in a terminal
+on this machine (`agy acp --login`, a code pasted there; for a session on a host, the terminal runs
+it there over SSH). On a host, see Hosts.
 
 ### Harnesses, models and effort
 
@@ -294,12 +294,13 @@ so one updated on the command line shows its version and models then.
 
 Gemini gets no such line: agy updates itself, looking for a newer version each time it runs as a
 command, at most every 15 minutes, in the background, and Obeya's own looks at it (its version, its
-models, its quota for the bar) are such runs. Obeya looks at it again as at the others, so the
-version it shows follows.
+models, its quota for the bar; on a host its version and login) are such runs. Obeya looks at it
+again as at the others, so the version it shows follows.
 
-Sessions on a host run that host's own `claude` and `codex`, which Obeya looks at over the
+Sessions on a host run that host's own `claude`, `codex` and `agy`, which Obeya looks at over the
 connection, each host the configuration names: as Obeya starts, again ten minutes after the last
-when a menu of models asks, on a host that did not answer once it does. The look asks for each
+when a menu of models asks (a host whose agy was not logged in, 20 seconds after), on a host that
+did not answer once it does. The look asks for each
 one's version, for Claude Code also for the channel its settings there update from, whose newest
 npm says (asked from this machine); an idle Claude Code session started there, as here, lists its
 models, which an agent there then runs on (an alias as the newest of its family; a Codex agent
@@ -307,8 +308,11 @@ there picks its family's newest from that host's catalog as it starts). A host w
 Codex is behind gets a line of its own under this machine's, in both places: "Claude Code 2.1.322
 is out, build-box has 2.1.300" with an "Update" button that runs `claude update` (or Codex's update
 as here) there, then looks again and asks for the models, with "Updating Claude Code on build-box…"
-meanwhile and why it failed after a failure. A host without the harness, or one that has not
-answered yet, shows no line for it.
+meanwhile and why it failed after a failure. A host whose agy is not logged in there (its `/quota`
+fails) gets the line "Gemini is not logged in on build-box" with a "Log in" button, which opens a
+terminal on this machine that runs agy's login there over SSH (see Logins and files); the line goes
+once a look finds it logged in. A host without the harness, or one that has not answered yet, shows
+no line for it.
 
 ### What agents cost
 
@@ -730,8 +734,8 @@ as `ssh://<host>/<path>`; a new card goes there when the machines before it have
 
 #### Running there
 
-Every git call, stack command and worker session (Claude Code, or Codex's app server, whichever its
-group runs on) in such a workspace runs there through `ssh`,
+Every git call, stack command and worker session (Claude Code, Codex's app server or agy's ACP
+server, whichever its group runs on) in such a workspace runs there through `ssh`,
 unseen by its callers: `ssh <target> exec sh -c '…'` with the installers' directories first on the
 `PATH`; `exec`, so a shell that forks for a command (dash) does not stay as the session's parent under
 another pid. That shell is neither a login shell nor interactive, so it lacks what a terminal there
@@ -771,11 +775,26 @@ owner's demo settings without a key file (no API key goes to a host) and without
 (`-R`) to a server of Obeya's that answers only narration clips, inline as base64, and hearing such
 a clip back for its captions' times, so demos rendered there get the owner's voice, which only this
 machine runs. A Codex session's hooks reach their
-session's server here through a port of their own forwarded the same way.
+session's server here through a port of their own forwarded the same way, as do a Gemini session's
+hook and Obeya's tools (the MCP server agy connects to), each through a port of its own.
+
+A Gemini session there runs agy on Obeya's Gemini directory there (`gemini` in `~/.obeya/remote`),
+written over the connection at each start as the one here is (see Gemini): Obeya's hook, the skills
+of the plugins as copied there and the host's own, agy's global rules and MCP servers there, and the
+sandbox's grants of every session of this Obeya on that host: readable the host's global git
+configuration and what it includes, writable the git directory a worktree commits into, the agent's
+extra directories, the temporary directory and `~/demos` there. What a session needs to know of the
+host for that (those paths, the repository's own agy configuration where it waits for the owner,
+its CLAUDE.md where agy reads no instructions there) is asked in one command. Images of the owner's
+messages go inline in the prompt, read here; the message names them by their copies there.
 
 Codex there runs on the host's own Codex login: none travels, since Codex keeps its login as a file
 whose refresh token it renews, and one login used on two machines would end the other's. When it
-lost it, the card's "Log in to Codex" renews it there (see Conversation on the card).
+lost it, the card's "Log in to Codex" renews it there (see Conversation on the card). Gemini there
+runs on the host's own agy login too: the one here lives in this machine's keyring, out of reach.
+Its login is agy's own over SSH (`agy acp --login` there, which prints a sign-in page and takes the
+code pasted back), in a terminal here that Obeya opens: from the card's "Reauthenticate" where a
+session lost it, or from the host's line in "Agents and models" before any card needs it.
 
 Screenshots in the owner's message are copied to `~/.obeya/remote/images` there and named by those
 paths, as are the copies of dropped files whose paths the message holds (to `~/.obeya/remote/files`;
@@ -792,8 +811,8 @@ resumes the session by id with the message not yet taken, or word of the drop if
 session that never started there starts anew with its first message); a
 card waiting for the owner needs no session until their next message. The resumed session first ends
 the one the drop may have left running there, by the pid it wrote, never itself (a restarted host,
-a container say, reuses pids). A host needs git, Claude Code or Codex (with its own login and curl
-for its hooks), and what the repository's work needs.
+a container say, reuses pids). A host needs git, Claude Code, Codex or Gemini (Codex and Gemini with
+their own logins and curl for their hooks), and what the repository's work needs.
 
 ### Decisions
 
@@ -851,6 +870,14 @@ for its hooks), and what the repository's work needs.
 - **Codex on a host runs on that host's own login** (2026-11-04). Rejected: carrying this machine's
   `auth.json` along as the Claude token travels, since Codex renews its refresh token and the copy
   there would end the login here (or the other way round).
+- **Gemini on a host runs on that host's own agy login, given in a terminal here over SSH**
+  (owner, 2026-11-21). agy keeps its login in the system's keyring, which a session over SSH does not
+  reach even on a Mac, so the login here cannot travel, and agy's own login over SSH (a code pasted
+  back) is made for exactly that. Rejected: a fallback to another harness on hosts (the behaviour
+  until then), which left a group on Gemini without Gemini wherever its cards ran on a host;
+  carrying a login along (none to read, and a refresh there would end it here, as for Codex); a
+  login line for every harness on every host (only agy's login can be looked at without a turn,
+  through `/quota`, and Codex has its own sign-in from the card).
 - **Codex logs in again from the card in the browser** (2026-11-04), through the app server's
   ChatGPT sign-in, whose page returns to a port on the machine Obeya runs on (forwarded for a host).
   Rejected: a terminal with `codex login` (the UI sends the owner to no command line, and on a host
@@ -900,7 +927,7 @@ for its hooks), and what the repository's work needs.
 - **Gemini as a third harness, through `agy acp`** (owner, 2026-11-20): Gemini 4 Neon came to
   Google AI Pro and Ultra, and an owner with such a subscription runs agents on it as on Codex. The
   Gemini CLI is gone; its successor, Antigravity's `agy` (a closed-source binary for macOS, Windows
-  and Linux), serves ACP. Gemini runs on this machine first; on hosts it follows as Codex did.
+  and Linux), serves ACP. On hosts it runs as Codex does (see below).
   Rejected: `agy -p` with stream-json, a process per turn (a refused permission ends the turn without
   a word, a message during the turn cannot steer it, auto mode does not reach print mode); Google's
   API directly (Obeya runs on the harnesses' subscriptions; agy signs in with an API key or Vertex

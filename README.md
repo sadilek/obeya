@@ -232,10 +232,12 @@ own part (`app/`) changes, so you install it only once.
 A repository's agents can also run on other machines that Obeya reaches over SSH. "Configuration"
 lists these machines per repository, each with its SSH target, the directory for the clones, the
 number of clones and the number of agents at once. Obeya clones the repository there and starts
-new cards there when this machine has no free slot. The other machine needs git, Claude Code or
-Codex, and whatever the repository's own work needs. Obeya sends Claude's login along with each
-start and does not leave it on the other machine. The login comes from `claude setup-token`, saved
-as `claude-token` in Obeya's home. Codex runs on the other machine's own Codex login. Demos
+new cards there when this machine has no free slot. The other machine needs git, Claude Code,
+Codex or Gemini, and whatever the repository's own work needs. Obeya sends Claude's login along
+with each start and does not leave it on the other machine. The login comes from `claude
+setup-token`, saved as `claude-token` in Obeya's home. Codex and Gemini run on the other machine's
+own logins; Gemini's there takes a click on "Log in" in "Agents and models", which opens a
+terminal that signs in over SSH. Demos
 recorded there come back to this machine, which narrates them in its voice. The details are under
 "Hosts" in [`docs/design/agents-and-workspaces.md`](docs/design/agents-and-workspaces.md).
 

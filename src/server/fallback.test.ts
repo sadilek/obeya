@@ -34,14 +34,14 @@ test('a new agent whose harness is at its limit starts on the fallback where tha
   expect(placeAgent({ cwd: '/r', role: 'worker', resume: 'codex:t1' }, { ...claude, fallback: { harness: 'codex', model: 'gpt-#-terra' } }, avail({}))).toEqual({ harness: 'codex', model: 'gpt-#-terra', effort: 'high' });
 });
 
-test('a Gemini group or fallback works as the others; on a host, where Gemini does not run, a Gemini group runs on its fallback, else on Claude Code', () => {
+test('a Gemini group or fallback works as the others, on a host too, where it waits for the limit there', () => {
   const later = Date.now() + 60_000;
   const gemini = { harness: 'gemini' as const, model: 'gemini-#-neon', effort: 'high' as const, fallback: { harness: 'codex' as const, model: 'gpt-#-sol' } };
   expect(placeAgent({ cwd: '/r', role: 'worker' }, gemini, avail({}))).toEqual({ harness: 'gemini', model: 'gemini-#-neon', effort: 'high' });
   expect(placeAgent({ cwd: '/r', role: 'worker' }, gemini, avail({ gemini: later }))).toMatchObject({ harness: 'codex', model: 'gpt-#-sol', moved: { from: 'gemini' } });
   expect(placeAgent({ cwd: '/r', role: 'worker' }, { ...claude, fallback: { harness: 'gemini', model: 'gemini-#-flash' } }, avail({ claude: later }, ['claude', 'gemini']))).toMatchObject({ harness: 'gemini', model: 'gemini-#-flash' });
-  expect(placeAgent({ cwd: 'ssh://box/w', role: 'worker' }, gemini, avail({}))).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'high' });
-  expect(placeAgent({ cwd: 'ssh://box/w', role: 'worker' }, { ...gemini, fallback: undefined }, avail({}))).toEqual({ harness: 'claude', model: 'opus', effort: 'high' });
+  // a host's logins are its own: the limit here moves no agent there
+  expect(placeAgent({ cwd: 'ssh://box/w', role: 'worker' }, gemini, avail({ gemini: later }))).toEqual({ harness: 'gemini', model: 'gemini-#-neon', effort: 'high' });
 });
 
 test('an agent placed on the fallback hears so first, and gets the system prompt of that harness', () => {
