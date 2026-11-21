@@ -252,8 +252,11 @@ again.
 
 A setting proposal (one per setting and repository) stands in Obeya's sheet under "Proposals",
 marked as a change to the configuration: a cog and "Configuration change · <repo>" over the
-setting's name, "Now" above "New", the reason and the cards as links, and "To the setting ↗",
-which opens the configuration dialog at that setting. Obeya's button counts it.
+setting's name, "Change" above "New", the reason and the cards as links, and "To the setting ↗",
+which opens the configuration dialog at that setting. Obeya's button counts it. "Change" is a diff
+of the current value against the one in the field, following the owner's edits (see Diffs of
+settings in Repositories and configuration); where the setting has no value yet, "Now" says
+"(empty)" instead.
 
 The new value stands in a field the owner may edit in place ("As proposed" restores it; the
 edit survives a reload). Two buttons, neither preselected, take it: "On this machine" sets it in

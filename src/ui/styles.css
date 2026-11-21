@@ -520,6 +520,8 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .proposals .setting-diff .setting-value.was { color: var(--muted); background: transparent; border: 1px dashed var(--line); }
 .proposals .setting-diff .setting-value.was.setting-none { font-family: inherit; font-style: italic; }
 .proposals .setting-diff textarea { min-width: 0; }
+.proposals .setting-diff .t-diff { min-width: 0; }
+.proposals .setting-same { padding-top: 6px; font-size: 12px; }
 .proposals .setting-value { flex-basis: 100%; margin: 0; font: 12px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--card); border-radius: 2px; padding: 6px 8px; }
 .prefs .pref-actions .take-on { flex-basis: 100%; color: var(--muted); font-size: 12px; }
 .kpill .n.prop { background: var(--proposal); }
@@ -1525,6 +1527,13 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .d-lines > .d-del { background: color-mix(in srgb, var(--error) 12%, transparent); color: inherit; }
 .d-lines > .d-hunk { color: var(--muted); background: color-mix(in srgb, var(--working) 7%, transparent); }
 .d-lines > .d-note { color: var(--muted); font-style: italic; }
+.t-diff { border-top: 1px solid var(--line); border-radius: 2px; background: var(--card); }
+.t-diff > div { min-height: 1.5em; }
+.t-diff mark { color: inherit; border-radius: 2px; }
+.t-diff > .d-add mark { background: color-mix(in srgb, var(--approved) 34%, transparent); }
+.t-diff > .d-del mark { background: color-mix(in srgb, var(--error) 30%, transparent); }
+.t-diff > .d-fold { display: flex; width: 100%; padding: 0; border: 0; background: color-mix(in srgb, var(--working) 7%, transparent); color: var(--muted); font: inherit; text-align: left; cursor: pointer; }
+.t-diff > .d-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--working) 14%, transparent); }
 .d-cut { margin-top: 18px; }
 .btn:disabled { opacity: .45; cursor: default; filter: none; }
 /* above projects (z-index 0), below cards (2): a line from a workstream stays visible over its project */
@@ -1684,7 +1693,10 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .c-trust { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 8px; }
 .c-trust-group { align-self: stretch; }
 .c-trust-group > .hint { margin: 0 0 4px; }
-.c-trust .d-lines { border-top: 1px solid var(--line); }
+.c-trust-file { margin-top: 6px; font-size: 12px; }
+.c-trust-file .d-name { font-family: var(--mono); }
+.c-trust-file .hint { margin-left: 4px; }
+.c-trust-file .t-diff { margin-top: 2px; }
 /* fields sunk a little into the sheet, a shade darker than it with a firmer edge, so the page's structure
    reads at a glance; the one being typed in comes up to the sheet's own colour */
 #config input, #config select, #config textarea { font: inherit; font-size: 13px; padding: 6px 9px; border-radius: 2px;

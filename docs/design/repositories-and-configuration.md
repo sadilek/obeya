@@ -353,12 +353,23 @@ What this machine sets needs no trust: its values standing in for a whole group,
 over into the file (but not a trusted `keep` that went beside them).
 
 Held groups are the problem `untrusted` in "Configuration": what each group does, a diff of the
-lines as last trusted against the main branch's now, and "Trust these commands", which trusts
+lines as last trusted against the main branch's now (the Claude Code configuration file by file,
+only the files that changed; see Diffs of settings), and "Trust these commands", which trusts
 exactly what was shown (refused where it changed meanwhile; also for a repository not saved yet), and
 the canvases follow at once. Held values show "from the repository, not trusted yet". A worker's
 own workspace may change Claude Code configuration: that counts while the main branch's is trusted
 and waits for trust once it lands. Trust covers the configuration, not the code it calls: a trusted
 hook runs whatever its script says now, as the checks do.
+
+#### Diffs of settings
+
+Where the owner is to approve a change to settings (trusting commands, a setting proposal of the
+work retrospective), Obeya shows it as a diff rather than the old and new text in full: gone lines
+red, new ones green, and in a gone line paired with a similar new one (sharing at least half its
+text) the words that differ marked, since a setting is often one long line or a paragraph in which
+a few words changed. Unchanged stretches more than three lines from a change fold into a row
+saying how many lines it holds, which unfolds with a click. Decided 2026-11-21, after the owner
+could not tell what a proposal changed from two full texts one above the other.
 
 #### Writing the settings
 

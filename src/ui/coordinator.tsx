@@ -28,6 +28,7 @@ import { know, read, session, useStoredState, write, useKnown } from './stored';
 import { cardPath } from './address';
 import { PlayMark, StopMark } from './parts';
 import { CardLink, Naming } from './cardLink';
+import { TextDiff } from './textDiff';
 
 interface Props {
   on: boolean;
@@ -555,7 +556,7 @@ const asText = (v: string | string[]) => (Array.isArray(v) ? v.join('\n') : v);
 
 /**
  * A value for a repository's setting the work retrospective proposes, with the cards it rests on and
- * the value it would replace: the owner takes it, as it is or changed, on this machine or into the
+ * what it changes in the value it would replace, as a diff that follows the owner's edits: the owner takes it, as it is or changed, on this machine or into the
  * repository for everyone (neither is the default: they choose each time), or rejects it.
  */
 function SettingRow({ p, items, repo, onOpen, onConfig }: { p: SettingProposal; items: Item[]; repo: RepoRef | undefined; onOpen: (i: Item) => void; onConfig: () => void }) {
@@ -584,10 +585,16 @@ function SettingRow({ p, items, repo, onOpen, onConfig }: { p: SettingProposal; 
         </a>
       </span>
       <span className="setting-diff">
-        {now !== null && (
+        {now === '' && (
           <>
             <span className="setting-label">{k.settingWas}</span>
-            <pre className={now ? 'setting-value was' : 'setting-value was setting-none'}>{now || k.settingEmpty}</pre>
+            <pre className="setting-value was setting-none">{k.settingEmpty}</pre>
+          </>
+        )}
+        {!!now && (
+          <>
+            <span className="setting-label">{k.settingChange}</span>
+            {now === draft.trim() ? <span className="setting-same hint">{k.settingSame}</span> : <TextDiff before={now.split('\n')} after={draft.trim().split('\n')} />}
           </>
         )}
         <span className="setting-label">{k.settingNew}</span>
