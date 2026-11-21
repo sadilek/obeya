@@ -359,6 +359,28 @@ describe('handing over with a demo', () => {
     expect(board.item(c.id)!.answered).toBe(true);
   });
 
+  test('with idle workers, a note to a card at work without a workspace, as a scratch Obeya stages one, waits for the session that starts later', () => {
+    rebuild({ idleWorkers: true });
+    const c = manual();
+    board.work(c.id, { state: 'working', branch: 'obeya/zaehlerstaende' });
+    const n = runtime.sessions.length;
+    workers.message(c.id, 'Bitte auch als CSV.');
+    expect(runtime.sessions.length).toBe(n);
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'hint', author: 'owner', text: 'Bitte auch als CSV.', unread: true });
+    // and so does what Obeya has for it
+    workers.prEvent(c.id, 'Check rot.', 'A check of your pull request failed: test.');
+    expect(runtime.sessions.length).toBe(n);
+    // once the card has a workspace, the session that starts there hears both
+    const ws = join(dir, 'staged-ws');
+    mkdirSync(ws, { recursive: true });
+    board.work(c.id, { workspace: ws });
+    workers.message(c.id, 'Und mit Kopfzeile.');
+    expect(runtime.sessions.length).toBe(n + 1);
+    const first = runtime.last.inbox[0]!;
+    for (const said of ['Bitte auch als CSV.', 'A check of your pull request failed: test.', 'Und mit Kopfzeile.']) expect(first).toContain(said);
+    expect(board.events(c.id).filter((e) => e.unread)).toEqual([]);
+  });
+
   test('a handover that keeps the demo leaves its answered question with the handover it came with', async () => {
     const { card: c } = await handedOver({ demo: demo(demoDir()) });
     const first = board.events(c.id).findLast((e) => e.kind === 'review')!.id;

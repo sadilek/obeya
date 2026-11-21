@@ -10,6 +10,7 @@ import { agentListens } from '../core/card';
 import { Aside } from './aside';
 import { api, ApiError, type Field, type Heard, type Where, failText } from './api';
 import { clip } from '../core/text';
+import { cardDraft, putBack } from './draft';
 import { excerpt, plain } from './markdown';
 import { sent, take, videoOf } from './spot';
 import { t } from './strings';
@@ -126,20 +127,36 @@ export function tellers(byId: (id: string) => Item | undefined, told: ReturnType
    * Words typed on a card, in its idea or in the Coordinator's conversation: on a card an agent listens on
    * they go straight to it, else the Coordinator reads them like spoken ones. The conversation shows
    * them at once either way; above the mic only the Coordinator's confirmation shows, with "Undo".
+   * Words Obeya refused for the card's agent reject, after the refusal shows, so the field keeps them.
+   * The field has left words for the Coordinator by the time it reads them: refused, they go back into
+   * `draft` (by default the card's). `spoken`: words were dictated into the field, so they go out as spoken.
    */
-  const tellTyped = async (text: string, images: string[] | undefined, target: Where, field?: Field, replyTo?: number | TalkRef) => {
+  const tellTyped = async (
+    text: string,
+    images: string[] | undefined,
+    target: Where,
+    { field, replyTo, spoken = false, draft = target && 'card' in target ? cardDraft(target.card) : undefined }: { field?: Field; replyTo?: number | TalkRef; spoken?: boolean; draft?: string } = {},
+  ) => {
     if (listening(target))
       try {
         // typed while the card's demo video stands at a place: about that place, and the video plays on
         const taken = target && 'card' in target ? take(target.card) : null;
         if (taken) videoOf((target as { card: string }).card)?.play().catch(() => {});
-        await api.command(text, target, { images, field, replyTo, spot: await sent(taken) });
+        await api.command(text, target, { images, field, replyTo, spoken, spot: await sent(taken) });
       } catch (e) {
         fail(e);
+        // refused: the agent did not get the words; anything else may have come after they arrived
+        if (e instanceof ApiError && e.code) throw e;
       }
     else {
       const at = place();
-      void told.tell(null, toldCard(target), () => api.command(text, target, { images, field, replyTo, ...(at ? { place: at } : {}) }));
+      void told.tell(null, toldCard(target), () =>
+        api.command(text, target, { images, field, replyTo, spoken, ...(at ? { place: at } : {}) }).catch((e: unknown) => {
+          // refused: Obeya did nothing with the words; anything else may have come after they arrived
+          if (draft && e instanceof ApiError && e.code) putBack(draft, text, images, spoken);
+          throw e;
+        }),
+      );
     }
   };
   return { listening, tellAbout, tellTyped };

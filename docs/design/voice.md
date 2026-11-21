@@ -18,6 +18,13 @@ with no card open): its words before the spoken ones, its screenshots, the messa
 field empties, and gets them back when nothing was heard. A click into the field or beside it
 switches.
 
+A field's words, once any were dictated into it, go out as spoken when sent, also after the owner
+edited or extended them by hand: the agent and the Coordinator read them as speech recognition that
+may have misheard, and a card they make says "Created by voice." Only words typed throughout go out
+as typed, and a card made from them (or from a step the Coordinator takes up without new words) says
+"Created by Obeya." The mark goes with the text: it is part of the draft, and an empty field starts
+typed again.
+
 A dictation starts from the microphone in the field (under a conversation and in a task's text),
 the microphone at the bottom (pressing it keeps the cursor where it is), or Space held in the field.
 Every such field takes Space the same way: until 2026-11-05 only the fields under a conversation
@@ -38,8 +45,13 @@ they are in. Otherwise the line under the microphone names who hears the words a
 
 A field's draft (text, screenshots, options picked for the questions above it, the quoted message)
 lives outside the field, so the microphone reads and writes it and it outlives closing the card.
+It also knows whether words were dictated into it (see Dictating or sending).
 Picks count only while the same questions stand. Drafts are kept per tab and canvas in session
 storage as they change, so they survive a canvas switch and a reload.
+Words Obeya refuses (too many screenshots, say) are not lost: a field whose words wait for the
+answer keeps them, and one that let them go at once (words for the Coordinator, which reads them a
+while) gets them back with their screenshots, before anything written there meanwhile; the refusal
+says why.
 
 #### The microphone
 
@@ -159,7 +171,7 @@ several seconds where the button "Approve" is immediate.
 ### Commands to the Coordinator
 
 A Coordinator turn reads the transcript as speech that may be misheard (typed words as written, and
-it knows which, and in which field) and either acts or replies. One sentence may give up to 20
+it knows which, and in which field, also for words dictated into a field and sent from there) and either acts or replies. One sentence may give up to 20
 actions: new card, new idea, a review card for a pull request, start, out of the queue, note,
 answer, feedback, approve, accept, dismiss or keep (a proposal its agent withdrew or replaced),
 revise, pause, resume, stop, snooze, wake, remember, work retrospective, grouping and ungrouping

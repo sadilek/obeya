@@ -33,6 +33,8 @@ export class SettingsReads {
   private held = new Map<string, TrustGroup[]>();
   /** By repository's path: whether its main branch had an adapter module as the configuration was last resolved, which a repository starting takes. */
   private adapterModules = new Map<string, boolean>();
+  /** By repository's path: whether its main branch held nothing to work on yet when last read (`isEmptyRepo`). */
+  private empties = new Map<string, boolean>();
   /** By repository's path: its theme (`themeOf`), and a read of it under way. */
   private themes = new Map<string, Theme | null>();
   private themeReads = new Map<string, Promise<void>>();
@@ -47,6 +49,16 @@ export class SettingsReads {
   /** The repository's `.obeya/settings.json` as its read tree last had it. */
   sharedRead(path: string): SharedRead | undefined {
     return this.shared.get(path);
+  }
+
+  /** Whether the repository's main branch held nothing to work on yet when last read (`isEmptyRepo`); unknown for one not read. */
+  empty(path: string): boolean | undefined {
+    return this.empties.get(path);
+  }
+
+  /** Notes what the repository's main branch was found to hold (`empty`). */
+  setEmpty(path: string, empty: boolean) {
+    this.empties.set(path, empty);
   }
 
   /** Whether the repository's main branch had an adapter module when last read. */
@@ -148,16 +160,17 @@ export class SettingsReads {
   took(reads: RepoReads): (path: string) => RepoRead | null {
     return (path) => {
       const { seal, read } = reads.repos.get(path) ?? { seal: null, read: null };
-      if (read && seal) this.readAt(path, seal, { shared: read.shared, adapterModule: read.adapterModule, branch: read.info.branch });
+      if (read && seal) this.readAt(path, seal, { shared: read.shared, adapterModule: read.adapterModule, branch: read.info.branch, empty: read.empty });
       if (read && !this.shared.has(path)) this.shared.set(path, read.shared);
       if (read) this.adapterModules.set(path, read.adapterModule);
+      if (read) this.empties.set(path, read.empty);
       return read;
     };
   }
 
   /** What was read of the repository at `path` last, where its refs did not move since; a folder without git as it is now. */
   readNow(path: string): DefaultRead | undefined {
-    if (isFolder(path)) return { shared: readSharedFiles(path), adapterModule: false, branch: '' };
+    if (isFolder(path)) return { shared: readSharedFiles(path), adapterModule: false, branch: '', empty: false };
     const seal = refsSeal(path);
     const known = this.defaultRead.get(path);
     return seal && known?.seal === seal && !(known.read instanceof Promise) ? known.read : undefined;

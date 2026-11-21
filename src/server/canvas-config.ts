@@ -10,7 +10,7 @@ import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import { dimensions } from '../core/page-tags';
 import type { RepoRef, UpstreamRef } from '../core/types';
 import { type CanvasConfig, type ConfigProblemCode, type DemoSite, layerSettings, type RepoConfig, type RepoSettings, type SharedSettings } from '../core/config';
-import { branchCommit, branchSetting, defaultBranchCommit, detectBranch, markFolder, readBranches, detectUpstream, remoteUrls } from './branches';
+import { branchCommit, branchSetting, emptyAt, defaultBranchCommit, detectBranch, markFolder, readBranches, detectUpstream, remoteUrls } from './branches';
 import type { Store } from './db';
 import { gitTry } from './git';
 import { parseRemote } from './repo';
@@ -41,6 +41,10 @@ export interface RepoRead {
   detected: string;
   adapterModule: boolean;
   shared: SharedRead;
+  /** Its main branch holds nothing to work on yet (`isEmptyRepo`). */
+  empty: boolean;
+  /** No commit yet: no branch of its own or of `origin`, HEAD on none; no card can start from it. */
+  unborn?: true;
 }
 
 /**
@@ -53,11 +57,12 @@ async function readRepo(path: string, folder: boolean, branch: string | undefine
   if (folder) return readFolder(path);
   const [remote, origin, branches] = await Promise.all([gitTry(path, 'remote', 'get-url', 'origin'), gitTry(path, 'config', '--get', 'remote.origin.url'), readBranches(path)]);
   if (branches == null) return null;
+  const unborn = !branches.local.size && !branches.remote.size && (await gitTry(path, 'rev-parse', '--verify', '--quiet', 'HEAD')) == null;
   const detected = await detectBranch(path, branches);
   const main = branch || detected;
   const commit = await branchCommit(path, main, branches);
-  const [adapterModule, shared, upstream, remotes] = await Promise.all([hasAdapterModule(path, commit), readSharedAt(path, commit), detectUpstream(path), remoteUrls(path)]);
-  return { info: { path, remote: remote ?? null, branch: main, ...(remote && origin ? { origin } : {}), ...(upstream ? { upstream } : {}), ...(Object.keys(remotes).length ? { remotes } : {}) }, detected, adapterModule, shared };
+  const [adapterModule, shared, upstream, remotes, empty] = await Promise.all([hasAdapterModule(path, commit), readSharedAt(path, commit), detectUpstream(path), remoteUrls(path), emptyAt(path, commit)]);
+  return { info: { path, remote: remote ?? null, branch: main, ...(remote && origin ? { origin } : {}), ...(upstream ? { upstream } : {}), ...(Object.keys(remotes).length ? { remotes } : {}) }, detected, adapterModule, shared, empty, ...(unborn ? { unborn } : {}) };
 }
 
 /**
@@ -107,6 +112,8 @@ export interface DefaultRead {
   adapterModule: boolean;
   /** The main branch it was read on (`defaultBranch`). */
   branch: string;
+  /** It holds nothing to work on yet (`isEmptyRepo`). */
+  empty: boolean;
   /** The repository's theme (theme.ts), where it was read with the rest. */
   theme?: Theme | null;
 }
@@ -114,8 +121,9 @@ export interface DefaultRead {
 /** `DefaultRead` of the git repository at `path`. */
 export async function readDefault(path: string): Promise<DefaultRead> {
   const { branch, commit } = await defaultBranchCommit(path);
-  const [adapterModule, shared] = await Promise.all([hasAdapterModule(path, commit), readSharedAt(path, commit)]);
-  return { shared, adapterModule, branch };
+  // a folder without git (`commit` empty) is never empty in this sense
+  const [adapterModule, shared, empty] = await Promise.all([hasAdapterModule(path, commit), readSharedAt(path, commit), commit ? emptyAt(path, commit) : false]);
+  return { shared, adapterModule, branch, empty };
 }
 
 /** A folder without git as `resolveCanvas` reads it: no remote, no branch, its `.obeya/settings.json` as the folder has it. */
@@ -125,7 +133,7 @@ function readFolder(path: string): RepoRead | null {
   } catch {
     return null;
   }
-  return { info: { path, remote: null, branch: '', folder: true }, detected: '', adapterModule: false, shared: readSharedFiles(path) };
+  return { info: { path, remote: null, branch: '', folder: true }, detected: '', adapterModule: false, shared: readSharedFiles(path), empty: false };
 }
 
 /**
@@ -151,6 +159,8 @@ export function resolveCanvas(
     const folder = r.git === false;
     const got = read(resolve(r.path), folder);
     if (!got) throw folder ? new ConfigError('noFolder', `${r.path} is no folder`, i) : new ConfigError('notRepo', `${r.path} is not a git repository`, i);
+    // cards start from a commit: the first one comes as "Set up a git repository here" makes it (git-setup.ts)
+    if (got.unborn) throw new ConfigError('noCommit', `${r.path} has no commit yet`, i);
     return got;
   });
   // a repository runs once on a canvas: twice, it would have two of everything, its plan docs' note too

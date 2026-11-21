@@ -132,6 +132,12 @@ export interface Item {
    */
   answering?: true;
   /**
+   * The owner approved the card (`approve`) or pushed a review card's own changes (`push`) while its
+   * worker was still at work on their words: Obeya carries it out once the worker has replied,
+   * unless it asks the owner something; until then "Don't approve after all" takes it back.
+   */
+  approvesAfterReply?: 'approve' | 'push';
+  /**
    * Its worker answered what the owner wrote or said on its handover without a new demo: the card
    * waits for the owner because of that answer, not a demo to watch.
    */
@@ -281,7 +287,11 @@ export interface Item {
   finishing?: boolean;
   /** While `finishing`: nothing just landed, the owner asked about the finished card and its agent answers. */
   followUp?: boolean;
-  /** While `followUp`: its agent needs a full clone to answer and waits, without a workspace, for the next free one. */
+  /**
+   * Its agent waits, without a workspace, for the next free clone: while `followUp`, it needs a full
+   * clone to answer; on a card waiting for the owner or in its pull request, its workspace went and
+   * something came for its agent (the owner's words, news of the pull request) that it hears there.
+   */
   waitsForClone?: true;
   /**
    * Its worker is in a turn right now, its background work included (a render, a watcher): what it
@@ -677,7 +687,8 @@ export interface Clash {
 export type ChangeRoute = 'contributor' | 'self' | 'later' | 'drop';
 
 /** What approving a review card did instead of merging: its PR conflicts with main, which its agent resolves, or only the contributor can. */
-export type ApproveResult = { conflict: 'agent' | 'contributor' } | undefined;
+/** What an approval did beyond what its click says: a review card's PR in conflict, or an approval that waits for the worker's reply (`afterReply`). */
+export type ApproveResult = { conflict: 'agent' | 'contributor' } | { afterReply: true } | undefined;
 
 /** One finding of a review card's review, as its worker keeps it. */
 export interface Finding {
@@ -882,8 +893,12 @@ export interface Share {
 export const IMAGE_TYPES: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
 /** What the model takes per image (5 MB base64); the browser scales screenshots down to fit. */
 export const MAX_IMAGE_BYTES = 3_750_000;
+/** Screenshots per message: enough to show a flow, few enough to keep the agent's context small. */
+export const MAX_IMAGES = 6;
 /** The largest other file the owner may drop into what they write; its path goes to the agent. */
 export const MAX_FILE_BYTES = 100_000_000;
+/** The longest message the owner may write to an agent; a longer text goes to it as a file (by its path). */
+export const MAX_MESSAGE_CHARS = 20_000;
 
 /** One line in a card's log. */
 export interface CardEvent {
@@ -919,6 +934,8 @@ export interface CardEvent {
   readAfter?: number;
   /** Obeya's reply on the card says it cannot do what the owner asked (or the owner asked to tell its makers): what a draft for them starts from. */
   wish?: Wish;
+  /** Cards Obeya's command created once its undo window passed, for its reply in the card's conversation to link to them. */
+  created?: TalkCard[];
   /**
    * Obeya's reply on the card answers the owner's words without acting on them (no actions to take
    * back): it stands in the conversation, where the confirmation of actions folds away.
@@ -1281,6 +1298,8 @@ export interface Talk {
   limitedByOutage?: true;
   /** Cards the Coordinator waits on, as its reply said, to take a step once each gets there (`wait_for`). */
   waits?: TalkWait[];
+  /** Cards the Coordinator's command created once its undo window passed, for the reply to link to them. */
+  created?: TalkCard[];
   /** Words of no one: the Coordinator took them up by itself, since a card it waited on got there (or no longer can). */
   after?: TalkAfter;
   /** A question looked up for an action that needs its answer: the step the Coordinator takes once the answer is in, until it has decided it. */
@@ -1294,6 +1313,19 @@ export interface Talk {
    * (`question` is the words), so Obeya has no reply of its own to them.
    */
   askedIn?: string;
+}
+
+/** A card the Coordinator's command created, for its reply to link to it. */
+export interface TalkCard {
+  id: string;
+  /** Its title when it was created, which the reply names. */
+  title: string;
+  /** Another canvas of this Obeya, where the card currently lives. */
+  canvas?: string;
+  /** Its short permalink code when on another canvas. */
+  short?: string;
+  /** The card has since been archived or deleted, so its link returns to plain text. */
+  gone?: true;
 }
 
 /** A card that moved to another canvas: its id and title, and that canvas. */
@@ -1496,6 +1528,7 @@ export type CardAction =
    */
   | { action: 'revoke' }
   | { action: 'keepApproval' }
+  | { action: 'unapprove' }
   /** A review card whose worker's own changes are held (`HeldChanges`): Obeya pushes them and posts their text, without merging ("Push only"). */
   | { action: 'pushChanges' }
   /** The same card: the owner's own wording of the text that goes onto the PR with the approval, in place of the held one. */
@@ -1650,6 +1683,8 @@ export type ErrorCode =
   | 'snoozeTime'
   | 'noQuestion'
   | 'notReady'
+  /** "Discard changes" while the card's agent is still at work on the owner's words. */
+  | 'agentAtWork'
   /** A review card's action on a card that reviews no pull request. */
   | 'notReview'
   /** "Change it myself" on a review card whose contributor does not allow maintainers' edits, or a decision on a finding it does not have open. */
@@ -1710,6 +1745,8 @@ export type ErrorCode =
   | 'noSlot'
   | 'workspace'
   | 'emptyText'
+  /** A message longer than `MAX_MESSAGE_CHARS`. */
+  | 'textTooLong'
   /** The cloud service for voice in failed or refused the check's sentence (the detail says what it said). */
   | 'voiceCloud'
   | 'unknownPreference'
@@ -1717,6 +1754,8 @@ export type ErrorCode =
   /** An uploaded screenshot is no image the agents read, or too large. */
   | 'imageType'
   | 'imageTooLarge'
+  /** A message with more screenshots than `MAX_IMAGES`. */
+  | 'tooManyImages'
   /** A dropped file is larger than Obeya keeps. */
   | 'fileTooLarge'
   /** Only a finished card of the owner's (or a stopped task, a parked or dropped idea) goes into the archive. */
@@ -1762,6 +1801,8 @@ export type ErrorCode =
   | 'reshareBusy'
   /** Setup: the folder for the first canvas is no git repository. */
   | 'notRepo'
+  /** Setup: the repository for the first canvas has no commit yet. */
+  | 'noCommit'
   /** Setup: the folder a clone would go to exists already. */
   | 'cloneTarget'
   /** Setting up git in a folder: git has no name and e-mail for the first commit. */
@@ -2093,8 +2134,8 @@ export interface VoiceSetupView {
 
 /** The setup assistant's list (`src/server/machine.ts`): what Obeya needs on this machine, by what it is for. */
 export type MachineSectionId = 'needed' | 'pr' | 'voice' | 'demos';
-/** Claude Code or Codex with its login, git and git's name and e-mail for commits. */
-export type NeededId = 'claude' | 'claudeLogin' | 'codex' | 'codexLogin' | 'git' | 'gitUser';
+/** Claude Code, Codex or Gemini with its login, git and git's name and e-mail for commits. */
+export type NeededId = 'claude' | 'claudeLogin' | 'codex' | 'codexLogin' | 'gemini' | 'geminiLogin' | 'git' | 'gitUser';
 /** gh and its login. */
 export type PrId = 'gh' | 'ghLogin';
 
@@ -2161,6 +2202,8 @@ export interface SetupFolder {
   branch?: string;
   /** A folder without a repository, in which git can be set up. */
   folder?: boolean;
+  /** A repository without a commit yet (`git init`, a clone of an empty remote), which gets its first commit before cards can start in it; `branch` is the one HEAD names. */
+  empty?: boolean;
 }
 
 /** From this size on a file is marked as large in the preview of a first commit. */
@@ -2171,6 +2214,8 @@ export interface GitSetupPreview {
   path: string;
   /** The branch the repository starts on. */
   branch: string;
+  /** The folder is a repository already, without a commit: only the first commit is made. */
+  repo?: true;
   /** The `.gitignore` Obeya writes, where the folder has none. */
   gitignore?: string;
   files: number;

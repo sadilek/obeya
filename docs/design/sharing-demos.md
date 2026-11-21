@@ -131,6 +131,11 @@ an owner's file into a public page. Still not loading: a Web Worker's script, an
 computed path, a font set from a script, and behind a login a file a script names at run time. A
 ZIP's page opened from disk lets the frame keep its origin (`file:` has no site to protect).
 
+On a site the frame loads the artifact by its directory's address (`…/artifact/`, a later version's
+`…/2/artifact/`), and on a listed site the copy's `index.html` names that address for search engines
+(`<link rel="canonical">`, absolute, in place of one the artifact names itself), so each artifact is
+listed once. A ZIP's page names `artifact/index.html`: opened from disk, a directory shows no page.
+
 A shared page sends nothing to the internet, under the rule of a worker's page inside Obeya (see The
 demo on the card): each HTML page of the copy starts with that CSP as a meta tag (own files, inline,
 `data:`, `blob:`), naming its files by `'self'` and the site's address (for Safari), in a ZIP by
@@ -263,7 +268,10 @@ from the checkout's `origin`, `<web address of the repository>/commit/<sha>` or
 once the work landed Obeya publishes it again as it is with the link, or gives a share still going
 out a second round, as for a PR opened late; the log says "The shared page now links the
 commit on main". A card with a PR links the PR only. Where `main` is pushed later than it lands, the
-link answers once it is pushed; accepted, since nothing else names the commit before.
+link answers once it is pushed; accepted, since nothing else names the commit before. A pull that
+rebases the unpushed commits before then (see Landing) gives the card a new commit, and its page,
+archived card or not, goes out again the same way with the new link (2026-11-17: pages kept the
+hash from before the rebase and linked a commit GitHub never had).
 
 #### Export without a site
 
@@ -566,6 +574,12 @@ lacking that revision with its next check and deploys it again.
   nothing loads in CORS mode. Rejected: `allow-same-origin` (the artifact's scripts could read the
   whole site with the viewer's cookie), and the page around fetching files for the frame (fails from
   disk; markup lacks images until a script inserts them).
+- **An artifact on a site goes by its directory's address** (2026-11-19): Google listed about 46
+  artifacts of `demos.obeya.si` under `…/artifact/index.html` and 44 under `…/artifact/`, splitting
+  each one's impressions, though Cloudflare Pages redirects the first to the second: the frame named
+  `index.html`, and the artifact named no address. Every host answers the directory's address, as it
+  does a page's. Rejected: a canonical to the page around it (a different page, which search
+  engines take as a hint they may ignore), `noindex` on artifacts (an analysis is worth finding).
 - **A page of work landed without a PR links its commit** (owner, 2026-10-30): a repository that
   commits to `main` directly has no PR to link back to, but its commit is as good a source. Several
   commits get the comparison over them, since the last alone shows only part of the change.

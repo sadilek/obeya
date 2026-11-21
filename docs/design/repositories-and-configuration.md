@@ -69,6 +69,11 @@ never in `.obeya/settings.json`, since that file is read from it. Without one it
 The usual names come before the checked-out branch so that a branch the owner checks out for a while
 does not become the main branch; landing on the local main refuses while the checkout is not on it.
 
+A repository without a commit has a main branch only by name, which no card can start from: its
+configuration is not saved, and a canvas listing it does not start, until it has a first commit,
+which the setup assistant and the Configuration dialog offer to make (see Setting up git in a
+folder).
+
 ### Read tree
 
 Every git repository of a canvas has a directory on its main branch, the read tree. Plan docs are
@@ -248,7 +253,10 @@ directory is polled every half second. On macOS Bun shares one FSEvents stream p
 restarts it "since now" for each new watch, losing every watch's events until it is live (up to
 200 ms), so watches stay open rather than being reopened per change; and a saturated fseventsd
 delivers events late or not at all (2026-10-14: Bun, Node and fswatch alike), so the plan directory
-is also polled every 2 s against its state at the last read.
+is also polled every 2 s against its state at the last read. A repository folder that is gone
+altogether (on a cloud or network drive that is not mounted, after the machine slept, say) leaves
+nothing to watch: Obeya keeps running and looks every 2 s whether it is back, then reads its docs
+again.
 
 ### Repository settings
 
@@ -322,8 +330,10 @@ block no save.
 Some of what a repository brings runs on this machine outside Claude Code's permission checks, or is
 contacted without a click: `app.stop` and `app.keep`, and `demo.site` (`deploy` with its `env` file,
 `url` and `headers` read when the owner comes back to the page, `publish` deploying with each
-approval). And agent sessions run what the repository's own Claude Code configuration names
-(everything under `.claude/` and `.mcp.json`) without asking, read-only agents included: tried on
+approval). And agent sessions run what the repository's own configuration of their harness names
+(Claude Code's: everything under `.claude/` and `.mcp.json`; Antigravity's for Gemini: everything
+under `.agents/`, `.agent/`, `_agents/` and `_agent/`, its hooks, MCP servers and plugins among it)
+without asking, read-only agents included: tried on
 2026-10-16 (SDK 0.3.285, no `settingSources`), a repository's `SessionStart` hook ran in a session
 with only Read, Grep and Glob, as did an MCP server its own `enableAllProjectMcpServers` approved;
 with `disableAllHooks` and `strictMcpConfig` its `apiKeyHelper` still ran and an `ANTHROPIC_BASE_URL`
@@ -333,10 +343,12 @@ unnoticed (VS Code has Workspace Trust for the same reason).
 So they count only as the owner last trusted them. Obeya keeps per repository path the trusted
 values themselves (not a hash, so the dialog shows a diff) in three groups: `app` (stop and keep
 together, since a stop without its keep could stop what it keeps), `site`, and `claude` (each file
-under `.claude/` and `.mcp.json`). A group the main branch has otherwise is held: the settings are
-read without it (no stop or keep, no site; demos are exported), and an agent working in the
-repository starts with `settingSources: ['user']` and gets its directory's CLAUDE.md in its
-instructions instead (not on another machine), trust being worked out afresh at each agent start
+under `.claude/` and `.mcp.json`, and under Antigravity's directories). A group the main branch has
+otherwise is held: the settings are read without it (no stop or keep, no site; demos are exported),
+and an agent working in the repository starts with `settingSources: ['user']` and gets its
+directory's CLAUDE.md in its instructions instead (not on another machine); a Gemini agent, whose
+agy reads a workspace's customizations whatever it is told, does not start where the workspace has
+hooks, MCP servers or plugins of agy's, and says so on its card, trust being worked out afresh at each agent start
 from the main branch as it is then, a commit made there outside Obeya included. What was read there
 last stands while the repository's own branches, `origin`'s, its packed refs and the branch its
 checkout is on are as they were (a few `stat`s; the cards' branches do not count, and a branch that
@@ -346,12 +358,23 @@ What this machine sets needs no trust: its values standing in for a whole group,
 over into the file (but not a trusted `keep` that went beside them).
 
 Held groups are the problem `untrusted` in "Configuration": what each group does, a diff of the
-lines as last trusted against the main branch's now, and "Trust these commands", which trusts
+lines as last trusted against the main branch's now (the Claude Code configuration file by file,
+only the files that changed; see Diffs of settings), and "Trust these commands", which trusts
 exactly what was shown (refused where it changed meanwhile; also for a repository not saved yet), and
 the canvases follow at once. Held values show "from the repository, not trusted yet". A worker's
 own workspace may change Claude Code configuration: that counts while the main branch's is trusted
 and waits for trust once it lands. Trust covers the configuration, not the code it calls: a trusted
 hook runs whatever its script says now, as the checks do.
+
+#### Diffs of settings
+
+Where the owner is to approve a change to settings (trusting commands, a setting proposal of the
+work retrospective), Obeya shows it as a diff rather than the old and new text in full: gone lines
+red, new ones green, and in a gone line paired with a similar new one (sharing at least half its
+text) the words that differ marked, since a setting is often one long line or a paragraph in which
+a few words changed. Unchanged stretches more than three lines from a change fold into a row
+saying how many lines it holds, which unfolds with a click. Decided 2026-11-21, after the owner
+could not tell what a proposal changed from two full texts one above the other.
 
 #### Writing the settings
 
@@ -516,7 +539,10 @@ title and text and the dialog's reason beside it. Accepted, it is the owner's ca
 makes it (no mark of an agent's proposal); the button, pressed while the proposal is open, accepts it
 as planned and opens it. Obeya proposes it once per repository and canvas: dismissed, accepted or made
 from the dialog, it does not come back. A proposal still open goes by itself once the settings are on
-the main branch, withdrawn rather than dismissed.
+the main branch, withdrawn rather than dismissed. A repository that is still empty (see The first canvas) gets no proposal
+while it is: there is no app yet to run or check. Its workers hear instead that it is empty and set
+it up beside their task, as in a new repository (a CLAUDE.md, the settings with `obeya:settings`);
+once work is on its main branch and the settings are still missing, the proposal comes.
 
 #### Saving
 

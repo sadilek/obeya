@@ -2,7 +2,7 @@
 // confirms them in one sentence, and runs them after a short delay unless the owner takes them back.
 
 import { z } from 'zod';
-import type { Awaited, AwaitedState, Item, NextStep, Notice, Queue, SpotInput, Talk, TalkAfter, TalkQuote, TalkRef } from '../core/types';
+import type { Awaited, AwaitedState, Item, NextStep, Notice, Queue, SpotInput, Talk, TalkAfter, TalkCard, TalkQuote, TalkRef } from '../core/types';
 import { agentListens, answering, askable, awaited, awaitsContributorNext, finished, handedOver, openQuestions, pausableNow, plannableAsProject, halted, untouched, snoozable, laterTime } from '../core/card';
 import type { AgentSetting } from '../core/agents';
 import { blocksSaving, type CanvasConfig } from '../core/config';
@@ -28,8 +28,9 @@ export type Command = (
    * `until` (ISO): it is planned and starts by itself then, as a planned card the owner snoozed.
    */
   /** `canvas`: another canvas of this Obeya, where the card goes instead (into its home repository). */
-  | { do: 'newCard'; title: string; body: string; start: boolean; until?: string; repo?: string; from?: string; place?: Place; canvas?: string; branch?: string; newRepo?: { path: string; canvas: boolean; from?: string } }
-  | { do: 'newIdea'; title: string; body: string; repo?: string; place?: Place; canvas?: string }
+  /** `spoken`: made from words the owner spoke (to Obeya, or dictated into a field), which its conversation says. */
+  | { do: 'newCard'; title: string; body: string; start: boolean; until?: string; repo?: string; from?: string; place?: Place; canvas?: string; branch?: string; newRepo?: { path: string; canvas: boolean; from?: string }; spoken?: boolean }
+  | { do: 'newIdea'; title: string; body: string; repo?: string; place?: Place; canvas?: string; spoken?: boolean }
   /**
    * An idea is built, or a planned task started, in a repository that does not exist yet, at `path`:
    * with a canvas of its own (`canvas`), or on this one.
@@ -114,6 +115,9 @@ const TAKES_IMAGES: Command['do'][] = ['newCard', 'newIdea', 'start', 'force', '
 /** Actions whose text goes to an agent: a card's, or the one that reworks a proposal. */
 const TO_AGENT: Command['do'][] = ['note', 'answer', 'feedback', 'discuss', 'revise'];
 
+/** What `execute` returns for a command that created (or filed into) cards: their ids; nothing otherwise. */
+export type Executed = string | string[] | undefined | void;
+
 export interface Heard {
   /** What the owner reads back. */
   confirm: string;
@@ -154,6 +158,8 @@ export const isField = (f: unknown): f is Field => typeof f === 'string' && f in
  */
 export interface Input {
   typed?: boolean;
+  /** Not typed but dictated into `field` (or Obeya's field without one): speech recognition, perhaps edited by hand since. */
+  dictated?: boolean;
   field?: Field;
   forwarded?: string;
   /** The owner's words beside a forwarded request are the card's task, which the owner gave: they said nothing on the card since. */
@@ -200,8 +206,8 @@ export interface CommanderOptions {
   cwd: string;
   /** Whether a session started now would run on the Coordinator's fallback, its harness being at its limit (`replacement`). */
   fallsBack?: () => boolean;
-  /** Runs a command; what it throws is logged on the card. */
-  execute: (c: Command) => unknown | Promise<unknown>;
+  /** Runs a command; what it throws is logged on the card. Returns the id(s) of any card(s) created (or filed into). */
+  execute: (c: Command) => Executed | Promise<Executed>;
   /** How long a command waits for "Undo". */
   delayMs?: number;
   /** Commands one session reads; the next one starts from the stored memory. */
@@ -313,6 +319,8 @@ interface Waiting {
   talk: number;
   confirm: string;
   card?: string;
+  /** The reply line logged in `card`'s conversation, to attach created cards to once the command runs. */
+  event?: number;
 }
 
 /** A command whose undo window ends sooner than this is not offered for undo again. */
@@ -419,7 +427,9 @@ export class Commander {
     // card it stands in the conversation, where a confirmation folds away
     const reply = (confirm: string, how: TalkReply = {}) => {
       this.o.board.sheet.reply(talk, confirm, how);
-      if (card) this.o.board.log(card, 'say', 'coordinator', confirm, { ...(how.wish ? { wish: how.wish } : {}), ...(how.waits ? { reply: true as const } : {}), ...(input.forwarded ? { forwarded: true as const } : {}) });
+      return card
+        ? this.o.board.log(card, 'say', 'coordinator', confirm, { ...(how.wish ? { wish: how.wish } : {}), ...(how.waits ? { reply: true as const } : {}), ...(input.forwarded ? { forwarded: true as const } : {}) }).id
+        : undefined;
     };
     let decision: Decision;
     try {
@@ -454,6 +464,8 @@ export class Commander {
       // a new card lands where the owner was on the canvas; a follow-up goes beside the card it follows
       if (focus.place && ((c.do === 'newCard' && !c.from) || c.do === 'newIdea' || c.do === 'reviewPr')) c = { ...c, place: focus.place };
       if (c.do === 'reviewPr') return { ...c, spoken: !input.typed };
+      // a card made from spoken words says so; one from typed words, or from a step the Coordinator takes up without new words, does not
+      if ((c.do === 'newCard' || c.do === 'newIdea') && !input.typed && !input.after && !input.answered) c = { ...c, spoken: true };
       const told =
         TO_AGENT.includes(c.do) && 'text' in c
           ? { ...c, spoken: !input.typed, ...(verbatim && c.card === card ? { text: `${replyNote(replyTo ? this.o.board.quoted(card!, replyTo) : undefined, 'coordinator')}${transcript}` } : {}) }
@@ -473,14 +485,14 @@ export class Commander {
     // talking about an idea changes nothing that would need taking back: it goes on at once
     const talking = commands.filter((c) => c.do === 'discuss');
     const rest = commands.filter((c) => !talking.includes(c));
-    reply(confirm, { wish, waits: !commands.length });
+    const event = reply(confirm, { wish, waits: !commands.length });
     for (const c of talking) await this.run(c);
     if (!commands.length && said && !decision.wish) this.o.onOwnerInput?.(card, 'talk', said, confirm);
     if (!rest.length) return { confirm, ...drafted };
     const token = crypto.randomUUID();
     // the words reach the learner as the agent's note when an agent passed them on
     const learn = said && !commands.some((c) => LEARNED.includes(c.do)) ? { said } : {};
-    this.waiting.set(token, { commands: rest, ...learn, talk, confirm, ...(card ? { card } : {}) });
+    this.waiting.set(token, { commands: rest, ...learn, talk, confirm, ...(card ? { card } : {}), ...(event !== undefined ? { event } : {}) });
     return { confirm, token, ...drafted };
   }
 
@@ -557,8 +569,8 @@ export class Commander {
     const w = this.waiting.get(token);
     if (!w || w.timer) return;
     const due = Date.now() + this.delayMs;
-    const { commands, said, talk, confirm, card } = w;
-    this.o.board.sheet.holdCommand(token, due, { commands, ...(said ? { said } : {}), talk, confirm, ...(card ? { card } : {}) } satisfies Waiting);
+    const { commands, said, talk, confirm, card, event } = w;
+    this.o.board.sheet.holdCommand(token, due, { commands, ...(said ? { said } : {}), talk, confirm, ...(card ? { card } : {}), ...(event !== undefined ? { event } : {}) } satisfies Waiting);
     this.schedule(token, w, due);
   }
 
@@ -596,11 +608,25 @@ export class Commander {
       if (w.said) this.o.onOwnerInput?.(w.card, 'command', w.said, w.confirm);
       // in the order the owner said them; one that fails does not hold up the others
       const made = new Map<string, string>();
+      const created: TalkCard[] = [];
+      const seen = new Set<string>();
       for (const command of w.commands) {
         // one before deleted the canvas (configure): nothing of it is left to run the rest on
         if (this.stopped) break;
-        const id = await this.run(command, w.talk, made);
-        if (id && command.do === 'newCard') made.set(command.title, id);
+        let added = false;
+        for (const c of await this.run(command, w.talk, made)) {
+          if (command.do === 'newCard' && !made.has(command.title)) made.set(command.title, c.id);
+          if (!seen.has(c.id)) {
+            seen.add(c.id);
+            created.push(c);
+            added = true;
+          }
+        }
+        // save after each action succeeds so an interruption on a later action never loses earlier links
+        if (added) {
+          this.o.board.sheet.created(w.talk, created);
+          if (w.card && w.event !== undefined) this.o.board.eventCreated(w.card, w.event, created);
+        }
       }
       this.waiting.delete(token);
     }, Math.max(0, due - Date.now()));
@@ -638,20 +664,35 @@ export class Commander {
   }
 
   /**
-   * Runs one command; what it throws is logged on its card. Returns the id of the card a new card
-   * command created, for a wait in the same command (`made`, by title) to name; `talk` is the
+   * Runs one command; what it throws is logged on its card. Returns any cards it created, for a
+   * wait in the same command (`made`, by title) and for the reply to link to them; `talk` is the
    * exchange the command came from.
    */
-  private async run(command: Command, talk?: number, made = new Map<string, string>()): Promise<string | undefined> {
+  private async run(command: Command, talk?: number, made = new Map<string, string>()): Promise<TalkCard[]> {
     try {
-      if (command.do === 'waitFor') return void this.waitFor(command, talk, made);
-      if (command.do === 'stopWaiting') return void this.stopWaiting(command.card);
+      if (command.do === 'waitFor') {
+        this.waitFor(command, talk, made);
+        return [];
+      }
+      if (command.do === 'stopWaiting') {
+        this.stopWaiting(command.card);
+        return [];
+      }
       const r = await this.o.execute(command);
-      return command.do === 'newCard' && typeof r === 'string' ? r : undefined;
+      const ids = typeof r === 'string' ? [r] : Array.isArray(r) ? r.filter((x): x is string => typeof x === 'string') : [];
+      if (!ids.length) return [];
+      const otherCanvas = (command.do === 'newCard' || command.do === 'newIdea') && command.canvas && command.canvas !== this.o.board.canvas.id ? command.canvas : undefined;
+      const fallback = 'title' in command ? command.title : '';
+      return ids.flatMap((id): TalkCard[] => {
+        if (otherCanvas) return fallback ? [{ id, title: fallback, canvas: otherCanvas }] : [];
+        const title = this.o.board.item(id)?.title ?? fallback;
+        return title ? [{ id, title }] : [];
+      });
     } catch (e) {
       const card = 'card' in command ? command.card : undefined;
       if (card) this.o.board.log(card, 'error', 'obeya', messageOf(e), { code: e instanceof BadRequest ? e.code : undefined });
       else console.error('voice command:', e);
+      return [];
     }
   }
 
@@ -1550,7 +1591,9 @@ export class Commander {
         : [
             input.typed
               ? `The owner typed${focused && input.field ? ` into ${FIELDS[input.field]}` : ''} (as written, no recognition errors): "${transcript}"`
-              : `The owner said (speech recognition, may contain errors): "${transcript}"`,
+              : input.dictated
+                ? `The owner dictated${focused && input.field ? ` into ${FIELDS[input.field]}` : ''} (speech recognition, may contain errors; they may have edited it by hand) and sent: "${transcript}"`
+                : `The owner said (speech recognition, may contain errors): "${transcript}"`,
             // in reply to a message of the open card's conversation, or of the sheet
             (focused ? replyNote(this.o.board.quoted(focused.id, input.replyTo), 'coordinator') : focus.card ? '' : talkReplyNote(this.o.board.sheet.quote(input.replyTo))).trim(),
           ].filter(Boolean)),
@@ -1644,7 +1687,7 @@ function cardLine(i: Item, c: LineContext): string {
 function stateOf(i: Item, items: Item[]): string {
   if (i.queue) return queued(i.queue, items);
   if (i.need)
-    return `${i.state}: ${i.need}${answering(i) ? ", its agent works on the owner's answer to the question in its demo report" : i.answered ? ', its agent answered what the owner wrote on its handover' : ''}`;
+    return `${i.state}: ${i.need}${answering(i) ? ", its agent works on the owner's answer to the question in its demo report" : i.answered ? ', its agent answered what the owner wrote on its handover' : ''}${i.waitsForClone ? REGAINS : ''}${i.approvesAfterReply ? '; the owner approved it already, which Obeya carries out once its agent has replied, unless it asks something' : ''}`;
   if (i.idea && i.idea.status !== 'open') return `idea: ${i.idea.status}`;
   if (i.idea?.thinking) return `idea, its agent is working on its reply${i.idea.buildAfterReply ? '; built once the reply is there, unless it asks questions' : ''}`;
   if (i.kind === 'question') return `question card: a thread of answers you looked up, moved onto a card; its agent ${i.thread?.thinking ? 'is reading' : 'answers what the owner asks on it (note)'}`;
@@ -1653,8 +1696,11 @@ function stateOf(i: Item, items: Item[]): string {
       ? `${i.state}, its agent answers the owner's follow-up${i.waitsForClone ? '; it needs a full clone for that and waits for the next free one, then goes on by itself' : ''}`
       : `${i.state}, its agent finishes what remains${i.state === 'done' ? ' (nothing to land: the work changed no code)' : ' after the landing'}`;
   if (askable(i)) return `${i.state}, its agent's session has ended; a note resumes it to answer`;
-  return i.state;
+  return `${i.state}${i.waitsForClone ? REGAINS : ''}`;
 }
+
+/** A card waiting for the owner or in its pull request whose workspace went, as its line for the Coordinator says it (`Item.waitsForClone`). */
+const REGAINS = '; its workspace is gone, and its agent waits for the next free clone to go on with what came for it there';
 
 /** Whether a card's agent is snoozed, paused or at work outside its state, as its line for the Coordinator says right after the state. */
 function pauseOf(i: Item): string {

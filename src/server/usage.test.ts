@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import type { SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk';
 import { type PlanLimits, UsageMeter, UsageMeters, type UsageSource, usageOf } from './usage';
 import { settle } from './testing';
+import type { Harness } from '../core/agents';
 
 const AT = new Date('2026-10-28T08:00:00Z');
 const answer = (rateLimits: Record<string, unknown> | null, available = true) =>
@@ -166,7 +167,7 @@ test("the meters of the harnesses: each runs while its harness has a login, and 
   claude.answers.push(usage(30));
   const codex = fakeSource();
   codex.answers.push(usage(60));
-  const ready = { claude: true, codex: false };
+  const ready: Record<Harness, boolean> = { claude: true, codex: false, gemini: false };
   const meters = new UsageMeters(
     [
       { harness: 'claude', meter: new UsageMeter(claude.open, { everyMs: 60_000, lingerMs: 0 }) },

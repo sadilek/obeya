@@ -93,7 +93,8 @@ own for it and is never on the open internet. "Reachable from other devices" (`r
   on the best port they held, so the address stays without a port where it had none; other entries
   stay. `tailscale serve --https=<port> off` reaches only entries under the current name, so Obeya
   removes entries through `tailscale serve set-raw`, with the configuration it read minus its own. Bun's dev server answers for scripts only under the name it listens on, so an Obeya with
-  `--dev` shows a blank page through `tailscale serve`.
+  `--dev` shows a blank page through `tailscale serve`. A card's app opened from the phone gets an
+  entry of its own on another port (see Trying the app by hand in Conversation on the card).
 - *At an address*: Obeya also listens, in plain HTTP, on an address of one of the machine's
   interfaces (another VPN's). The section says a phone's browser allows microphone and push only over
   HTTPS.
@@ -505,21 +506,41 @@ window gets the focus back. Obeya puts `~/.local/bin` and on a Mac Homebrew's di
 `PATH`, so what was installed is found from a process the desktop started; on Windows every check
 rereads `PATH` from the registry.
 
+Started by its app on a Mac or Linux, Obeya gets the desktop session's bare `PATH`, without what a
+terminal adds (`/etc/paths.d` on a Mac, the owner's profile and rc files), which agents need to
+find what the owner reaches from any terminal (`dotnet`, say). Obeya then asks the owner's login
+shell (`SHELL`, started as a login shell and interactive, without a terminal, at most 10 seconds)
+for its `PATH` as it starts and before every check: that goes first, Obeya's own directories after
+it. Started from a terminal, Obeya keeps the `PATH` it was started with. Only `PATH` is taken, not
+the shell's whole environment (2026-11-20): a key or token an rc file exports (an API key,
+say) would otherwise change which login the agents run on. Rejected: fixed directories per tool
+in Obeya or in a repository's settings, which are wrong on other machines.
+
 #### The first canvas
 
 On the first start the page ends with "Where is your project?": two cards with a radio button each,
 "Already on this computer" (a folder: a path or, from a browser on this machine, the system's folder dialog) and "On GitHub / a
 server" (a clone: `owner/name` through `gh repo clone` where gh is logged in, else by URL; any git
 URL; into the home directory unless another is given). It shows the main branch Obeya found there. A
-folder without git gets the offer to set it up (see Setting up git in a folder), whose confirmation
-also creates the canvas. Obeya writes `canvases.json` (worktrees, or two clones when the repository's
+folder without git gets the offer to set it up, a repository without a commit the preview of its
+first commit (see Setting up git in a folder); the confirmation also creates the canvas. A clone of
+an empty repository holds nothing to look at first: it gets its first commit (the default
+`.gitignore`) right after cloning. Obeya writes `canvases.json` (worktrees, or two clones when the repository's
 settings say clones), starts the canvas at once (see Live configuration) and the page opens it, with
-a first card that says what to try. Later "Check setup" in the Configuration dialog opens the
+a first card that says what to try: a small change, such as a line in the README, in a repository
+with something in it; in one that is still empty ("First task: describe what to build"), to write
+down what to build (what for, for whom, what the first version must do) and discuss it as an idea,
+whose "Build it like this" has the first version built. Empty means no commit on the main branch,
+or nothing on it but a README, a licence, git's own files (`.gitignore`, `.gitattributes`,
+`.editorconfig`) and instructions for agents (`CLAUDE.md`, `AGENTS.md`). Later "Check setup" in the Configuration dialog opens the
 same list over the canvas, without the first canvas. A scratch Obeya with `"setup": true` starts like
 a first start.
 
 ### Setting up git in a folder
 
+Cards start from a commit, so a folder without git, or a repository without a commit yet (`git
+init` alone, a clone of an empty remote: no branch of its own or of `origin`), gets its first commit
+before it can be a canvas; until then the configuration names that as the problem and is not saved.
 Where the first canvas or "+ Repository" is given a folder in which git finds no repository, it
 offers "Use without git" (`"git": false` in its entry; see Folders without git) and "Set up a
 git repository here", each with a line on what it means. The latter first shows what the first
@@ -529,7 +550,13 @@ what stays out, and the default `.gitignore` (build output, dependencies, secret
 git directory of its own in the temp directory, so looking changes nothing; the owner keeps more out
 with a `.gitignore` and "Look again". Confirming runs `git init` on git's `init.defaultBranch`, else
 `main`, and commits every file not ignored (workers see only committed files) under git's name and
-e-mail (none: it says so and does nothing). A failed step undoes the ones before. Building a card
+e-mail (none: it says so and does nothing). A failed step undoes the ones before. A repository
+without a commit gets no choice, since it has git already: the same preview shows at once, with the
+repository's own exclusions (`.git/info/exclude`) heeded and what the owner had staged listed as
+going in (ignored or not, as `git add` keeps it), and confirming makes only the commit, on the
+branch HEAD names (a clone of an empty remote names the remote's); a failed commit puts the staged
+files back as they were. The commit stays local: the
+remote gets the main branch when the first pull request needs it as its base (see How work lands). Building a card
 in a new repository sets git up the same way, without the preview (see Building in a new
 repository).
 
@@ -648,6 +675,13 @@ Its log says why it ended, and the script's `--login`, `--say` and `--artifact` 
 telling to stage afresh. It loads the speech recognition only for a recording (the owner pressed
 to speak) or a walkthrough that needs it, not ahead when the cursor goes into Obeya's field, as
 the owner's Obeya does.
+
+A card it stages at work without a workspace (unless the stage gives it one) has, with idle
+workers, no session and none that could start: the owner's notes and Obeya's news for it wait as
+for a worker in the middle of a turn (the note shows as not read yet), and the session that starts
+once the card has a workspace hears them, so a demo can write to a working card. In an Obeya whose
+agents run, such a card takes a fresh workspace for them instead (agents-and-workspaces.md, "A card
+waiting without a workspace").
 
 Every staging also stops, in the background, the scratch Obeyas whose code does not end them so
 (staged before this rule, from an older commit with `--code`, or started by hand on a scratch dir):
@@ -1076,3 +1110,10 @@ beside the scratch dirs.
   checks run `bun run test`, which picks the number by platform.
 - **The first canvas is chosen with two cards and radio buttons**: pills read as buttons in a user
   test, not as a choice.
+- **An empty repository's first card asks what to build** (2026-11-18, the owner): the card that
+  suggested a small change had nothing to change there. It points to discussing the project as an
+  idea, since an empty repository leaves the most open (platform, technology, scope); starting the
+  agent at once stays possible. The setup card waits as long as the repository is empty, since its
+  agent would find nothing to run; the worker that builds the first version writes the settings.
+  Rejected: an idea card made by Obeya (an idea starts from the owner's words, which Obeya does not
+  have yet).

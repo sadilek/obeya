@@ -9,7 +9,7 @@
 // repository's folder, or a clone of one.
 
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
@@ -23,16 +23,19 @@ import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/setti
 import { checkSetup, type LinuxFamily, linuxFamily, output } from '../../plugin/skills/demo/lib/setup.ts';
 import { installVoice } from '../../plugin/skills/demo/lib/voices.ts';
 import { BadRequest } from './board';
+import { isEmptyRepo } from './branches';
 import type { CanvasRuntime } from './canvas';
 import type { Config } from './config';
-import { previewGitSetup, setUpGit, withoutGit } from './git-setup';
-import { onHost, remote, saveClaudeToken, type SshHost } from './hosts';
+import { previewGitSetup, setUpGit, withoutCommit, withoutGit } from './git-setup';
+import { HOST_DIR, LOST, onHost, remote, saveClaudeToken, sh, type SshHost } from './hosts';
 import { parseRemote, repoInfo } from './repo';
 import { COMPILED } from './resources';
 import { claudeExecutable, machineClaude, runClaudeHere } from './claude';
 import { codexExecutable, CodexLogins, type CodexLoginState, runCodex, spawnOptions, startArgv } from './codex';
-import { findCodex, type HarnessFound, type Harnesses } from './harnesses';
+import { findCodex, findGemini, type HarnessFound, type Harnesses } from './harnesses';
+import { geminiExecutable } from './gemini';
 import { extendPath, freshPath, which } from './path';
+import { failureText } from './spawn';
 import { ownerLanguage } from './settings';
 import type { VoiceSetup } from './voice-setup';
 
@@ -47,9 +50,14 @@ const INSTALLERS = {
   uv: { unix: 'curl -LsSf https://astral.sh/uv/install.sh | sh', win: 'irm https://astral.sh/uv/install.ps1 | iex', url: 'https://docs.astral.sh/uv/getting-started/installation/' },
 };
 
+/** Where Antigravity's installation is described, for Windows, where Obeya knows no installer command of it. */
+const AGY_INSTALL = 'https://antigravity.google/docs/install';
+
 /** How to install what the needed parts and pull requests need, on this platform. */
-export function machineHint(id: 'claude' | 'codex' | 'uv' | 'git' | 'gh', platform: string, family: LinuxFamily, brew: boolean): NonNullable<MachineItem['install']> {
+export function machineHint(id: 'claude' | 'codex' | 'gemini' | 'uv' | 'git' | 'gh', platform: string, family: LinuxFamily, brew: boolean): NonNullable<MachineItem['install']> {
   const win = platform === 'win32';
+  // the Antigravity CLI by its own installer, into ~/.local/bin
+  if (id === 'gemini') return { commands: win ? [] : ['curl -fsSL https://antigravity.google/cli/install.sh | bash'], url: AGY_INSTALL };
   // Codex has no installer of its own: Homebrew's cask on a Mac, else npm's package
   if (id === 'codex') return { commands: [platform === 'darwin' && brew ? 'brew install --cask codex' : 'npm install -g @openai/codex'], url: 'https://developers.openai.com/codex/cli' };
   if (id === 'claude' || id === 'uv') {
@@ -212,7 +220,19 @@ export function codexManager(real: string): string[] | null {
 }
 
 /** A command as a shell shows it, its program quoted when its path has spaces. */
-const shown = (argv: string[]) => argv.map((a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)).join(' ');
+/**
+ * Gemini's login on a host: a script in Obeya's directory there (`HOST_DIR`, a path from the home,
+ * where ssh starts), written before a terminal here runs it, so the command the terminal's shell
+ * reads names a file alone, nothing a shell here or there would read differently. It sets the PATH
+ * every command there gets (`SshHost.pathLine`), so agy is found as for a session.
+ */
+const GEMINI_LOGIN_THERE = `${HOST_DIR}/gemini-login`;
+
+/** A command line as a terminal's shell reads it: each word quoted where it needs it (cmd's double quotes on Windows, a POSIX shell's single quotes elsewhere). */
+function shown(argv: string[], platform: string = process.platform): string {
+  if (platform === 'win32') return argv.map((a) => (/[\s"&|<>^]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)).join(' ');
+  return argv.map((a) => (/^[\w@%+=:,./~-]+$/.test(a) ? a : sh(a))).join(' ');
+}
 
 /** Starts a program that goes on by itself, Obeya waiting for nothing of it; false where it does not start. */
 function detached(cmd: string, args: string[], o: { env?: Env; windowsVerbatimArguments?: boolean } = {}): Promise<boolean> {
@@ -242,7 +262,7 @@ export function openWithSystem(path: string, file = false, show = false): Promis
 
 /** Opens a terminal that runs `argv`; false where Obeya finds none to open (Linux without one it knows). */
 export async function openTerminal(argv: string[], platform: string = process.platform, env: Env = process.env): Promise<boolean> {
-  const line = shown(argv);
+  const line = shown(argv, platform);
   if (platform === 'darwin') {
     const script = line.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     return (await output('osascript', ['-e', 'tell application "Terminal"', '-e', 'activate', '-e', `do script "${script}"`, '-e', 'end tell'], env)) !== null;
@@ -294,18 +314,23 @@ function folderOf(input: unknown): string {
 /** The marker of a canvas the assistant created: once it runs, it gets a first card that says what to try. */
 export const WELCOME_FILE = 'welcome';
 
-/** Puts the first card on the canvas the assistant created, once, when it runs. */
-export function welcome(home: string, canvases: CanvasRuntime[]) {
+/**
+ * Puts the first card on the canvas the assistant created, once, when it runs: in a repository that
+ * is still empty (`isEmptyRepo`) one that asks what to build, else one that suggests a small change.
+ */
+export async function welcome(home: string, canvases: CanvasRuntime[]) {
   const file = join(home, WELCOME_FILE);
   if (!existsSync(file)) return;
   const id = readFileSync(file, 'utf8').trim();
   rmSync(file, { force: true });
   const c = canvases.find((x) => x.id === id);
   if (!c) return;
+  const path = c.board.canvas.repos[0]?.path;
+  const empty = !!path && (await isEmptyRepo(path).catch(() => false));
   const items = c.board.items();
   // right of the plan docs' projects the repository brings, at their top
   const at = items.length ? { x: Math.max(...items.map((i) => i.x)) + 560, y: Math.min(...items.map((i) => i.y)) } : { x: 0, y: 0 };
-  const { title, body } = c.board.t.welcome;
+  const { title, body } = empty ? c.board.t.welcomeEmpty : c.board.t.welcome;
   c.board.create({ title, body, ...at });
 }
 
@@ -328,6 +353,8 @@ export interface MachineOptions {
   harnesses?: Harnesses;
   /** Looks at Codex; tests give their own. */
   findCodex?: (env: Env) => Promise<HarnessFound | null>;
+  /** Looks at Gemini; tests give their own. */
+  findGemini?: (env: Env) => Promise<HarnessFound | null>;
 }
 
 /** What the check found, with how Obeya acts on each piece. */
@@ -374,7 +401,7 @@ export class MachineSetup {
     const arch = this.o.arch ?? process.arch;
     const family = platform === 'linux' ? linuxFamily() : null;
     const brew = platform === 'darwin' && !!which('brew', env);
-    const hint = (id: 'claude' | 'codex' | 'uv' | 'git' | 'gh') => machineHint(id, platform, family, brew);
+    const hint = (id: 'claude' | 'codex' | 'gemini' | 'uv' | 'git' | 'gh') => machineHint(id, platform, family, brew);
     /** A missing piece, offered at a click where its first command runs without a password. */
     const missing = (item: Omit<MachineItem, 'state'>): MachineItem => {
       const command = item.install?.commands[0];
@@ -383,8 +410,8 @@ export class MachineSetup {
     const logins: Found['logins'] = {};
 
     const agentsPart = async (): Promise<MachineItem[]> => {
-      const [claude, codex] = await Promise.all([findClaude(env, this.o.compiled ?? COMPILED, platform, arch), (this.o.findCodex ?? findCodex)(env)]);
-      this.o.harnesses?.set({ claude: claude.version ? { version: claude.version, loggedIn: claude.loggedIn } : null, codex });
+      const [claude, codex, gemini] = await Promise.all([findClaude(env, this.o.compiled ?? COMPILED, platform, arch), (this.o.findCodex ?? findCodex)(env), (this.o.findGemini ?? findGemini)(env)]);
+      this.o.harnesses?.set({ claude: claude.version ? { version: claude.version, loggedIn: claude.loggedIn } : null, codex, gemini });
       const claudeItems: MachineItem[] = [];
       if (claude.sdk) claudeItems.push({ id: 'claude', state: 'ok', found: `${CHECKED_CLAUDE} (Agent SDK)` });
       else claudeItems.push(claude.version ? { id: 'claude', state: 'ok', found: claude.version } : missing({ id: 'claude', install: hint('claude') }));
@@ -400,12 +427,19 @@ export class MachineSetup {
       if (codex?.loggedIn) codexItems.push({ id: 'codexLogin', state: 'ok', ...(codex.how ? { found: codex.how } : {}) });
       else if (codex) codexItems.push(missing({ id: 'codexLogin', install: { commands: ['codex login'] }, act: 'login' }));
       else codexItems.push({ id: 'codexLogin', state: 'missing' });
-      // either harness with its login is enough: the other one's pieces are then not needed, nor Codex's while neither is ready
+      const geminiBin = await geminiExecutable(env);
+      const geminiItems: MachineItem[] = [gemini ? { id: 'gemini', state: 'ok', found: gemini.version! } : missing({ id: 'gemini', install: hint('gemini') })];
+      // agy signs in with a code pasted into the terminal, which works over SSH too
+      if (gemini && geminiBin) logins.geminiLogin = [geminiBin, 'acp', '--login'];
+      if (gemini?.loggedIn) geminiItems.push({ id: 'geminiLogin', state: 'ok', ...(gemini.how ? { found: gemini.how } : {}) });
+      else if (gemini) geminiItems.push(missing({ id: 'geminiLogin', install: { commands: ['agy acp --login'] }, act: 'login' }));
+      else geminiItems.push({ id: 'geminiLogin', state: 'missing' });
+      // one harness with its login is enough: the others' pieces are then not needed, nor Codex's and Gemini's while none is ready
       const ready = (items: MachineItem[]) => items.every((i) => i.state === 'ok');
       const either = (items: MachineItem[]) => items.map((i): MachineItem => (i.state === 'ok' ? i : { ...i, or: true }));
-      if (ready(claudeItems)) return [...claudeItems, ...either(codexItems)];
-      if (ready(codexItems)) return [...either(claudeItems), ...codexItems];
-      return [...claudeItems, ...either(codexItems)];
+      const all = [claudeItems, codexItems, geminiItems];
+      const first = all.find(ready) ?? claudeItems;
+      return all.flatMap((items) => (items === first ? items : either(items)));
     };
 
     const gitPart = async (): Promise<MachineItem[]> => {
@@ -524,16 +558,27 @@ export class MachineSetup {
   /**
    * Opens a terminal that logs in; `opened: false` where Obeya finds none, and the command is to be
    * run by hand. `token`: Claude's login for the sessions that run on a token, `claude setup-token`,
-   * whose token the owner then gives Obeya (`saveToken`).
+   * whose token the owner then gives Obeya (`saveToken`). `host`: Gemini's login on that host, in a
+   * terminal here that reaches it over SSH (`agy acp --login` there, its code pasted in the terminal).
    */
   async login(input: unknown): Promise<{ opened: boolean; command: string }> {
-    const { section, id, token } = (input ?? {}) as { section?: MachineSectionId; id?: MachineItem['id']; token?: boolean };
+    const { section, id, token, host } = (input ?? {}) as { section?: MachineSectionId; id?: MachineItem['id']; token?: boolean; host?: unknown };
+    if (host !== undefined && host !== null) {
+      if (id !== 'geminiLogin' || token) throw new BadRequest('invalid', `${id} is not logged in on a host from here`);
+      const there = this.host(host);
+      // a first command there reads the PATH a terminal there has, which the script then sets
+      const dir = await there.run(`mkdir -p ${sh(HOST_DIR)}`, { timeout: 30_000 });
+      const w = dir.code === 0 ? await there.run(`cat > ${sh(GEMINI_LOGIN_THERE)} && chmod 700 ${sh(GEMINI_LOGIN_THERE)}`, { input: `#!/bin/sh\n${there.pathLine()}\nexec agy acp --login\n`, timeout: 30_000 }) : dir;
+      if (w.code !== 0) throw new BadRequest('invalid', `${there.name}: ${w.code === LOST ? 'does not answer' : failureText(w)}`);
+      const argv = there.interactive(GEMINI_LOGIN_THERE);
+      return { opened: await openTerminal(argv, this.platform, this.env), command: shown(argv, this.platform) };
+    }
     const { item, found } = await this.item(section!, id!);
     const login = found.logins[item.id];
-    if (!login || (item.act !== 'login' && item.id !== 'claudeLogin')) throw new BadRequest('invalid', `${id} needs no login`);
+    if (!login || (item.act !== 'login' && item.id !== 'claudeLogin' && item.id !== 'geminiLogin')) throw new BadRequest('invalid', `${id} needs no login`);
     if (token && item.id !== 'claudeLogin') throw new BadRequest('invalid', `${id} takes no token`);
     const argv = token ? [login[0]!, 'setup-token'] : login;
-    return { opened: await openTerminal(argv, this.platform, this.env), command: shown(argv) };
+    return { opened: await openTerminal(argv, this.platform, this.env), command: shown(argv, this.platform) };
   }
 
   /**
@@ -542,16 +587,18 @@ export class MachineSetup {
    */
   async codexLogin(input: unknown): Promise<{ id: string; url: string }> {
     const { host } = (input ?? {}) as { host?: unknown };
-    let there: SshHost | null = null;
-    if (host !== undefined && host !== null) {
-      if (typeof host !== 'string' || !/^[\w.-]+$/.test(host)) throw new BadRequest('invalid', 'not a host');
-      try {
-        there = remote(onHost(host, '/'))!.host;
-      } catch {
-        throw new BadRequest('invalid', `no host ${host}`);
-      }
-    }
+    const there = host !== undefined && host !== null ? this.host(host) : null;
     return (this.codexLogins ??= new CodexLogins(this.env)).start(there);
+  }
+
+  /** The host of the configuration a request names. */
+  private host(name: unknown): SshHost {
+    if (typeof name !== 'string' || !/^[\w.-]+$/.test(name)) throw new BadRequest('invalid', 'not a host');
+    try {
+      return remote(onHost(name, '/'))!.host;
+    } catch {
+      throw new BadRequest('invalid', `no host ${name}`);
+    }
   }
 
   /** Where a login to Codex stands (`codexLogin`). */
@@ -594,9 +641,11 @@ export class MachineSetup {
     return { path: out ? out.replace(/(?<=.)[/\\]$/, '') : null };
   }
 
-  /** A folder the owner names for the first canvas: whether it holds a repository, and its main branch. */
+  /** A folder the owner names for the first canvas: whether it holds a repository, and its main branch; or that it needs git, or a first commit. */
   async folder(input: unknown): Promise<SetupFolder> {
     const path = folderOf(input);
+    const unborn = withoutCommit(path);
+    if (unborn) return { repo: true, branch: unborn, empty: true };
     try {
       return { repo: true, branch: (await repoInfo(path)).branch };
     } catch {
@@ -604,14 +653,14 @@ export class MachineSetup {
     }
   }
 
-  /** What the first commit of a folder without git would hold; changes nothing. */
+  /** What the first commit of a folder without git, or of a repository without a commit, would hold; changes nothing. */
   gitPreview(input: unknown): GitSetupPreview {
     return previewGitSetup(folderOf(input));
   }
 
-  /** Sets up git in a folder that has none, with its first commit; the owner saw the preview. */
+  /** Sets up git in a folder that has none, or makes the first commit of a repository without one; the owner saw the preview. */
   gitSetup(input: unknown): { branch: string } {
-    return setUpGit(folderOf(input));
+    return { branch: setUpGit(folderOf(input)).branch };
   }
 
   /** The first canvas: a repository's folder, saved at once; or a clone of one, in the background. */
@@ -634,6 +683,8 @@ export class MachineSetup {
       { kind: 'clone' },
       async (log, job) => {
         await this.run(argv, log);
+        // a clone of an empty remote holds nothing to look at first: it gets its first commit (the default .gitignore) right away
+        if (withoutCommit(dest) && readdirSync(dest).every((f) => f === '.git')) setUpGit(dest);
         ({ canvas: job.canvas, branch: job.branch, opens: job.opens } = await this.add(dest));
       },
       (e) => {
@@ -653,7 +704,7 @@ export class MachineSetup {
       ({ problems, resolved } = await this.o.config.check(next));
     }
     const problem = problems.find(blocksSaving);
-    if (problem) throw new BadRequest(problem.code === 'notRepo' ? 'notRepo' : 'config', problem.detail);
+    if (problem) throw new BadRequest(problem.code === 'notRepo' || problem.code === 'noCommit' ? problem.code : 'config', problem.detail);
     const canvas = resolved.at(-1)!.id;
     writeFileSync(join(this.o.home, WELCOME_FILE), canvas);
     const { restarting, applied } = await this.o.config.save(next);

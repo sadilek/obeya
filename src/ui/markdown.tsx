@@ -4,7 +4,7 @@
 // An asterisk opens emphasis only before a non-space and closes it only after one, so `5 * 3` and
 // a list's `* ` stay as they are; neither may touch a word outside, so `a*b*c` stays too.
 
-import { createContext, type ReactNode, useContext, useRef } from 'react';
+import { createContext, Fragment, type ReactNode, useContext, useRef } from 'react';
 import { CopyIcon } from './cardNumber';
 import { useCopied } from './copy';
 import { t } from './strings';
@@ -18,6 +18,12 @@ export { excerpt, plain } from '../core/plain';
  * nothing from the web or the disk.
  */
 export const DocImages = createContext<((src: string) => string | null) | null>(null);
+
+/**
+ * Transforms plain text slices inside inline markdown (outside code, images, links and web
+ * addresses), e.g. to turn named cards into links after parsing.
+ */
+export const WordLinks = createContext<((text: string) => ReactNode) | null>(null);
 
 /**
  * A bare address without what the sentence put after it: closing punctuation, and a parenthesis
@@ -34,22 +40,26 @@ function bareUrl(s: string): string {
 }
 
 export function Inline({ md }: { md: string }) {
-  return <>{render(md, false, useContext(DocImages))}</>;
+  return <>{render(md, false, useContext(DocImages), useContext(WordLinks))}</>;
 }
 
-/** `inLink`: the text of a link, where an address is only words, since a link holds no other; `image`: where images are served. */
-function render(md: string, inLink = false, image: ((src: string) => string | null) | null = null): ReactNode[] {
+/** `inLink`: the text of a link, where an address is only words, since a link holds no other; `image`: where images are served; `wordLinks`: transforms plain text outside code and links. */
+function render(md: string, inLink = false, image: ((src: string) => string | null) | null = null, wordLinks: ((text: string) => ReactNode) | null = null): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
   let k = 0;
+  const push = (slice: string) => {
+    if (!slice) return;
+    out.push(!inLink && wordLinks ? <Fragment key={k++}>{wordLinks(slice)}</Fragment> : slice);
+  };
   for (const m of md.matchAll(TOKEN)) {
-    if (m.index > last) out.push(md.slice(last, m.index));
+    if (m.index > last) push(md.slice(last, m.index));
     const [, code, bold, strike, em, star, text, href, bare, alt, src] = m;
     let end = m.index + m[0].length;
     if (code !== undefined) out.push(<code key={k++}>{code}</code>);
-    else if (bold !== undefined) out.push(<b key={k++}>{render(bold, inLink, image)}</b>);
-    else if (strike !== undefined) out.push(<s key={k++}>{render(strike, inLink, image)}</s>);
-    else if (em !== undefined || star !== undefined) out.push(<em key={k++}>{render(em ?? star!, inLink, image)}</em>);
+    else if (bold !== undefined) out.push(<b key={k++}>{render(bold, inLink, image, wordLinks)}</b>);
+    else if (strike !== undefined) out.push(<s key={k++}>{render(strike, inLink, image, wordLinks)}</s>);
+    else if (em !== undefined || star !== undefined) out.push(<em key={k++}>{render(em ?? star!, inLink, image, wordLinks)}</em>);
     else if (src !== undefined) {
       const url = image?.(src);
       out.push(url ? <img key={k++} className="doc-img" src={url} alt={alt} title={alt || undefined} /> : <span key={k++}>{alt}</span>);
@@ -58,11 +68,53 @@ function render(md: string, inLink = false, image: ((src: string) => string | nu
       end = m.index + url.length;
       // shown without its scheme, which says nothing in a sentence
       out.push(inLink ? url : <a key={k++} className="link" href={url} target="_blank" rel="noreferrer">{url.replace(/^https?:\/\/(www\.)?/, '')}</a>);
-    } else if (/^https?:/.test(href!) && !inLink) out.push(<a key={k++} className="link" href={href} target="_blank" rel="noreferrer">{render(text!, true, image)}</a>);
-    else out.push(<span key={k++}>{render(text!, inLink, image)}</span>);
+    } else if (/^https?:/.test(href!) && !inLink) out.push(<a key={k++} className="link" href={href} target="_blank" rel="noreferrer">{render(text!, true, image, wordLinks)}</a>);
+    else out.push(<span key={k++}>{render(text!, inLink, image, wordLinks)}</span>);
+    last = end;
+  }
+  if (last < md.length) push(md.slice(last));
+  return out;
+}
+
+/** Collects the plain text slices `Inline` passes to `WordLinks` (excluding code, images, web addresses and links). */
+function inlineSlices(md: string, out: string[]) {
+  let last = 0;
+  for (const m of md.matchAll(TOKEN)) {
+    if (m.index > last) out.push(md.slice(last, m.index));
+    const [, code, bold, strike, em, star, text, href, bare, , src] = m;
+    let end = m.index + m[0].length;
+    if (code !== undefined || src !== undefined) {
+      // code spans and images are never linked
+    } else if (bold !== undefined) inlineSlices(bold, out);
+    else if (strike !== undefined) inlineSlices(strike, out);
+    else if (em !== undefined || star !== undefined) inlineSlices(em ?? star!, out);
+    else if (bare !== undefined) end = m.index + bareUrl(bare).length;
+    else if (!/^https?:/.test(href!)) inlineSlices(text!, out);
     last = end;
   }
   if (last < md.length) out.push(md.slice(last));
+}
+
+/** Every plain text slice of `Body` that `WordLinks` will see, in document order. */
+export function linkableSlices(md: string): string[] {
+  const out: string[] = [];
+  const walkList = (l: List) => {
+    for (const it of l.items) {
+      inlineSlices(it.text, out);
+      for (const c of it.children) walkList(c);
+    }
+  };
+  const walk = (bs: Block[]) => {
+    for (const b of bs) {
+      if (b.t === 'p' || b.t === 'h') inlineSlices(b.text, out);
+      else if (b.t === 'list') walkList(b.list);
+      else if (b.t === 'table') {
+        for (const c of b.head) inlineSlices(c, out);
+        for (const r of b.rows) for (const c of r) inlineSlices(c, out);
+      } else if (b.t === 'quote') walk(b.blocks);
+    }
+  };
+  walk(blocks(md, { breaks: true }));
   return out;
 }
 

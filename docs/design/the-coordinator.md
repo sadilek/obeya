@@ -193,7 +193,14 @@ it.
 Messages look like a card's: the owner's on the right, who and when above, markdown (each line a
 paragraph, each blank line an empty line as typed, lists, tables, code, nested quotes; the plan
 docs' parser), a taken-back reply struck through, bare web addresses as links without `https://`
-and without the sentence's punctuation after them.
+and without the sentence's punctuation after them. Once a command's undo window passes and it
+creates cards (a new task or idea, a pull-request review, a split-off task, a prototype, or a
+repository's "Add to CLAUDE.md"), Obeya's reply links each created card — in place on its title in
+parsed text (outside code, links and web addresses), or below the reply where its title was not
+linkable in the text (a pull-request review whose title came from the forge, or a title wrapped in
+inline code), in Obeya's sheet, on the phone and in a card's conversation alike. A card on another
+canvas links straight there (switching canvases in place on desktop and opening directly on the
+phone), and any card archived or deleted on either canvas returns to plain text.
 
 ### Work retrospective
 
@@ -252,8 +259,11 @@ again.
 
 A setting proposal (one per setting and repository) stands in Obeya's sheet under "Proposals",
 marked as a change to the configuration: a cog and "Configuration change · <repo>" over the
-setting's name, "Now" above "New", the reason and the cards as links, and "To the setting ↗",
-which opens the configuration dialog at that setting. Obeya's button counts it.
+setting's name, "Change" above "New", the reason and the cards as links, and "To the setting ↗",
+which opens the configuration dialog at that setting. Obeya's button counts it. "Change" is a diff
+of the current value against the one in the field, following the owner's edits (see Diffs of
+settings in Repositories and configuration); where the setting has no value yet, "Now" says
+"(empty)" instead.
 
 The new value stands in a field the owner may edit in place ("As proposed" restores it; the
 edit survives a reload). Two buttons, neither preselected, take it: "On this machine" sets it in
@@ -754,6 +764,18 @@ passed the words on through `to_obeya` hears that the owner finds the link under
   text an agent writes from it first, so the click starts at once and nothing of the thread is lost
   in a summary. It does not wait for an answer being read: the owner has decided, and the worker
   answers what is left.
+- **Created cards are linked by the ids the server records, not guessed from titles** (2026-11-21):
+  once a command's undo window passes and each action creates (or files into) a card, the server
+  attaches its id and title to the exchange (and to the reply line in an open card's conversation),
+  resolving each card's live canvas, short code and archived/deleted state from the store. The UI
+  links matched titles inside parsed inline text (outside code, links and web addresses) and puts a
+  quiet link below the reply whenever a card's title did not appear in linkable text (a pull-request
+  review fetched from the forge, or inline-code formatting). Links survive renames, stay accurate
+  when two cards share a title, never appear on undone commands, work across canvases, and keep the
+  confirmation visible on an open card without an agent. Rejected: matching quoted titles on the
+  client against the canvas's live cards by timestamp proximity, which breaks on renames, can open
+  the wrong same-named card (even on a taken-back reply), misses pull-request reviews and cards on
+  other canvases, and cannot tell when an open card's confirmation should stay out of "History".
 - **The Coordinator's memory lives in the store, not the session**: a session is never resumed, and
   a new one starts from the stored conversation and the cards' history. That keeps the context short
   over weeks and makes restart and renewal one path; the history is in it because the owner asks

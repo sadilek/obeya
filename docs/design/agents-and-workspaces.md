@@ -4,10 +4,11 @@ A chapter of the [design doc](../design.md), whose header says how it is written
 
 ### Agents
 
-Agents run on one of two harnesses, each the machine's own installation on its own login (the
-owner's subscription, no API key): Claude Code through the Agent SDK, or Codex through
-`codex app-server` (see Codex). Each group of agents runs on the harness the owner chose for it (see
-Harnesses, models and effort). The rest of this section describes Claude Code. The compiled app
+Agents run on one of three harnesses, each the machine's own installation on its own login (the
+owner's subscription, no API key): Claude Code through the Agent SDK, Codex through
+`codex app-server` (see Codex), or Gemini through Antigravity's `agy acp` (see Gemini). Each group
+of agents runs on the harness the owner chose for it (see Harnesses, models and effort). The rest of
+this section describes Claude Code. The compiled app
 runs the machine's own (`claude` on the `PATH`, else `~/.local/bin`, or `OBEYA_CLAUDE`); the
 checkout runs the Claude Code binary the SDK brings, unless the machine's own on the `PATH` is
 newer, which it then runs from the next look at Claude Code on (as Obeya starts, in the setup
@@ -92,29 +93,97 @@ given that way: the session asks the app server for their hashes (`hooks/list`) 
 with them trusted (`hooks.state`). A hook that fails (no curl) lets the call run; a folder then hears
 of the change as Codex reports it, which may be after it began.
 
+#### Gemini
+
+A Gemini session is one `agy acp` process (Antigravity's CLI, the Agent Client Protocol over stdio:
+JSON-RPC 2.0, a message per line), with one session: started with `session/new` or resumed after a
+restart with `session/resume` by its id (kept as `gemini:<id>`), the instructions appended to agy's
+system prompt (`_meta.antigravity.systemPrompt.append`) and Obeya's tools as an MCP server over HTTP
+on the loopback, a path with a token of its own per session, given anew with every start and resume:
+a resumed session lists them from the server and so has them as they are now (agy names them
+`mcp_obeya_<name>`). The protocol part (the connection, prompts, Obeya's tools as an MCP server)
+stands apart from what is agy's, for another ACP agent later; the owner is offered no "any ACP
+agent". Right after opening, the session takes its model from the catalog the session itself
+reports: the newest model of the family it is to run on (`gemini-#-neon` stands for `gemini-4-neon`
+and its successors, as Codex's families do), with the effort nearest the one chosen that model takes
+(agy's highest is `xhigh`, which max goes to); where the catalog has none of the family, the agent
+does not start and its card says why. Then the mode, which a resumed session has lost: `auto` for
+agents that act, `default` for read-only ones. A message to an idle session starts a turn (a
+`session/prompt`), one during a turn steers it (a second `session/prompt`, answered with the turn);
+the turn ends once each has its answer. agy's tool calls reach the card as Claude Code's would: a
+command as `Bash`, a file written as `Write`, edited as `Edit`, Obeya's tools as `mcp__obeya__…`.
+What changed since the instructions were built goes with the result of Obeya's next tool. agy reads
+AGENTS.md and GEMINI.md, not CLAUDE.md: a repository without either between the workspace and its
+root has its CLAUDE.md appended to the instructions, as Codex reads CLAUDE.md as a fallback name.
+
+Every session runs agy on a Gemini directory of Obeya's own (`--gemini-dir`, `gemini/` in Obeya's
+home), so what Obeya needs agy to do never touches the owner's own Antigravity configuration: the
+login stays the owner's (agy keeps it in the system's keyring; where it reaches none, over SSH or on
+a Linux machine without one, in a file of its own Gemini directory, `antigravity-cli/antigravity-oauth-token`,
+which Obeya's directory links to, so agy writes the token it renews through the link into the
+owner's file, measured 2026-11-21), and the owner's global rules
+(`GEMINI.md`) and MCP servers are copied in at each start, their skills listed beside Obeya's.
+There: Obeya's hook (`config/hooks.json`); the skills of Obeya's plugin and the owner's
+(`config/skills.json`); and the grants of agy's terminal sandbox for every session running
+(`config/projects/default-cli-project.json`, the project agy's ACP sessions belong to), rewritten
+at each start with the grants of the sessions that run: readable the global git configuration and
+every file it includes (so commits carry the owner's identity and signing; agy's sandbox blocks
+reading outside the workspace, and an agent that could not read an include committed with the global
+configuration switched off), writable the git directory a worktree commits into, the agent's extra
+directories, the temporary directory and the demo directory (agy asks before its file tools write
+outside the workspace, so a worker's demo would otherwise be a question to the owner each time),
+each path also by its real one, which agy matches a grant against (a grant of `/tmp/x` lets
+nothing into `/private/tmp/x`, which it is on macOS; measured 2026-11-21). Commands run in that sandbox; what would
+leave it (a command run outside it, a file written outside the workspace) agy's own reviewer in auto
+mode allows or refuses, and what it leaves to a person becomes the question the card waits on.
+Obeya approves nothing of agy's on its own, but its own tools. agy ends a turn without a word to the
+agent when a request is refused: the refusal, with the owner's message, reaches it as the next turn,
+which starts by itself. Read-only agents are refused by the hook every tool that does more than read.
+
+The hook runs before and after every tool call (matcher `*`) and posts what agy passes to the
+session's server on the loopback, whose URL with its token only that agy process has
+(`OBEYA_GEMINI_HOOK` in its environment); it is curl, and prints the answer. A foreground wait too
+long is refused with the reason (see Waiting without blocking), which the agent reads and works on
+from; a folder's watch hears of each call before and after it (see Folders without git); Obeya's
+own tools are allowed. agy takes any output of a `PreToolUse` hook as its decision, `{}` and a hook
+that fails included, and refuses the call then: a hook that has nothing to say prints nothing, and
+one that cannot reach Obeya (no curl, or a process agy started without Obeya) prints nothing too
+and lets the call run.
+
+A turn that fails for the quota (agy's wording of Google's `RESOURCE_EXHAUSTED`, a weekly quota, a
+spend cap; not seen yet, as no quota ran out during the checks) waits for its reset as Claude Code's
+does: Obeya asks agy for the quota (`agy -p /quota --output-format json`, which starts no turn; on a
+host, that host's agy over the connection) and takes the earliest reset of a window used up among
+those the model counts against, else the earliest of those begun (an untouched window has no reset
+yet). A missing login ("Authentication required") offers to log in again on the card, in a terminal
+on this machine (`agy acp --login`, a code pasted there; for a session on a host, the terminal runs
+it there over SSH). On a host, see Hosts.
+
 ### Harnesses, models and effort
 
 Every agent belongs to one of four groups: the Coordinator (voice commands, estimates and schedules,
 look-ups, project agents, learner, retrospective, proposal rewrites), workers, ideas' exploration agents,
 and small jobs (the work retrospective's notes and proposals, a shared demo page's text, a card's
 title). The Configuration dialog's "Agents and models" sets for each group, in column "Runs on", the
-harness (Claude Code or Codex; one not installed or not logged in is shown, not offered), the model
-(for Claude Code an alias: Fable, Opus, Sonnet, Haiku; for Codex a model family, Sol, Terra, Luna
-and whatever else its catalog for the login on this machine lists) and the effort (low to max, for a
-Codex family those its newest model here takes), all three in one picker that names them ("Claude
-Code · Opus 5.5 · effort medium") and opens the same menu as the narrow part of a card's start button
-(see below), and marks the presets: Claude Code with Opus
+harness (Claude Code, Codex or Gemini; one not installed or not logged in is shown, not offered), the
+model (for Claude Code an alias: Fable, Opus, Sonnet, Haiku; for Codex a model family, Sol, Terra,
+Luna and whatever else its catalog for the login on this machine lists; for Gemini one of Gemini's
+own families agy lists, Neon, Argon, Hydrogen, Flash, while the Claude and GPT models agy also
+offers are left out, since they repeat what the other harnesses run directly) and the effort (low to
+max, for a Codex or Gemini family those its newest model here takes), all three in one picker that names them ("Claude
+Code · Opus 5.5 · effort medium") and opens the same menu as the chip button among a card's buttons (see below), and marks the presets: Claude Code with Opus
 throughout, high effort for workers and exploration agents, medium otherwise. A Codex family shows
 by its name (Sol, Terra; Codex Max for `gpt-#-codex-max`; one named only by its version, as `o#`,
 by its newest model here, o3) and stands for whatever is newest of it where an agent runs (see
-Codex), as Opus does for Claude Code; a version cannot be pinned. Both menus (this dialog's and the
-one beside a card's start button) show after each name the version it stands for on this machine,
+Codex), as Opus does for Claude Code; a version cannot be pinned. A Gemini family likewise (Neon for
+`gemini-#-neon`; see Gemini), its models listed by `agy models` (a line per model and effort). Both menus (this dialog's and a
+card's) show after each name the version it stands for on this machine,
 in the card's menu greyed (Opus 5.5, Sol 6.1): for Codex its newest model's, for an alias the model
 Claude Code says it stands for (the one it lists under the alias, else the newest of the family it
 lists): the newest of its family Claude Code lists, by its id or under the alias, since a new model
 (Fable 5.2) comes listed by its id while the alias still names the one before. An agent on this
 machine is then given that model's id instead of the alias where the two differ, so Fable runs on
-Fable 5.2; one on a host likewise by what that host's Claude Code lists (see Updating Claude Code and Codex),
+Fable 5.2; one on a host likewise by what that host's Claude Code lists (see Updating Claude Code, Codex and Gemini),
 the alias as it is until it has said. Claude Code is asked by an idle session of its own
 as Obeya starts, again after ten minutes or once its version changed, in the background: until it
 has answered, the aliases show without a version and go to Claude Code as they are, and no menu
@@ -124,20 +193,21 @@ A family is the model id with its version number taken out (`gpt-6.1-sol` and `g
 an id without a number is a family of its own), so families with other names (`gpt-#-codex`, `o#`)
 work alike. Claude Code's default is no entry of its own; Codex's needs none. A family the catalog no
 longer lists stays shown as chosen. Another harness starts from its own preset model (for Codex the
-Sol family) and keeps the effort. A group the owner chose no harness for runs on Claude Code, unless only Codex is ready on this
-machine; there the presets are Codex with Sol, and the dialog's hint says so. Stored in `settings.json` under `agents` (`{ "worker": { "harness": "codex", "model":
+Sol family, for Gemini Neon) and keeps the effort. A group the owner chose no harness for runs on
+Claude Code, unless it is not ready on this machine and Codex is (else Gemini); there the presets
+are Codex with Sol (Gemini with Neon), and the dialog's hint says so. Stored in `settings.json` under `agents` (`{ "worker": { "harness": "codex", "model":
 "gpt-#-terra" } }`), only where it differs from the preset; a model belongs to the harness stored
-beside it, Claude Code's where none is. A Codex model id stored there (or with a card) reads as its
-family and `default` as Sol; the next save writes the family. The API takes a model id as well and
+beside it, Claude Code's where none is. A Codex or Gemini model id stored there (or with a card)
+reads as its family and `default` as the harness's preset; the next save writes the family. The API takes a model id as well and
 stores its family. Saving restarts nothing; agents starting afterwards take it, a
 running session keeps its own, except the voice commands' session, which reopens when the
 Coordinator's setting changes (as for another language).
 
 #### At the limit
 
-Each group may also have a fallback on the other harness, chosen in the dialog's second column, "At
+Each group may also have a fallback on another harness, chosen in the dialog's second column, "At
 the limit", in a picker of the same kind whose menu offers "Wait" (the preset) and the other
-harness's models and efforts ("Codex · Sol 6.1 · effort high"; the group's effort until one is picked
+harnesses' models and efforts ("Codex · Sol 6.1 · effort high"; the group's effort until one is picked
 for it); stored beside the group's choice (`"fallback": { "harness": "codex", "model": "gpt-#-sol",
 "effort": "high" }`, the effort only where picked).
 A group moved onto its fallback's harness has none any more. While a harness is at its usage limit,
@@ -161,32 +231,49 @@ fallback says so in its conversation ("Claude Code has reached its usage limit (
 card's agent runs on Codex · Sol instead."); other agents move without a word.
 
 A worker that the limit stops in the middle of its work waits for it as before (see Usage limit in
-Communication), and its card offers "Continue with Codex" (or Claude Code) above the conversation,
-saying until when the limit holds. Beside the button, as on a start button, a narrow part opens the
-other harness's models and efforts, and what the new agent will run on stands next to it: the
-workers' fallback, else their own setting where it is on the other harness, else that harness's
-preset, until the owner picks another there. The other harness
-has to be ready and not at its limit; the box goes as soon as it is not. The click ends the waiting
-session and, once it has gone (its background work with it), starts a new one on the other harness in the card's workspace, briefed as a worker
+Communication), and its card offers "Continue with Codex" (or another harness) above the
+conversation, saying until when the limit holds. Beside the button stands the chip button of a card's
+buttons (see below), here always naming what the new agent will run on ("Sol 6.2 · effort high"),
+which opens the other harnesses' models and efforts: the workers' fallback, else their own setting where it is on another harness, else the preset
+of the first other harness that can take over, until the owner picks another there. That harness
+has to be ready and not at its limit; the box goes as soon as none is, and a pick of one that is not
+is refused. The click ends the waiting
+session and, once it has gone (its background work with it), starts a new one on that harness in the card's workspace, briefed as a worker
 resumed on its branch, with the card's conversation so far (who said what, oldest first) and the
 path of the transcript of the agent before it (none on a host). The card runs there from then on,
 after a restart too: its own harness and model become that one's.
 
-A card may run on another harness, model or effort than its group. Joined to each button that
-starts a card (and "Accept and start" on a proposed task, "Build it like this" on an idea, "Start
-as task" on a Question card, "Start anyway" in the queue) is a narrow
-part with a triangle that opens a menu: each ready harness's models, as "Agents and models" lists
-them, and the efforts the model takes, with what applies checked (the workers' setting until the
-card has one of its own). Picking what the workers have is no choice of the card's: it follows
-their setting. What the card chose of its own stands small beside the button ("Codex · Sol ·
-effort very high"); without a choice nothing does. The choice is the card's, stored with it, and
-goes with every session of its next run, the ones resumed after a restart included, and with the
-instructions that differ by harness (how a worker waits); what it leaves out is the workers'. It
-changes only while the card waits to start (planned, proposed, in the queue, an idea still under
-discussion, a Question card not archived; the exploration agent and the Question card's own agent it
-leaves alone); once it is at work the choice stays as it began.
+A card may run on another harness, model or effort than its groups. The choice is the card's,
+stored with it, and holds for every agent that works on it: an idea's exploration agent, the worker
+who builds or plans it, a prototype of the idea and a task split off it (which start with it); what
+it leaves out is each agent's group's. Among the buttons of every card whose buttons start an agent
+or hand one work (a planned task, a proposal, a Question card, an idea), after those that start one,
+stands one small button with a chip icon. It holds whichever of those buttons starts the agent
+("Start agent", "Discuss as an idea", "Plan as a project", "Build it like this", "Split off a task",
+"Have a prototype built", "Accept and start", "Start as task"): on hover it names what the agent
+will run on, the card's choice over the group's setting, with the version ("Runs on Claude Code ·
+Opus 5.5 · effort high"), and a click opens the same menu as the Configuration's pickers, headed by
+that line: each ready harness's models, as "Agents and models" lists them, and the efforts the model
+takes, with what applies checked. The group it names is the explorers' on an idea or a proposed
+idea, the workers' elsewhere; where the card chose no harness and model and the other group's
+setting differs, it names that one too ("as an idea: …", "building it: …"). Picking what the group
+has is no choice of the card's: it follows the setting. Only while the card has a choice of its own
+does the button name it beside the icon ("Fable 5.2 · effort high"; a Codex model with "Codex"),
+with a × that goes back to the groups' settings. Those cards' conversation heading names no model;
+once an agent is at work (or a card waits in the queue, which has no such button), it names what the
+agent's session runs on.
 
-#### Updating Claude Code and Codex
+The choice goes with every session of the next run of a worker, the ones resumed after a restart
+included, and with the instructions that differ by harness (how a worker waits). It changes only
+while the card waits to start (planned, proposed, in the queue, an idea, a Question card not
+archived; the Question card's own agent it leaves alone); once a worker is at work the choice stays
+as it began. An idea's discussion takes it from the owner's next message on: each message resumes
+the idea's session with the model and effort chosen then; on another harness than the session's,
+the discussion goes on in a new session there, briefed with where the idea stands and the
+conversation so far (as after a lost session, see Ideas), unless that harness is at its limit, when
+the session goes on where it is. The same holds for a change of the explorers' setting.
+
+#### Updating Claude Code, Codex and Gemini
 
 Which Claude Code is the newest, npm's registry says (the dist-tag of the channel Claude Code's own
 settings update from, `autoUpdatesChannel`: `latest`, or `stable`), asked in the background as Obeya
@@ -210,9 +297,15 @@ goes, so a model that came with the new version is in the menus (and a family's 
 see Codex). Obeya looks at both again ten minutes after the last look when a menu of models asks,
 so one updated on the command line shows its version and models then.
 
-Sessions on a host run that host's own `claude` and `codex`, which Obeya looks at over the
+Gemini gets no such line: agy updates itself, looking for a newer version each time it runs as a
+command, at most every 15 minutes, in the background, and Obeya's own looks at it (its version, its
+models, its quota for the bar; on a host its version and login) are such runs. Obeya looks at it
+again as at the others, so the version it shows follows.
+
+Sessions on a host run that host's own `claude`, `codex` and `agy`, which Obeya looks at over the
 connection, each host the configuration names: as Obeya starts, again ten minutes after the last
-when a menu of models asks, on a host that did not answer once it does. The look asks for each
+when a menu of models asks (a host whose agy was not logged in, 20 seconds after), on a host that
+did not answer once it does. The look asks for each
 one's version, for Claude Code also for the channel its settings there update from, whose newest
 npm says (asked from this machine); an idle Claude Code session started there, as here, lists its
 models, which an agent there then runs on (an alias as the newest of its family; a Codex agent
@@ -220,8 +313,11 @@ there picks its family's newest from that host's catalog as it starts). A host w
 Codex is behind gets a line of its own under this machine's, in both places: "Claude Code 2.1.322
 is out, build-box has 2.1.300" with an "Update" button that runs `claude update` (or Codex's update
 as here) there, then looks again and asks for the models, with "Updating Claude Code on build-box…"
-meanwhile and why it failed after a failure. A host without the harness, or one that has not
-answered yet, shows no line for it.
+meanwhile and why it failed after a failure. A host whose agy is not logged in there (its `/quota`
+fails) gets the line "Gemini is not logged in on build-box" with a "Log in" button, which opens a
+terminal on this machine that runs agy's login there over SSH (see Logins and files); the line goes
+once a look finds it logged in. A host without the harness, or one that has not answered yet, shows
+no line for it.
 
 ### What agents cost
 
@@ -229,7 +325,8 @@ Obeya counts what every agent on a canvas costs, whether or not the owner has co
 each turn its harness reports the session's estimated cost in US dollars so far, a running total
 (Claude Code's `total_cost_usd` on each result, its own estimate at API list prices; for Codex the
 thread's tokens from `thread/tokenUsage/updated`, priced at OpenAI's list prices in a table Obeya
-keeps, `src/server/prices.ts`). A session's cost is its latest total; a total below the one before
+keeps, `src/server/prices.ts`; for Gemini the tokens each turn reports, added up over the session's
+process, priced at Google's list prices in a table of the same file). A session's cost is its latest total; a total below the one before
 means the harness started counting afresh (a resume without the earlier total, a cleared context),
 and what it had counted stays. The cost of an agent working for a card (its worker, an idea's
 exploration agent, a project's agent, the rewrite of its proposal) counts to that card, any other
@@ -242,6 +339,12 @@ request, is left out (the thread's total does not tell the requests apart). A mo
 takes the price of the newest of its family the table has, else of the Sol family's, as Claude Code
 prices a model it does not know at its default's. A thread priced at the model it runs on now, all of
 its tokens are, also those of a resume on an older version of its family.
+
+Gemini prices input uncached, cached (at the context caching price) and output with the thinking, at
+the standard tier, each at the price of the day it is counted, since Google names the days some
+prices rise on (Argon's on 2026-12-01, Flash's on 2027-01-01). The storage of the context cache by
+the hour, which Google bills for explicit caches only, is left out. A model the table lacks takes
+the price of the newest of its family the table has, else Neon's.
 
 "Costs" under Configuration → General shows them (off until then; `costs: true` in `settings.json`
 in Obeya's home), on every open page at once: a card's beside its conversation heading, after what
@@ -316,22 +419,26 @@ The pool is what the configuration names. A clone no longer named leaves it: a f
 leased one when its card gives it back (no card moves mid-work). A clone Obeya made is then deleted
 from disk, after its app stopped (see Parking), if nothing would be lost: no uncommitted or untracked files
 (ignored ones aside), no stash, no submodules, no worktree from it in use, and no branch, tag or
-detached HEAD with commits on no branch of `origin` (fetched with pruning), unless its changes are on
-`origin`'s main branch already or it is a tag `origin` has too (a release tagged on a branch since
-deleted). Changes count as on the main branch where merging the branch into the main branch's head
-changes nothing, or, where that merge conflicts, merging it into one of the main branch's last 50
-commits that changed the branch's files does (with a git before 2.38: where each file it changed is
-there as the branch has it): a branch squashed or rebased in its pull request counts as landed, also
-once the main branch changed the same files again. A merge into the head that is clean but changes
-something ends the search, so work not landed costs a handful of git calls, not one per commit (over
-SSH each is a round trip). Where work lands on the local main, `origin` is the Obeya checkout. The folder is moved aside first, so a
+detached HEAD with commits on no branch of `origin` (fetched with pruning) nor reached by a tag
+`origin` has too at the same commit (a release tagged on a branch since deleted: `origin` keeps what
+its tag reaches), unless its changes are on `origin`'s main branch already. A local tag `origin`
+lacks, or has at another commit, counts like a branch. Changes count as on the main branch where
+merging the branch into the main branch's head changes nothing, or, where that merge conflicts,
+merging it into one of the main branch's last 50 commits that changed the branch's files does
+(with a git before 2.38: where each file it changed is there as the branch has it): a branch
+squashed or rebased in its pull request counts as landed, also once the main branch changed the
+same files again. A merge into the head that is clean but changes something ends the search, so
+work not landed costs a handful of git calls, not one per commit (over SSH each is a round trip).
+Where work lands on the local main, `origin` is the Obeya checkout. The folder is moved aside first, so a
 clone named again meanwhile (here or by another canvas) is never removed under a card. Otherwise it
 stays: the log says once what lies in it, the pool's list shows "stays, as work not landed lies
 there:" with what (a branch or tag by name with how many commits, uncommitted changes, a stash) and
 the path, and a later start looks again; raising the number takes it back as it is. Clones the owner listed, and folders on a host no longer configured, are never touched. A
 workspace on this machine whose folder is gone (moved or deleted by hand) and that the configuration
 no longer names leaves at once, clone or worktree, held or not: its card names no workspace any
-more, one at work is planned again, its log says so, and its next start takes another. Only a
+more, one at work is planned again, its log says so, and its next start takes another; one that
+waits for the owner or is in its pull request keeps its state and takes another once something comes
+for its agent (below). Only a
 card's own worktree, where the repository makes them, stays the card's.
 
 A card gives its workspace back once it will not work there again, checked at every board change and
@@ -343,7 +450,8 @@ brought back with the undo takes its clone back if still free, and git puts it b
 own branch, since another card may have worked there meanwhile. Where git cannot (that card left
 uncommitted changes there, say), or the clone is taken, the card holds none and its next start
 takes a clone as after a taken workspace (below), with its branch from that one where it still
-holds it; it never works on another card's branch.
+holds it; it never works on another card's branch. A card in its pull request (deleting one does not
+stop it) whose clone is taken ends its session there, and its agent goes on elsewhere as below.
 
 #### Taking a card's workspace
 
@@ -401,6 +509,30 @@ worker is told the app stack may not run there; if it needs it, it calls `need_c
 owner with `reply` and ends its turn, and the card waits for the next clean free clone ("Waiting for a
 workspace"), ahead of queued cards, where its session resumes by itself; what the owner says
 meanwhile waits for it.
+
+#### A card waiting without a workspace
+
+A card that waits for the owner (handed over, asking) or is in its pull request can be left without
+workspace or session without being planned again: its folder was deleted by hand, or it was restored
+after another card took its clone. Whatever then comes for its agent (the owner's words, news of its
+pull request such as review comments or a failed check) waits for it, the owner's words marked as
+not read yet, and the card takes a fresh workspace on its branch at once, as a finished card's
+question does: a clean free clone, whatever its slots, on the machine of the clone that still holds
+its branch where one does, else on any. Its session resumes there, told that its workspace went and
+that only what was committed came along, and hears all that waited, also what came while git made
+the workspace ready; where the card never had a session, or the workspace is on another machine
+than the one its session lies on, a new session starts with the card's task. A clone that lacks the
+branch takes it from the clone that still holds it, else `origin`'s copy, else the configured
+checkout's (a worktree, `origin`'s where the checkout lacks it); never a new branch off the default
+branch, which would pass for the card's work without it. Where none has it, the conversation says
+so, and what came waits for the next try.
+
+Where no clone is clean and free, the card waits for the next ("Waiting for a workspace", and the
+log says the agent goes on by itself), ahead of queued cards, as a follow-up that needs a full clone
+does (one bound to a machine leaves the others to the cards behind it); it takes no temporary
+worktree, which its landing could not work from. Meanwhile nothing on
+the card says an agent works on the owner's words: a handed-over card shows "Agent works on your
+message" only once its session runs. Stopping the card ends the wait.
 
 #### The pool in the bar
 
@@ -507,7 +639,8 @@ file's name or line counts opening its diff, with "See the whole diff" beside it
 **Undo.** "Discard changes" on a card waiting for approval puts back what the card changed after
 eight seconds in which the button counts down and a hint beside it says a second click calls it
 off, since this undo cannot
-itself be undone. Before a card's first write, Obeya prepares it under `undo/<canvas>/<repo>/<card>`
+itself be undone. While the worker is at work on the owner's words, the button is greyed out and the
+server refuses it: what the worker still changes would come after the undo. Before a card's first write, Obeya prepares it under `undo/<canvas>/<repo>/<card>`
 in its home: where the file system clones (APFS `clonefile`, reflink on btrfs and XFS; probed with
 `COPYFILE_FICLONE_FORCE`), a clone of the whole folder, sharing bytes until a file changes (8.1 GB in
 0.86 s, no space taken): full undo. Elsewhere (another volume, NTFS, ext4, Windows' ReFS and Dev
@@ -571,7 +704,7 @@ be thorough (a fault in one leaves its apps running).
 Every agent session (a card's worker, an idea's exploration agent, a project's agent, the
 Koordinator's) gives up its process once it has waited with nothing running (its turn over, no
 other turn to follow, no background work of its own) for 65 minutes, past the hour Claude Code keeps
-the prompt cached, on Codex alike (`OBEYA_REST_AFTER`, in seconds, sets it, for demos and live
+the prompt cached, on Codex and Gemini alike (`OBEYA_REST_AFTER`, in seconds, sets it, for demos and live
 checks). The next message resumes the session by its id, as after a restart, in
 a process on the same instructions, tools and model; the card and the agent see one conversation
 throughout, and nothing on the card says the process was gone. A resumed Claude Code session takes
@@ -604,7 +737,9 @@ for its remote plugins' skills does the same (see Codex).
 A session resumed (after a restart, a rest, a snooze, or for a finished card's question) keeps
 Obeya's tools as it first heard of them, on either harness: Claude Code resends the tool definitions
 its session began with, so a tool search brings back the old definition too, and adds only tools
-that are new; a Codex thread keeps the tools it started with and can take none that came later.
+that are new; a Codex thread keeps the tools it started with and can take none that came later. A
+Gemini session needs none of what follows: it lists Obeya's tools anew from their server at every
+resume, so it has them as they are now.
 A tool whose parameters or description Obeya changed meanwhile would so go on being called the
 old way (a parameter added since left out). Obeya therefore remembers for every session the
 tools it has heard of (a print of each one's description and schema, by name, kept 90 days after
@@ -631,13 +766,24 @@ as `ssh://<host>/<path>`; a new card goes there when the machines before it have
 
 #### Running there
 
-Every git call, stack command and worker session (Claude Code, or Codex's app server, whichever its
-group runs on) in such a workspace runs there through `ssh`,
-unseen by its callers: `ssh <target> exec sh -c '…'` with the installers' directories on the `PATH`;
-`exec`, so a shell that forks for a command (dash) does not stay as the session's parent under
-another pid. One shared connection where `ControlMaster` exists (not Windows), its sockets in
+Every git call, stack command and worker session (Claude Code, Codex's app server or agy's ACP
+server, whichever its group runs on) in such a workspace runs there through `ssh`,
+unseen by its callers: `ssh <target> exec sh -c '…'` with the installers' directories first on the
+`PATH`; `exec`, so a shell that forks for a command (dash) does not stay as the session's parent under
+another pid. That shell is neither a login shell nor interactive, so it lacks what a terminal there
+adds (`/etc/paths.d` on a Mac, the profile and rc files), which agents need to find what a terminal
+there finds (`dotnet`, say). Obeya asks the host's login shell for its `PATH` as it does here (see
+Setup assistant in Running Obeya: `SHELL` there as a login shell and interactive, without a terminal, at most 10
+seconds, then ended with what it started) before the host's first command, the one that finds an
+unreachable host back included, and again at each look at its harnesses, so what was installed there
+since is found. The shell starts from the `PATH` ssh gives, not from the one read before, so a
+directory gone from the profile goes; what it says goes after the installers' directories and before
+what ssh gives. A shell that says nothing leaves the `PATH` read before; only the `PATH` is taken,
+for the same reason as here (a token in an rc file would change the logins there). One shared connection where `ControlMaster` exists (not Windows), its sockets in
 `/tmp/obeya-ssh-<uid>` for the owner alone, since whoever reaches a socket uses its connection;
-`BatchMode`; keep-alives that notice a dropped link within 45 s. The server never waits on a call
+`BatchMode`; keep-alives that notice a dropped link within 45 s. A port forwarded for a session
+that cannot be had there (taken) ends the session as a dropped connection does, rather than let it
+run without what reaches Obeya: hooks that fail let every call run, a read-only agent's writes too. The server never waits on a call
 there: each runs beside its other work. A host whose connection failed counts as unreachable until a
 call there answers again (the pool's next look at its free clones, a minute on, say); then waiting cards look
 again.
@@ -663,11 +809,27 @@ owner's demo settings without a key file (no API key goes to a host) and without
 (`-R`) to a server of Obeya's that answers only narration clips, inline as base64, and hearing such
 a clip back for its captions' times, so demos rendered there get the owner's voice, which only this
 machine runs. A Codex session's hooks reach their
-session's server here through a port of their own forwarded the same way.
+session's server here through a port of their own forwarded the same way, as do a Gemini session's
+hook and Obeya's tools (the MCP server agy connects to), each through a port of its own.
+
+A Gemini session there runs agy on Obeya's Gemini directory there (`gemini` in `~/.obeya/remote`),
+written over the connection at each start as the one here is (see Gemini): Obeya's hook, the skills
+of the plugins as copied there and the host's own, agy's global rules and MCP servers there, and the
+sandbox's grants of every session of this Obeya on that host: readable the host's global git
+configuration and what it includes, writable the git directory a worktree commits into, the agent's
+extra directories, the temporary directory and `~/demos` there. What a session needs to know of the
+host for that (those paths, the repository's own agy configuration where it waits for the owner,
+its CLAUDE.md where agy reads no instructions there) is asked in one command. Images of the owner's
+messages go inline in the prompt, read here; the message names them by their copies there.
 
 Codex there runs on the host's own Codex login: none travels, since Codex keeps its login as a file
 whose refresh token it renews, and one login used on two machines would end the other's. When it
-lost it, the card's "Log in to Codex" renews it there (see Conversation on the card).
+lost it, the card's "Log in to Codex" renews it there (see Conversation on the card). Gemini there
+runs on the host's own agy login too: the one here lives in this machine's keyring, out of reach.
+Over SSH agy reaches no keyring and keeps the login as a file in `~/.gemini` there, which Obeya's
+Gemini directory there links to (see Gemini). Its login is agy's own over SSH (`agy acp --login` there, which prints a sign-in page and takes the
+code pasted back), in a terminal here that Obeya opens: from the card's "Reauthenticate" where a
+session lost it, or from the host's line in "Agents and models" before any card needs it.
 
 Screenshots in the owner's message are copied to `~/.obeya/remote/images` there and named by those
 paths, as are the copies of dropped files whose paths the message holds (to `~/.obeya/remote/files`;
@@ -684,8 +846,8 @@ resumes the session by id with the message not yet taken, or word of the drop if
 session that never started there starts anew with its first message); a
 card waiting for the owner needs no session until their next message. The resumed session first ends
 the one the drop may have left running there, by the pid it wrote, never itself (a restarted host,
-a container say, reuses pids). A host needs git, Claude Code or Codex (with its own login and curl
-for its hooks), and what the repository's work needs.
+a container say, reuses pids). A host needs git, Claude Code, Codex or Gemini (Codex and Gemini with
+their own logins and curl for their hooks), and what the repository's work needs.
 
 ### Decisions
 
@@ -743,18 +905,27 @@ for its hooks), and what the repository's work needs.
 - **Codex on a host runs on that host's own login** (2026-11-04). Rejected: carrying this machine's
   `auth.json` along as the Claude token travels, since Codex renews its refresh token and the copy
   there would end the login here (or the other way round).
+- **Gemini on a host runs on that host's own agy login, given in a terminal here over SSH**
+  (owner, 2026-11-21). agy keeps its login in the system's keyring, which a session over SSH does not
+  reach even on a Mac, so the login here cannot travel, and agy's own login over SSH (a code pasted
+  back) is made for exactly that. Rejected: a fallback to another harness on hosts (the behaviour
+  until then), which left a group on Gemini without Gemini wherever its cards ran on a host;
+  carrying a login along (none to read, and a refresh there would end it here, as for Codex); a
+  login line for every harness on every host (only agy's login can be looked at without a turn,
+  through `/quota`, and Codex has its own sign-in from the card).
 - **Codex logs in again from the card in the browser** (2026-11-04), through the app server's
   ChatGPT sign-in, whose page returns to a port on the machine Obeya runs on (forwarded for a host).
   Rejected: a terminal with `codex login` (the UI sends the owner to no command line, and on a host
   it would not reach the sign-in's return); the device-code sign-in, which works from a phone but
   has to be switched on in ChatGPT's settings first.
-- **A card's own harness, model and effort are chosen in a narrow menu part of its start button and
-  kept with the card** (2026-11-04): starting stays one click on the group's setting, and a card
-  picked for another (a hard one for a bigger model or more effort, one for Codex to compare) keeps
-  it for every session of its run. Rejected: a part of the button naming the group's setting on
-  every card (owner, 2026-11-04: too prominent for what is rarely wanted); the choice in a menu that
-  starts the card at once; changing it while the card works (a session cannot move to another
-  harness, and a model changed between turns would not be what the owner saw it start with).
+- **A card's own harness, model and effort are kept with the card** (2026-11-04): starting stays one
+  click on the group's setting, and a card picked for another (a hard one for a bigger model or more
+  effort, one for Codex to compare) keeps it for every session of its run. Where it is chosen, see
+  the decision on the chip button below. Rejected: a part of the start button naming the group's
+  setting on every card (owner, 2026-11-04: too prominent for what is rarely wanted); the choice in
+  a menu that starts the card at once; changing it while a worker works (a session cannot move to
+  another harness, and a model changed between turns would not be what the owner saw it start
+  with).
 - **A fallback per group for the usage limit, and the owner moves a worker at work** (owner,
   2026-11-14, GitHub issue #92): with Claude Code at its limit, a card started for Codex stayed
   at "Obeya checking", since the check ran on Claude Code and waited for its reset, and changing the
@@ -769,19 +940,57 @@ for its hooks), and what the repository's work needs.
   selects beside a fourth that picked only a model read as if the fallback had no effort of its own,
   and the owner picks model and effort the same way everywhere; "Continue with …" offers the same
   menu, since the owner may want another model or effort for the takeover.
+- **A card's choice holds for every agent on it, the one discussing it as an idea as well as its
+  worker, chosen at one small button among the card's buttons** (owner, 2026-11-17/18): the owner
+  picked a model beside "Start agent", clicked "Discuss as an idea", and could not tell whether the
+  idea's agent took it (it did not: the choice went to the worker alone). One choice per card is
+  what the owner has in mind, and a card worth a bigger model to build is worth it to think through.
+  A discussion takes a change from its next message, since it ends its session after each reply
+  anyway; a model changed between turns reads the conversation as it stands, and only the prompt
+  cache is lost once. The button is an icon until the card chooses, so the usual case stays quiet,
+  and the model shows once on the card, not also over the conversation. Rejected: a menu part on
+  each button that starts an agent (three or four identical menus in a row, and a line "for every
+  agent on this card" that left unclear what "every agent" meant: it meant "whichever button you
+  click"); a picker naming the setting in a line of its own under the buttons (large, prominent, a
+  second mention of the model beside the conversation's, and the extra line pushed the buttons up
+  from the card's edge); a separate choice for the exploration agent (two menus that look alike and
+  mean different things).
 - **Harness, model and effort are set per group and per card, nowhere else** (owner, 2026-11-05):
   the two levels cover what the owner picks in use, and each further level makes it harder to tell
   what a card will run on. Rejected: defaults per canvas and per project over the machine-wide
   ones; a recommended model per card, from a size estimate, shown beside the default.
-- **Claude Code and Codex are the only harnesses** (owner, 2026-11-05): there is no clear need for a
-  third one, nor for local models where no harness brings them. Should one be wanted, GitHub
-  Copilot comes first, through its CLI's ACP (`copilot --acp`), with the models the plan and the
-  organization's admin allow: it reaches developers whose company allows only Copilot, where
-  opencode's and pi's users overlap with Claude Code's and Codex's, and ACP would open the door to
-  other agents that speak it (opencode, Gemini CLI). Against it then: the CLI is off in an
-  organization until an admin enables it, usage-based billing (since June 2026, $19 of credit a
-  month on Business) is used up by a few long parallel cards, and whether ACP resumes a session
-  after a restart and reports the usage for the bar is unchecked.
+- **Gemini as a third harness, through `agy acp`** (owner, 2026-11-20): Gemini 4 Neon came to
+  Google AI Pro and Ultra, and an owner with such a subscription runs agents on it as on Codex. The
+  Gemini CLI is gone; its successor, Antigravity's `agy` (a closed-source binary for macOS, Windows
+  and Linux), serves ACP. On hosts it runs as Codex does (see below).
+  Rejected: `agy -p` with stream-json, a process per turn (a refused permission ends the turn without
+  a word, a message during the turn cannot steer it, auto mode does not reach print mode); Google's
+  API directly (Obeya runs on the harnesses' subscriptions; agy signs in with an API key or Vertex
+  itself where the owner wants that); Claude and GPT through agy (what Claude Code and Codex run
+  directly); "any ACP agent" in the menus (no need named; the protocol part stands apart for the
+  next one). This replaces the decision of 2026-11-05 that Claude Code and Codex were the only
+  harnesses, which named GitHub Copilot's ACP as the first candidate for a third.
+- **A Gemini directory of Obeya's own** (2026-11-20): agy reads hooks only from files (the
+  workspace's `.agents/`, its global configuration, plugins), none per session or process, and its
+  sandbox's grants only from a project's settings. Obeya's own `--gemini-dir` holds them without
+  writing into the owner's configuration or the repositories, and the login stays the keyring's.
+  Rejected: installing Obeya's hook and grants in the owner's `~/.gemini` (every own agy session of
+  the owner would carry them); a workspace's `.agents/hooks.json` (a file in every repository, which
+  git would show). The owner's global rules, skills and MCP servers are carried over so a session
+  reads what agy would read without Obeya.
+- **agy's hook before every command, not its permission request** (2026-11-20): a hook can refuse a
+  command with a reason, which the agent reads and works on from; a refused permission request ends
+  the turn without a word (measured: a refused ten-minute sleep ended the turn after 4.4 seconds,
+  without text). So a long wait is refused by the hook, as by Codex's, and a refusal the owner gives
+  reaches the agent as a turn of its own.
+- **Gemini in auto mode, its sandbox granted the git configuration** (2026-11-20): the counterpart of
+  Codex's sandbox with its reviewer. Rejected: approving what agy asks on Obeya's own (that would
+  drop agy's check the owner did not choose to drop); default mode (every command a question).
+- **Gemini's quota from `agy -p /quota`** (2026-11-20): it answers in under a second (2.5 s with the
+  process's start), starts no turn and names each window's remaining share and reset. How a turn
+  fails at a used-up quota is taken from agy's wording and Google's (`RESOURCE_EXHAUSTED`), not seen
+  yet: the account the checks ran on never ran out.
+- **Gemini's costs from Google's list prices** (2026-11-20), as Codex's: agy reports tokens, no price.
 - **Codex models are chosen by family, and every Codex start passes an explicit model** (owner,
   2026-11-06): the owner picks a family by name (Sol, Terra), as Claude Code's aliases, and an
   agent runs on its newest version. What an agent runs on must not depend on the local Codex
@@ -846,6 +1055,11 @@ for its hooks), and what the repository's work needs.
 - **A finished card's question takes a temporary worktree when no clone is free** (2026-10-15).
   Rejected: failing; queuing it (clones are often held for days by cards in review); the read tree
   (other agents read there at the same time).
+- **A waiting card that lost its workspace takes a fresh clone for what comes for its agent**
+  (2026-11-21): a note or pull request news to it reaches the agent, resumed there. Rejected:
+  failing (the owner's note was refused, and pull request news was lost); a temporary worktree where
+  no clone is free (its work lands from its workspace later, and a worktree outside the pool cannot
+  carry that), so it waits for the next clone instead.
 - **A folder may stay without git** (2026-10-20): a cloud-drive archive (8.1 GB, 4,615 files, mostly
   PDFs) cannot take a `.git` without sync conflicts and copies of every scan. Cards work in place, in
   parallel with the Coordinator's overlap check on files; changes are told apart by ctime; undo is

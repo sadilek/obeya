@@ -16,6 +16,7 @@ import { resource } from './resources';
 import { failureText, OWN_GROUP, spawnOutput } from './spawn';
 import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { messageOf } from '../core/text';
+import { SHELL_PATIENCE_MS } from './path';
 
 /** Where a workspace on another machine says which machine it is on. */
 const PREFIX = 'ssh://';
@@ -40,11 +41,34 @@ export function hostName(path: string | null | undefined): string | null {
 
 export class HostError extends Error {}
 
+/** What a command there came to. */
+type Output = { code: number; stdout: string; stderr: string };
+
 /** A host's exit code for "the connection failed" (ssh's own), whatever the command there did. */
 export const LOST = 255;
 
 /** Directories that come first on the host's PATH: where the official installers put Claude Code and Bun. */
-const PATH_PREFIX = '$HOME/.local/bin:$HOME/.bun/bin';
+export const PATH_PREFIX = '$HOME/.local/bin:$HOME/.bun/bin';
+
+/**
+ * Says the host's home and the PATH a new terminal there has, a line each: the login shell there
+ * (`SHELL`) started as a terminal starts it, as a login shell and interactive, so that the system's
+ * directories (on a Mac `/etc/paths.d` through `path_helper`) and the owner's profile and rc files
+ * count. Run with the PATH ssh gives, so a directory gone from the profile goes from what it says.
+ * Without a terminal (`ssh -T`), into a file rather than a pipe, which a program its rc files leave
+ * running would keep open (and the connection with it), and at most as long as here: a shell that
+ * takes longer is killed with what it started, as a group of its own (`setsid` where there is one,
+ * as on Linux, whose dash makes no group for `set -m` without a terminal; job control elsewhere).
+ * Says nothing where the shell fails or takes longer.
+ */
+const terminalPath = (patience: number) => [
+  'f=$(mktemp) || exit 1',
+  'if command -v setsid >/dev/null 2>&1; then own=setsid; else own=; set -m 2>/dev/null; fi',
+  `$own "\${SHELL:-/bin/sh}" -l -i -c "printenv PATH > '$f'" </dev/null >/dev/null 2>&1 & p=$!`,
+  `(sleep ${Math.ceil(patience / 1000)}; kill -9 -$p 2>/dev/null || kill -9 $p) </dev/null >/dev/null 2>&1 & w=$!`,
+  `wait $p && { printf '%s\\n' "$HOME"; cat "$f"; }`,
+  'kill $w 2>/dev/null; rm -f "$f"; exit 0',
+].join('\n');
 
 /** Obeya's directory on a host, in its home: the plugin, the demo settings, the owner's screenshots, voices. */
 export const HOST_DIR = '.obeya/remote';
@@ -89,6 +113,8 @@ export interface HostOptions {
   claudeToken?: () => string | undefined;
   /** The program that is `ssh`, else `OBEYA_SSH`, else `ssh` (tests and demos run the commands on this machine with a stand-in). */
   program?: string;
+  /** How long the login shell there may take to say its PATH, as here unless a test says otherwise. */
+  patience?: number;
 }
 
 /** A machine reached over SSH. */
@@ -100,6 +126,12 @@ export class SshHost {
   private down = false;
   /** Who hears that the host answers again after it did not. */
   private back: (() => void)[] = [];
+  /** The PATH a new terminal there has, as last read: before the installers' directories, after them what ssh gives. */
+  private terminal: string[] = [];
+  /** Whether the host answered a reading of that PATH (whatever it said): until then a command there waits for one first. */
+  private pathRead = false;
+  /** The reading of that PATH under way, which a command or check that starts meanwhile waits for too: what failed where the host did not answer. */
+  private reading?: Promise<Output | undefined>;
 
   constructor(readonly o: HostOptions) {}
 
@@ -136,24 +168,40 @@ export class SshHost {
 
   /**
    * The argv of `ssh` running `command` (words, or a shell line) there in `cwd`: through `sh`, with
-   * the installers' directories on its PATH; with `env`, read as the first line of stdin, so that
+   * the installers' directories first on its PATH and the one a terminal there has after them (as
+   * last read, see `readPath`; `path: false`: with the PATH ssh gives); with `env`, read as the first line of stdin, so that
    * no secret shows in a process list. `sh` replaces the login shell there rather than running
    * under it (dash, say, forks for it), so that a session's pid is the one ssh started and a signal
    * to it reaches the command.
    */
-  argv(command: string[] | string, o: { cwd?: string; env?: boolean; forward?: string[]; local?: string } = {}): string[] {
+  argv(command: string[] | string, o: { cwd?: string; env?: boolean; path?: false; forward?: string[]; local?: string } = {}): string[] {
     const line = typeof command === 'string' ? command : `exec ${command.map(sh).join(' ')}`;
     const script = [
       o.env ? 'IFS= read -r obeya_env; eval "$obeya_env"; unset obeya_env;' : '',
-      `PATH="${PATH_PREFIX}:$PATH"; export PATH;`,
+      o.path === false ? '' : this.pathLine(),
       o.cwd ? `cd ${sh(o.cwd)} && { ${line}
 }` : line,
     ]
       .filter(Boolean)
       .join(' ');
-    // a forward from here goes on a connection of its own, which ends with it rather than with the shared one
-    const forwards = [...(o.forward ?? []).flatMap((f) => ['-R', f]), ...(o.local ? ['-o', 'ExitOnForwardFailure=yes', '-L', o.local] : [])];
+    // a forward from here goes on a connection of its own, which ends with it rather than with the shared one;
+    // a forward that cannot be made (its port taken there) ends the command as a lost connection would,
+    // rather than leave it running without what reaches Obeya (a session's hooks would let every call run)
+    const forwards = [...(o.forward?.length || o.local ? ['-o', 'ExitOnForwardFailure=yes'] : []), ...(o.forward ?? []).flatMap((f) => ['-R', f]), ...(o.local ? ['-L', o.local] : [])];
     return [this.o.program ?? process.env.OBEYA_SSH ?? 'ssh', ...this.options(!!o.local), ...forwards, this.o.ssh, `exec sh -c ${sh(script)}`];
+  }
+
+  /** The shell line that sets the PATH of a command there: the installers' directories first, then the one a terminal there has (as last read), then what ssh gives. */
+  pathLine(): string {
+    return `PATH="${PATH_PREFIX}":${this.terminal.length ? `${sh(this.terminal.join(':'))}:` : ''}"$PATH"; export PATH;`;
+  }
+
+  /**
+   * The argv of `ssh` running the shell line `line` there with a terminal (`-t`), for a terminal here
+   * in which the owner answers what it asks (a login's code): `ssh` may ask for a password there too.
+   */
+  interactive(line: string): string[] {
+    return [this.o.program ?? process.env.OBEYA_SSH ?? 'ssh', '-t', this.o.ssh, line];
   }
 
   /** The environment line for a command in `cwd`: the GitHub login of the repository it is in. */
@@ -184,9 +232,48 @@ export class SshHost {
     for (const f of this.back) f();
   }
 
+  /**
+   * Reads the PATH a new terminal there has (`terminalPath`), for the commands and sessions there
+   * from now on: first before the host's first command, again at each look at its harnesses (what
+   * was installed there since is found). Only the PATH, not the shell's environment: a token an rc
+   * file exports would change the logins there. A reading under way is shared; where the shell says
+   * nothing, the PATH read before stands. Comes to what ssh said where the host did not answer.
+   */
+  readPath(): Promise<Output | undefined> {
+    this.reading ??= (async () => {
+      const patience = this.o.patience ?? SHELL_PATIENCE_MS;
+      const r = await spawnOutput(this.argv(terminalPath(patience), { path: false }), { timeout: 3 * patience });
+      const code = r.signal ? LOST : r.code;
+      this.heard(code);
+      if (code === LOST) return { code, stdout: '', stderr: r.stderr };
+      const first = !this.pathRead;
+      this.pathRead = true;
+      const [home = '', path = ''] = r.stdout.split('\n');
+      // `/etc/paths.d` may name a directory under `~`, which no shell expands there
+      const dirs = path
+        .split(':')
+        .filter(Boolean)
+        .map((d) => (d === '~' ? home : d.startsWith('~/') ? `${home}/${d.slice(2)}` : d));
+      if (code === 0 && home && dirs.length) this.terminal = [...new Set(dirs)].filter((d) => d !== `${home}/.local/bin` && d !== `${home}/.bun/bin`);
+      else if (first) console.error(`${this.name}: its login shell did not tell its PATH; programs a terminal there finds may be missing`);
+      return undefined;
+    })().finally(() => (this.reading = undefined));
+    return this.reading;
+  }
+
+  /**
+   * Before a command there: the first reading of the terminal's PATH, at once once there was one.
+   * A host that does not answer it is asked again before the next command, the one that finds it
+   * back included; what ssh said then stands for the command's own failure.
+   */
+  private async pathKnown(): Promise<Output | undefined> {
+    return this.pathRead ? undefined : this.readPath();
+  }
+
   /** Runs a program (or a shell line) there without blocking the server; `input` is its stdin, after the environment line. */
-  async run(command: string[] | string, o: { cwd?: string; timeout?: number; input?: string } = {}): Promise<{ code: number; stdout: string; stderr: string }> {
-    await this.loginRead(o.cwd);
+  async run(command: string[] | string, o: { cwd?: string; timeout?: number; input?: string } = {}): Promise<Output> {
+    const [, lost] = await Promise.all([this.loginRead(o.cwd), this.pathKnown()]);
+    if (lost) return lost;
     const r = await spawnOutput(this.argv(command, { cwd: o.cwd, env: true }), {
       stdin: new Blob([this.envLine(o.cwd), o.input ?? '']),
       ...(o.timeout ? { timeout: o.timeout } : {}),
@@ -272,6 +359,7 @@ export class SshHost {
    * in its settings there: `latest`, the default, or `stable`); null where it is not installed.
    */
   async claude(): Promise<{ version: string; channel: 'latest' | 'stable' } | null> {
+    await this.readPath();
     const r = await this.run('v=$(claude --version 2>/dev/null) || exit 3; printf \'%s\\n\' "$v"; cat "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" 2>/dev/null; true', { timeout: 30_000 });
     if (r.code === 3) return null;
     if (r.code !== 0) throw new HostError(`${this.name}: ${failureText(r)}`);
@@ -295,6 +383,7 @@ export class SshHost {
 
   /** The version of Codex there; null where it is not installed. */
   async codex(): Promise<{ version: string } | null> {
+    await this.readPath();
     const r = await this.run('v=$(codex --version 2>/dev/null) || exit 3; printf \'%s\\n\' "$v"', { timeout: 30_000 });
     if (r.code === 3) return null;
     if (r.code !== 0) throw new HostError(`${this.name}: ${failureText(r)}`);
@@ -327,18 +416,21 @@ export class SshHost {
 
   /**
    * A session's transcript there (Claude Code's, under the directory it ran in; a Codex thread's,
-   * under Codex's sessions or archived ones), copied here for the work retrospective; null when there
-   * is none or the host does not answer.
+   * under Codex's sessions or archived ones; a Gemini session's, in Obeya's Gemini directory there),
+   * copied here for the work retrospective; null when there is none or the host does not answer.
    */
   async transcript(sessionId: string, cwd: string): Promise<string | null> {
     const thread = sessionId.startsWith('codex:') ? sessionId.slice('codex:'.length) : null;
-    if (thread ? !/^[\da-f-]{36}$/i.test(thread) : !/^[\w-]+$/.test(sessionId)) return null;
+    const gemini = sessionId.startsWith('gemini:') ? sessionId.slice('gemini:'.length) : null;
+    if (thread ? !/^[\da-f-]{36}$/i.test(thread) : !/^[\w-]+$/.test(gemini ?? sessionId)) return null;
     const read = thread
       ? `f=$(find "\${CODEX_HOME:-$HOME/.codex}/sessions" "\${CODEX_HOME:-$HOME/.codex}/archived_sessions" -name ${sh(`rollout-*-${thread}.jsonl`)} 2>/dev/null | head -n 1); [ -n "$f" ] && cat "$f"`
-      : `cat "$HOME"/.claude/projects/${sh(cwd.replace(/[^a-zA-Z0-9]/g, '-'))}/${sh(`${sessionId}.jsonl`)}`;
+      : gemini
+        ? `cat "$HOME"/${sh(`${HOST_DIR}/gemini/antigravity-cli/brain/${gemini}/.system_generated/logs/transcript.jsonl`)}`
+        : `cat "$HOME"/.claude/projects/${sh(cwd.replace(/[^a-zA-Z0-9]/g, '-'))}/${sh(`${sessionId}.jsonl`)}`;
     const r = await this.run(read);
     if (r.code !== 0 || !r.stdout) return null;
-    const file = join(this.o.home, 'hosts', this.name, 'transcripts', `${thread ?? sessionId}.jsonl`);
+    const file = join(this.o.home, 'hosts', this.name, 'transcripts', `${thread ?? gemini ?? sessionId}.jsonl`);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, r.stdout);
     return file;
@@ -448,7 +540,10 @@ export class SshHost {
    * command there and ssh say on stderr.
    */
   session(o: { cwd?: string; files?: HostFiles; login?: boolean; forwards?: string[]; onExit?: (code: number | null) => void; onStderr?: (text: string) => void }): (s: SpawnOptions) => SpawnedProcess {
-    const ready = Promise.all([o.files && this.prepare(o.files), this.loginRead(o.cwd)]).then(([dir]) => dir);
+    const ready = Promise.all([o.files && this.prepare(o.files), this.loginRead(o.cwd), this.pathKnown()]).then(([dir, , lost]) => {
+      if (lost) throw new HostError(`${this.name}: ${failureText(lost)}`);
+      return dir;
+    });
     return (s) => {
       const p = deferred(ready, (dir) => {
         const token = o.login === false ? undefined : this.o.claudeToken?.();
@@ -460,7 +555,10 @@ export class SshHost {
         // only the narration's port: whoever is on that machine reaches the forward too
         const here = s.env.OBEYA_URL ? Number(new URL(s.env.OBEYA_URL).port) : 0;
         // a port of its own per session, so that sessions ending do not take another's forward along
-        const there = here ? 30_000 + Math.floor(Math.random() * 30_000) : 0;
+        // and none of the session's own forwards takes (a clash would end the session as a lost connection)
+        const taken = new Set((o.forwards ?? []).map((f) => Number(f.split(':')[1])));
+        let there = 0;
+        while (here && (!there || taken.has(there))) there = 30_000 + Math.floor(Math.random() * 30_000);
         // a session cut off by a dropped connection may still run there: the one that resumes it ends it first;
         // not itself, whose pid a host that restarted since (a container, say) may give out again
         const pid = dir && o.cwd ? sh(`${dir}/sessions/${o.cwd.replace(/[^\w.-]+/g, '-')}.pid`) : undefined;

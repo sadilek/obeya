@@ -1,12 +1,14 @@
-// Setting up git in a folder that has none, for the first canvas and "+ Repository" in the
-// configuration: first a preview of what the first commit holds (computed against a git directory
-// of its own in the temp directory, so looking changes nothing in the folder), then, once the owner
-// confirms, `git init`, a default `.gitignore` where the folder has none, and the first commit with
-// every file not ignored, since workers only see committed files.
+// Setting up git in a folder that has none, or the first commit of a repository that has none yet
+// (`git init` without a commit, a clone of an empty remote), for the first canvas and
+// "+ Repository" in the configuration: first a preview of what the first commit holds (computed
+// against a git directory of its own in the temp directory, so looking changes nothing in the
+// folder), then, once the owner confirms, `git init` where there is no repository, a default
+// `.gitignore` where the folder has none, and the first commit with every file not ignored, since
+// workers only see committed files and cards start from a commit.
 
-import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { type GitSetupPreview, LARGE_FILE } from '../core/types';
 import { BadRequest } from './board';
 import { GIT } from './git';
@@ -57,9 +59,28 @@ export function withoutGit(path: string): boolean {
   return !run(['-C', path, 'rev-parse', '--git-dir']).ok;
 }
 
-const needsFolder = (path: string) => {
-  if (!withoutGit(path)) throw new BadRequest('invalid', `${path} is no folder without a git repository`);
-};
+/**
+ * The branch HEAD names where the path is the top of a repository that has no commit yet: no
+ * branch of its own or of `origin`, HEAD on a branch still to be born (`git init`, a clone of an
+ * empty remote, which names the remote's branch); null otherwise.
+ */
+export function withoutCommit(path: string): string | null {
+  // at the top of the repository's work tree, not in a folder inside it
+  const up = run(['-C', path, 'rev-parse', '--show-cdup']);
+  if (!up.ok || up.out.trim() || run(['-C', path, 'rev-parse', '--is-bare-repository']).out.trim() !== 'false') return null;
+  if (run(['-C', path, 'rev-parse', '--verify', '--quiet', 'HEAD']).ok) return null;
+  if (run(['-C', path, 'for-each-ref', '--count=1', 'refs/heads/', 'refs/remotes/']).out.trim()) return null;
+  const head = run(['-C', path, 'symbolic-ref', '--short', '-q', 'HEAD']);
+  return head.ok ? head.out.trim() || null : null;
+}
+
+/** What the folder needs before cards can work in it: git (`init`), or only a first commit (`commit`, on HEAD's branch). */
+function needsSetup(path: string): { init: true } | { init: false; branch: string } {
+  if (withoutGit(path)) return { init: true };
+  const branch = withoutCommit(path);
+  if (branch) return { init: false, branch };
+  throw new BadRequest('invalid', `${path} is no folder without a git repository, nor a repository without a commit`);
+}
 
 /** The branch a new repository starts on: git's `init.defaultBranch`, else `main`. */
 export function initialBranch(): string {
@@ -68,7 +89,7 @@ export function initialBranch(): string {
 
 /** What the first commit of the folder would hold, and what stays out; changes nothing in the folder. */
 export function previewGitSetup(path: string): GitSetupPreview {
-  needsFolder(path);
+  const needs = needsSetup(path);
   const own = existsSync(join(path, '.gitignore'));
   const scratch = mkdtempSync(join(tmpdir(), 'obeya-git-setup-'));
   try {
@@ -76,12 +97,17 @@ export function previewGitSetup(path: string): GitSetupPreview {
     if (!run(['init', '--quiet', '--bare', gitDir]).ok) throw new Error(`git init in ${scratch} failed`);
     const exclude = join(scratch, 'gitignore');
     writeFileSync(exclude, own ? '' : DEFAULT_GITIGNORE);
-    const list = (...more: string[]) => {
-      const r = run([`--git-dir=${gitDir}`, `--work-tree=${path}`, 'ls-files', '-z', '--others', '--exclude-standard', `--exclude-from=${exclude}`, ...more], path);
+    // a repository's own exclusions, which `git add` heeds
+    const info = needs.init ? null : run(['-C', path, 'rev-parse', '--git-path', 'info/exclude']).out.trim();
+    const more = info && existsSync(resolve(path, info)) ? [`--exclude-from=${resolve(path, info)}`] : [];
+    const list = (...extra: string[]) => {
+      const r = run([`--git-dir=${gitDir}`, `--work-tree=${path}`, 'ls-files', '-z', '--others', '--exclude-standard', `--exclude-from=${exclude}`, ...more, ...extra], path);
       if (!r.ok) throw new Error(`git ls-files in ${path}: ${r.err}`);
       return r.out.split('\0').filter(Boolean);
     };
-    const files = list().map((f) => ({ path: f, bytes: size(join(path, f)) }));
+    // what the owner staged in a repository already goes in, ignored or not, as `git add` keeps it
+    const staged = needs.init ? [] : run(['-C', path, 'ls-files', '-z', '--cached']).out.split('\0').filter(Boolean);
+    const files = [...new Set([...list(), ...staged])].map((f) => ({ path: f, bytes: size(join(path, f)) }));
     // the default .gitignore goes in with the files
     if (!own) files.push({ path: '.gitignore', bytes: Buffer.byteLength(DEFAULT_GITIGNORE) });
     const entries = new Map<string, { path: string; dir: boolean; files: number; bytes: number }>();
@@ -94,13 +120,16 @@ export function previewGitSetup(path: string): GitSetupPreview {
     }
     return {
       path,
-      branch: initialBranch(),
+      branch: needs.init ? initialBranch() : needs.branch,
+      ...(needs.init ? {} : { repo: true }),
       ...(own ? {} : { gitignore: DEFAULT_GITIGNORE }),
       files: files.length,
       bytes: files.reduce((n, f) => n + f.bytes, 0),
       entries: [...entries.values()].sort((a, b) => Number(b.dir) - Number(a.dir) || a.path.localeCompare(b.path)),
       large: files.filter((f) => f.bytes >= LARGE_FILE).sort((a, b) => b.bytes - a.bytes),
-      ignored: list('--ignored', '--directory').sort(),
+      ignored: list('--ignored', '--directory')
+        .filter((f) => !staged.includes(f))
+        .sort(),
     };
   } finally {
     rmSync(scratch, { recursive: true, force: true });
@@ -116,31 +145,42 @@ function size(file: string): number {
 }
 
 /**
- * Makes the folder a repository with its first commit: on git's `init.defaultBranch` (else
- * `main`), with the default `.gitignore` where it has none, every file not ignored, under git's
- * name and e-mail. Undone where the commit fails, so the folder is as it was.
+ * Gives the folder its first commit, making it a repository first where it is none: on git's
+ * `init.defaultBranch` (else `main`) in a new repository, on the branch HEAD names in one without
+ * a commit; with the default `.gitignore` where it has none, every file not ignored, under git's
+ * name and e-mail. Undone where the commit fails, so the folder is as it was; `undo` takes it back later.
  */
-export function setUpGit(path: string): { branch: string } {
-  needsFolder(path);
-  const name = run(['config', '--get', 'user.name']).out.trim();
-  const email = run(['config', '--get', 'user.email']).out.trim();
+export function setUpGit(path: string): { branch: string; undo: () => void } {
+  const needs = needsSetup(path);
+  // a repository's own name and e-mail count too
+  const at = needs.init ? [] : ['-C', path];
+  const name = run([...at, 'config', '--get', 'user.name']).out.trim();
+  const email = run([...at, 'config', '--get', 'user.email']).out.trim();
   if (!name || !email) throw new BadRequest('noIdentity', "git has no name and e-mail for commits (user.name, user.email)");
-  const branch = initialBranch();
+  const branch = needs.init ? initialBranch() : needs.branch;
   const gitignore = join(path, '.gitignore');
   const wrote = !existsSync(gitignore);
+  // what the owner staged in a repository without a commit, to put back where the commit fails or is undone
+  const index = needs.init ? null : resolve(path, run(['-C', path, 'rev-parse', '--git-path', 'index']).out.trim());
+  const staged = index && existsSync(index) ? readFileSync(index) : null;
+  /** The folder as it was: without git, or without the commit, with what was staged. */
+  const undo = () => {
+    if (needs.init) rmSync(join(path, '.git'), { recursive: true, force: true });
+    else {
+      run(['-C', path, 'update-ref', '-d', `refs/heads/${branch}`]);
+      if (staged) writeFileSync(index!, staged);
+      else rmSync(index!, { force: true });
+    }
+    if (wrote) rmSync(gitignore, { force: true });
+  };
   if (wrote) writeFileSync(gitignore, DEFAULT_GITIGNORE);
-  const steps = [
-    ['init', '--quiet', `--initial-branch=${branch}`],
-    ['add', '--all'],
-    ['commit', '--quiet', '--allow-empty', '-m', 'First commit'],
-  ];
+  const steps = [...(needs.init ? [['init', '--quiet', `--initial-branch=${branch}`]] : []), ['add', '--all'], ['commit', '--quiet', '--allow-empty', '-m', 'First commit']];
   for (const step of steps) {
     const r = run(['-C', path, ...step]);
     if (r.ok) continue;
-    rmSync(join(path, '.git'), { recursive: true, force: true });
-    if (wrote) rmSync(gitignore, { force: true });
+    undo();
     throw new BadRequest('gitSetup', `git ${step[0]} in ${path}: ${r.err}`);
   }
-  console.log(`Obeya: set up git in ${path} on ${branch}`);
-  return { branch };
+  console.log(`Obeya: ${needs.init ? 'set up git' : 'made the first commit'} in ${path} on ${branch}`);
+  return { branch, undo };
 }

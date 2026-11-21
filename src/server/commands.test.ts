@@ -161,7 +161,7 @@ describe('the Coordinator remembers', () => {
     await ran(k);
     expect(executed).toEqual([
       { do: 'approve', card: a.id },
-      { do: 'newCard', title: 'Archiv', body: 'Folge von Export', start: false },
+      { do: 'newCard', title: 'Archiv', body: 'Folge von Export', start: false, spoken: true },
     ]);
   });
 
@@ -185,7 +185,7 @@ describe('the Coordinator remembers', () => {
     next.resume();
     expect(next.holding()).toBe(true);
     await settle();
-    expect(ran).toEqual([{ do: 'newCard', title: 'Hinweis „unten“ korrigieren', body: 'Die Demo-Einstellungen stehen links.', start: true }]);
+    expect(ran).toEqual([{ do: 'newCard', title: 'Hinweis „unten“ korrigieren', body: 'Die Demo-Einstellungen stehen links.', start: true, spoken: true }]);
     expect(next.holding()).toBe(false);
     expect(later.sheet.heldCommands()).toEqual([]);
     // it runs once: a third start finds nothing
@@ -257,7 +257,7 @@ describe('the Coordinator remembers', () => {
     expect(session.spec.tools.find((t) => t.name === 'act')!.description).toContain('until when the owner names a time for the work');
     k.arm(heard.token!);
     await ran(k);
-    expect(executed).toEqual([{ do: 'newCard', title: 'Depots einrichten', body: 'Anfang Dezember die Depots einrichten.', start: true, until: new Date(local(40)).toISOString() }]);
+    expect(executed).toEqual([{ do: 'newCard', title: 'Depots einrichten', body: 'Anfang Dezember die Depots einrichten.', start: true, until: new Date(local(40)).toISOString(), spoken: true }]);
     // a day without an hour is 08:00 that day, local
     const day = local(40).slice(0, 10);
     const { heard: dated } = await say(k, 'und eine fürs Trinkgeld, auch Anfang Dezember', 'act', { actions: [{ do: 'new_card', title: 'Trinkgeld', body: 'Trinkgeld.', until: day }], confirm: '…' });
@@ -345,7 +345,7 @@ describe('the Coordinator remembers', () => {
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
     await ran(k);
-    expect(executed[1]).toEqual({ do: 'newCard', title: 'ambient-Ton stoppen', body: finding, start: false, from: a.id });
+    expect(executed[1]).toEqual({ do: 'newCard', title: 'ambient-Ton stoppen', body: finding, start: false, from: a.id, spoken: true });
   });
 
   test('an action that does not fit the card is refused in the turn, so the Coordinator can answer instead', async () => {
@@ -849,7 +849,7 @@ describe('what the agent of a card passes on from the owner\'s words', () => {
         const k = commander();
         // a follow-up, a rule, a stop, an approval: confirmed, and taken back within the window
         const commands: [string, string, Record<string, unknown>[], Command][] = [
-          ['mach eine Folgeaufgabe für Excel', 'A follow-up card for Excel', [{ do: 'new_card', card: tag(a), title: 'Excel-Export', body: 'Auch als Excel.' }], { do: 'newCard', title: 'Excel-Export', body: 'Auch als Excel.', start: true, from: a.id }],
+          ['mach eine Folgeaufgabe für Excel', 'A follow-up card for Excel', [{ do: 'new_card', card: tag(a), title: 'Excel-Export', body: 'Auch als Excel.' }], { do: 'newCard', title: 'Excel-Export', body: 'Auch als Excel.', start: true, from: a.id, ...(spoken ? { spoken } : {}) }],
           ['Merk dir: Exporte immer mit Kopfzeile', 'Remember: exports always with a header row', [{ do: 'remember', text: 'Exporte immer mit Kopfzeile.' }], { do: 'remember', text: 'Exporte immer mit Kopfzeile.', card: a.id }],
         ];
         // an agent in a pull request is not stopped
@@ -911,7 +911,7 @@ describe('what the owner says or types to the Coordinator about a card with an a
     return a;
   };
 
-  test('the Coordinator learns whether the words were spoken or typed, and in which field', async () => {
+  test('the Coordinator learns whether the words were spoken, typed or dictated, and in which field', async () => {
     const source = board.create({ title: 'Login', x: 0, y: 0 });
     const p = board.propose(source.id, { title: 'Export', task: 'CSV', reason: 'Fehlt.', idea: false, questions: [] });
     const k = commander();
@@ -923,6 +923,13 @@ describe('what the owner says or types to the Coordinator about a card with an a
     runtime.last.call('reply', { confirm: 'Gut.' });
     runtime.last.emit({ type: 'idle' });
     await heard;
+    // dictated into the field, then sent from there: speech recognition, perhaps edited by hand
+    const dictated = k.hear('lieber als PDF', { card: p.id }, [], { dictated: true, field: 'revise' });
+    await settle();
+    expect(runtime.last.inbox.at(-1)).toContain('The owner dictated into the field for what should change in the proposal (speech recognition, may contain errors; they may have edited it by hand) and sent: "lieber als PDF"');
+    runtime.last.call('reply', { confirm: 'Gut.' });
+    runtime.last.emit({ type: 'idle' });
+    await dictated;
   });
 
   test('a question about the work of an agent goes to that agent, not to a look-up of main', async () => {
@@ -1733,5 +1740,105 @@ describe('card numbers', () => {
     store.setSetting('c', 'card_numbers_since', new Date(Date.now() + 1000).toISOString());
     const { brief } = await say(commander(), 'hallo', 'reply', { confirm: 'Hallo.' });
     expect(brief).toContain("a card's K-number held for one session only, so one said then names another card than the same number now");
+  });
+});
+
+describe('created card links in replies', () => {
+  test('records cards created in the sheet and in an open card log once the undo window passes, resolves remote card lifecycle, and skips undone', async () => {
+    store.ensureCanvas('site', 'Website');
+    let remoteId = '';
+    let remoteShort = '';
+    const k = new Commander({
+      board,
+      runtime,
+      cwd: '/r',
+      delayMs: 15,
+      canvases: () => [{ id: 'site', name: 'Website' }],
+      execute: (c) => {
+        if (c.do === 'newCard' && c.canvas) {
+          const [row] = store.insert([{ canvas_id: c.canvas, kind: 'task', title: c.title, body: c.body, x: 0, y: 0 }]);
+          remoteId = row!.id;
+          remoteShort = row!.short!;
+          return remoteId;
+        }
+        if (c.do === 'newCard') return board.create({ title: c.title, body: c.body, x: 0, y: 0 }).id;
+        if (c.do === 'newIdea') return board.create({ idea: true, title: c.title, body: c.body, x: 0, y: 0 }).id;
+      },
+    });
+    // in Obeya's sheet: a new task and a new idea on this canvas, plus one on another canvas
+    const first = await say(k, 'mach Aufgaben', 'act', {
+      actions: [
+        { do: 'new_card', title: 'Kontrast auf dem Handy', body: 'Buttons kontrastreicher.' },
+        { do: 'new_idea', title: 'Dark Mode', body: 'Farben überdenken.' },
+        { do: 'new_card', title: 'Startseite', body: 'Neues Bild.', canvas: 'Website' },
+      ],
+      confirm: 'Neue Aufgabe „Kontrast auf dem Handy“, neue Idee „Dark Mode“ und „Startseite“ auf Website.',
+    });
+    // before the undo window passes: no links yet
+    expect(board.snapshot().talk[0]!.created).toBeUndefined();
+    k.arm(first.heard.token!);
+    await until(() => board.snapshot().talk[0]!.created?.length === 3);
+    const task = board.items().find((i) => i.title === 'Kontrast auf dem Handy')!;
+    const idea = board.items().find((i) => i.title === 'Dark Mode')!;
+    expect(board.snapshot().talk[0]!.created).toEqual([
+      { id: task.id, title: 'Kontrast auf dem Handy' },
+      { id: idea.id, title: 'Dark Mode' },
+      { id: remoteId, title: 'Startseite', canvas: 'site', short: remoteShort },
+    ]);
+
+    // archiving the remote card on the other canvas marks its link gone after refreshLinked
+    store.update(remoteId, { archived_at: new Date().toISOString() });
+    board.refreshLinked([remoteId]);
+    expect(board.snapshot().talk[0]!.created![2]).toEqual({ id: remoteId, title: 'Startseite', gone: true });
+
+    // taken back: nothing created and no links recorded
+    const undone = await say(k, 'noch eine', 'act', {
+      actions: [{ do: 'new_card', title: 'Abgebrochen', body: '' }],
+      confirm: 'Neue Aufgabe „Abgebrochen“.',
+    });
+    k.arm(undone.heard.token!);
+    expect(k.undo(undone.heard.token!)).toBe(true);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(board.snapshot().talk[1]!.undone).toBe(true);
+    expect(board.snapshot().talk[1]!.created).toBeUndefined();
+
+    // with a card open: attached to the coordinator's reply event in that card's log too
+    const opened = k.hear('mach eine Folgeaufgabe Export', { card: task.id });
+    await settle();
+    runtime.last.call('act', {
+      actions: [{ do: 'new_card', title: 'Export', body: 'Export bauen.' }],
+      confirm: 'Neue Aufgabe „Export“, der Agent startet.',
+    });
+    runtime.last.emit({ type: 'idle' });
+    const h = await opened;
+    k.arm(h.token!);
+    await until(() => board.events(task.id).some((e) => e.created?.length === 1));
+    const exportCard = board.items().find((i) => i.title === 'Export')!;
+    const replyEv = board.events(task.id).find((e) => e.author === 'coordinator' && e.kind === 'say');
+    expect(replyEv?.created).toEqual([{ id: exportCard.id, title: 'Export' }]);
+  });
+
+  test('persists created card links incrementally even if a later action in the same command fails', async () => {
+    const k = new Commander({
+      board,
+      runtime,
+      cwd: '/r',
+      delayMs: 15,
+      execute: (c) => {
+        if (c.do === 'newCard' && c.title === 'Erste') return board.create({ title: c.title, body: '', x: 0, y: 0 }).id;
+        throw new Error('boom on second');
+      },
+    });
+    const { heard } = await say(k, 'zwei Aufgaben', 'act', {
+      actions: [
+        { do: 'new_card', title: 'Erste', body: '' },
+        { do: 'new_card', title: 'Zweite', body: '' },
+      ],
+      confirm: 'Neue Aufgaben „Erste“ und „Zweite“.',
+    });
+    k.arm(heard.token!);
+    await until(() => board.snapshot().talk[0]!.created?.length === 1);
+    const first = board.items().find((i) => i.title === 'Erste')!;
+    expect(board.snapshot().talk[0]!.created).toEqual([{ id: first.id, title: 'Erste' }]);
   });
 });

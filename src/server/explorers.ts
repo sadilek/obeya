@@ -13,7 +13,8 @@ import { formatQuestion } from '../core/card';
 import { type Asked, decisionLog, withPick } from './advisor';
 import { BadRequest, type Board, notPaused, pauseRefused, replyNote } from './board';
 import type { Message, Unread } from './row';
-import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, BackgroundWait } from './runtime';
+import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, type Availability, BackgroundWait, sessionHarness } from './runtime';
+import { type CardAgent, cardAgentOf, type Harness } from '../core/agents';
 import { imageNote } from './images';
 import { describeTool, SPOKEN } from './agent-lines';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
@@ -39,6 +40,10 @@ export interface ExplorerOptions {
   onReplied?: (cardId: string, replied: boolean) => void;
   /** Passes on to the Coordinator what the owner's words to the idea's agent ask of Obeya (`to_obeya`); without it the agent has no such tool. */
   toObeya?: (cardId: string, request: string) => Promise<string>;
+  /** The harness the explorers' group runs on, for an idea without a choice of its own: Claude Code where not given. */
+  harness?: () => Harness;
+  /** Whether a harness is ready and not at its limit, for a discussion to move to it (`Availability`). */
+  avail?: Availability;
   /** How long an ended turn waits for a sign of the agent once none of its background work runs (any more). */
   backgroundGrace?: number;
   /** How long an ended turn waits at most while the agent's background work still runs. */
@@ -262,13 +267,26 @@ export class Explorers {
     this.o.board.readNow(card.id, current.flatMap((m) => m.said));
     const text = unread ? `${UNREAD_NOTE[unread.why]}\n\n${unread.messages.map((m) => m.text).join('\n\n')}\n\n---\n\n${message}` : message;
     const all = current.flatMap((m) => m.images);
-    if (row.session_id) return this.launch(card, current, text, { resume: row.session_id, images: all, quiet });
+    // the card's choice of harness, model and effort, over the explorers' setting, from this message on
+    const agent = row.agent ? cardAgentOf(row.agent) : undefined;
+    if (row.session_id && !this.movesOn(row.session_id, agent)) return this.launch(card, current, text, { resume: row.session_id, images: all, quiet, agent });
     // a planned card that became an idea brings the screenshots of its task
     const shots = this.o.imageFiles?.(card.images) ?? [];
-    this.launch(card, current, `${this.briefing(card, shots, current.flatMap((m) => m.said))}\n\n${text}`, { images: [...shots, ...all], quiet });
+    this.launch(card, current, `${this.briefing(card, shots, current.flatMap((m) => m.said))}\n\n${text}`, { images: [...shots, ...all], quiet, agent });
   }
 
-  private launch(card: Item, current: Message[], message: string, { resume, images, quiet }: { resume?: string; images: string[]; quiet: boolean }) {
+  /**
+   * Whether the discussion goes on in a new session: the idea is to run on another harness than its
+   * session did (the card's choice, else the explorers' setting), which cannot take that session over.
+   * Not while that harness is at its limit: the session placed on the fallback goes on there.
+   */
+  private movesOn(session: string, agent: CardAgent | undefined): boolean {
+    const to = agent?.harness ?? this.o.harness?.() ?? 'claude';
+    if (to === sessionHarness(session)) return false;
+    return !this.o.avail || (this.o.avail.ready(to) && !this.o.avail.limit(to));
+  }
+
+  private launch(card: Item, current: Message[], message: string, { resume, images, quiet, agent }: { resume?: string; images: string[]; quiet: boolean; agent?: CardAgent | undefined }) {
     // where it reads, first: without its repository on the canvas, nothing starts
     const cwd = this.o.pathFor(card);
     const preferences = this.o.preferences?.() ?? '';
@@ -286,6 +304,7 @@ export class Explorers {
         cwd,
         role: 'explorer',
         spendOn: card.id,
+        ...(agent ? { agent } : {}),
         ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
         system: system(this.o.board.conversation(), this.o.board.language(), this.o.repoLanguage?.(card) ?? 'en', !!this.o.toObeya) + (preferences ? `\n\n${preferences}` : ''),
         tools: this.tools(card.id, live),
@@ -322,7 +341,7 @@ export class Explorers {
     live.work.stop();
     switch (e.type) {
       case 'session':
-        this.o.board.work(cardId, { session_id: e.id, model: e.model ?? null });
+        this.o.board.work(cardId, { session_id: e.id, model: e.model ?? null, effort: e.effort ?? null });
         break;
       case 'text':
         live.lastText = e.text;

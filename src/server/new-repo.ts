@@ -1,7 +1,7 @@
 // A repository Obeya creates for a card that is to be built in one that does not exist yet: the
 // folder where there is none, then git as "Set up a git repository here" sets it up (the
 // default .gitignore, a first commit under git's name and e-mail), local only. A folder that is a
-// repository already is taken as it is. Or, where the card names an existing project to start from
+// repository already is taken as it is, given its first commit where it has none. Or, where the card names an existing project to start from
 // (`NewRepo.from`), a clone of it: of a GitHub repository the owner cannot push to, a fork of it in
 // the owner's account, with the original as the remote `upstream`. What it did can be taken back
 // while the steps after it (the canvas, the move) fail; a fork on GitHub stays.
@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, realpathSync, rmdirSync, rmSync, statSync } from
 import { mkdir, readdir, rm, rmdir, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { BadRequest } from './board';
-import { setUpGit } from './git-setup';
+import { setUpGit, withoutCommit } from './git-setup';
 import { expandHome } from '../../plugin/skills/demo/lib/settings.ts';
 import { GIT, gitOrNull, gitRun, NO_PROMPT } from './git';
 import { accountEnv, type GithubRepo, githubRepo } from './forge';
@@ -49,7 +49,11 @@ export function makeRepo(path: string, t: Words): MadeRepo {
   if (existed) {
     const top = gitOrNull(path, 'rev-parse', '--show-toplevel');
     // git names the folder by its real path (on macOS the temp directory's /private/var, say)
-    if (top && realpathSync(top) === realpathSync(path)) return { path, made: false, undo: () => {} };
+    if (top && realpathSync(top) === realpathSync(path)) {
+      // one without a commit yet gets its first, since cards start from a commit; taken back with the rest
+      const first = withoutCommit(path) ? setUpGit(path) : null;
+      return { path, made: false, undo: () => first?.undo() };
+    }
     if (top) throw new BadRequest('newRepoPath', t.inside(path, top));
   } else notInside(path, t);
   // the topmost folder Obeya creates, to remove again

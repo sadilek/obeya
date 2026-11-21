@@ -115,6 +115,13 @@ describe('transcript excerpt', () => {
     expect(e.findings).toHaveLength(3);
   });
 
+  test("a Gemini session's run from agy's transcript: its calls named as on the card, a refused one among them", () => {
+    const e = excerpt(readFileSync(join(import.meta.dir, 'fixtures', 'gemini-transcript.jsonl'), 'utf8'))!;
+    expect(e.steps).toBe(7);
+    expect(e.firstChange).toBe(2);
+    expect(e.findings).toEqual([{ kind: 'failure', call: expect.objectContaining({ step: 5, tool: 'Bash', what: '`sleep 45`', failed: true, error: expect.stringContaining('denied by pre-tool hook') }) }]);
+  });
+
   test("finds a Codex thread's file by its id under the day it began, else anywhere, and archived ones", () => {
     dir = mkdtempSync(join(tmpdir(), 'obeya-tr-'));
     // a UUIDv7 carries when the thread began: 2026-11-04

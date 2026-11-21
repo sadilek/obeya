@@ -16,7 +16,9 @@ request, say). Everything else (tool calls, each with what it acts on: the file,
 web search's query, a fetched page's address; thoughts, status lines, Obeya's notes) folds away as "History" under the agent's next message. Obeya's reply to what
 the agent passed on (`to_obeya`) stands where it came: the agent's steps up to there, the passing-on
 the last of them, close above it as they do before the owner's words, and the agent's next message,
-which may build on the reply, stands below it. What Obeya reads to look a question up on a card (asked
+which may build on the reply, stands below it; Obeya's confirmation of a command spoken or typed on
+a card without an agent also stays visible instead of folding into "History" once it created cards,
+so their links remain reachable there. What Obeya reads to look a question up on a card (asked
 there by voice, or passed on by its agent) is not the agent's work: it stays out of the agent's
 "History" and its bubble at work, and folds under the answer Obeya looked up; while Obeya still
 looks, under its reply that it does, where that reply stands. On a Question card Obeya's agent is
@@ -178,7 +180,8 @@ stands at the end where the pointer let go, outside the marking; on a touch scre
 of the marking's last line, clear of the selection handles and of the system's menu above. A press
 puts the marked text, on one line, in quotation marks of the UI language into the field, followed by
 " - ", with the cursor behind it and the focus in the field (on the phone the keyboard opens at the
-first tap). Where it goes depends on where the cursor stood when it left the field: at the end of
+first tap). A field that only comes up with the quote, as the phone's panel does, shows with its
+cursor behind its text, where browsers would put it before the text on focus. Where it goes depends on where the cursor stood when it left the field: at the end of
 the text (or never in this field since it was shown), at the end, after a line break unless that is
 the start of a line; anywhere else, as the line after the cursor's line. It is typed in as by hand,
 so ⌘Z takes it back. Unlike replying to a message, the quote is plain text of the draft: the agent
@@ -318,11 +321,40 @@ not only the exit of its `ssh`, which Obeya hears of a while later: in between, 
 to a dead port. A page calling an API on another port finds nothing (the worker's
 brief says so).
 
+Opened from another device (see Other devices in Running Obeya), the link cannot lead to
+`localhost`, which there is the phone itself. Obeya then puts a proxy of its own in front of the
+app, at the address that device reaches Obeya under, with a port of its own: through Tailscale
+`https://<machine>.<tailnet>.ts.net:<port>` (a `tailscale serve` entry to the proxy on `127.0.0.1`),
+on another address `http://<address>:<port>`. The port is the app's own number where nothing serves
+on it there yet (never one of the three Obeya's own address may take), else the proxy's
+system-picked one; the address keeps the app's path and query. The proxy admits only paired
+devices, as Obeya does (others get the page that says how to connect); since the device cookie goes
+with what other sites' pages send too, from them (`Sec-Fetch-Site: cross-site`, or an `Origin` not
+the proxy's own) only opening a page of the app with GET passes, never a form post, a fetch or a
+WebSocket. A device removed loses its WebSockets to the apps at once, as its pages' to Obeya. It
+passes requests and
+WebSockets on as if they came from this machine: under the app's own `Host`, with `Origin` and
+`Referer` of the device's address turned into the app's, without Obeya's cookies (`obeya-*`) or
+forwarding headers; the app's redirects to its own address are turned into the device's, and a cookie
+`obeya-*` it sets is dropped, so it cannot sign the device out of Obeya. The request's path is
+joined to the app's origin as text, so a path such as `//host/…` stays a path of the app. One proxy serves each app
+address for all its cards. It goes once the app missed three looks in a row, a minute apart (a dev
+server restarting answers again soon), when the network for other devices changes or is turned off,
+and when Obeya stops. Its entries are noted in `tailscale-serve-apps.json` in the home until
+Tailscale has let them go, so one a run left behind (killed first, or Tailscale refusing) is removed
+at the next start, before Obeya serves its own entry (removing rewrites the whole configuration). Where the proxy cannot be made
+(Tailscale refusing the entry, say), the device gets a page that says so with Tailscale's words.
+
 ### Screenshots
 
 What the owner writes on a card may carry screenshots: pasted, dropped or picked with the field's
 image button, scaled to at most 2000 px in the browser and uploaded at once. They show as thumbnails
-in field and conversation and reach the agent as images in the message, with their paths. A click
+in field and conversation and reach the agent as images in the message, with their paths. A message
+takes at most six, enough to show a flow, few enough to keep the agent's context small. Those pasted,
+dropped or picked beyond that are not attached, and the field says so at once ("A message takes at
+most 6 screenshots: 2 were not attached. Send them with the next message."), so the owner does not
+first try to send; a field that holds more by other ways (moved over from the microphone) does not
+send and says how many to take out. A click
 enlarges one over the greyed page; Esc or a click shrinks it back. After the first screenshot picked
 by file dialog, a hint under the thumbnails names the paste and capture keys (⌘V / Ctrl+V, ⌃⇧⌘4 /
 Win+Shift+S), across sends and reloads, until "Got it" or the first paste; never on a device
@@ -351,7 +383,10 @@ a page where a dropped file lies, so Obeya looks for it on its own machine: Spot
 the home itself, hidden folders left out; a file counts only with the same name, size and time
 (within two seconds), and only if exactly one fits. Otherwise (a browser on another device, two
 copies, a file elsewhere) Obeya keeps a copy under its home (`files/<canvas>/`, at most 100 MB, in a
-folder of its own under its name made one word) and the copy's path goes in.
+folder of its own under its name made one word) and the copy's path goes in. In the conversation
+the path of such a copy shows as a link named by the file, which opens it in a new tab: shown, never
+run as a page (no script of an HTML file runs); a PDF goes to the browser's viewer, as a card's PDF
+does (see The files beside the demo). The agent gets the path as it stands.
 
 The path goes into the field's text at the cursor while the field has it (⌘Z takes it back), else
 where the cursor last stood or at the end, parted by spaces, in quotes where it has a space; the
@@ -384,6 +419,21 @@ it goes in by its path as a dropped one does (see Other files). Until the owner 
 this way once, the line under the microphone names the key ("⌘V adds text, a screenshot or a
 file"), on devices with a mouse or trackpad; the legend of keys lists it too.
 
+### Text too long for a message
+
+A message to an agent holds at most 20,000 characters (Obeya refuses a longer one as too long, not
+as empty). Text pasted into a field (or on the canvas) that would make its text longer than that
+goes in as a file instead: Obeya keeps it as a copy, `pasted-text.txt`, and its path goes in at the
+cursor as a dropped file's does (pasted on the canvas, where pasted text goes: at the end, in a
+paragraph of its own, see Pasted text), with a line under the field saying why while the path stands
+there. Where the copy cannot be made (no
+connection, say), the text goes in as text after all, and the field offers to move it as below. A text that grows too long
+otherwise (typed, dictated, pasted in pieces) does not send: under the field a line names its length
+and the limit, beside "Move into a file", which puts the whole text into a copy, `message.txt`, and
+leaves its path in the field in place of the text. Words for a card's agent that Obeya refuses stay
+in the field beside the refusal (whatever it refuses them for, with options picked or decisions on
+findings too), so nothing written is lost by sending.
+
 ### Skills by `/`
 
 In the field where a card's agent hears the owner's words (a task's, an idea's, a review card's; not
@@ -399,6 +449,12 @@ open. Picking types `/name ` over the word, as if by hand (⌘Z takes it back). 
 agent as they are: Claude Code's skill tool takes `/name` in a message as the owner asking for that
 skill, at the start or in the middle of a sentence. Until the owner has used the menu once (moved
 through it with the arrow keys or picked a skill), a hint under the field says so while it has the cursor ("“/” asks the agent for one of its skills.").
+The hint takes no room of its own: it shows in the gap between the field and what follows, which is
+a little wider for that from the moment the card opens until the menu has been used. So gaining or
+losing the cursor, or the agent's skills arriving, moves nothing on the card: a click on a button
+below that takes the cursor out of the field would otherwise lose itself, its mouseup landing
+beside the button that moved away under it (owner, 2026-11-21: hint in the gap over a line of its
+own, which left an empty line under the field and still moved the buttons once the skills came).
 
 Claude Code says which skills there are: Obeya starts it in the repository's read tree with the
 agent's plugins and settings, asks for its commands and skills, and ends it without a message (no
@@ -422,6 +478,11 @@ image.
 
 ### Decisions
 
+- **A text too long for a message goes as a file** (owner, 2026-11-14): pasting a long log emptied
+  the field and said "Please enter some text first.", since the length check answered as the empty
+  one and the field cleared on any refusal. A pasted text becomes a file at once, as the owner asked;
+  a long text written in the field stays there and offers to become one. Rejected: raising the limit
+  (a log can be any length, and the agent reads a file as well as a message); cutting the text off.
 - **Text pasted on the canvas waits beside the microphone** (2026-11-06), so a question or a task
   about it can be spoken at once, as with a pasted screenshot. Rejected: opening Obeya's sidebar with
   the text in its field, which takes the canvas from view and leaves speaking to it a second step.
@@ -511,6 +572,14 @@ image.
   Rejected: Obeya guessing ports (Docker listens elsewhere, only the worker knows the page), a mark
   on the canvas card, starting a parked app from the link. Only the reported port is forwarded
   (owner): more would need the worker to name them and keep their numbers here.
+- **From the phone, the app opens through a proxy of Obeya's at its address for other devices,
+  behind the pairing** (2026-11-20, the owner's report that "Open app" led the phone to `localhost`).
+  Rejected: a `tailscale serve` entry straight to the app's port, which would serve the app
+  (and a dev server's files) to everyone in the tailnet, shared devices included, without pairing;
+  the app under a path of Obeya's own address, which breaks the app's absolute paths; plain HTTP on
+  the machine's tailnet address, where the device cookie (`Secure`) does not go and the phone's
+  browser allows no microphone. The app's own port number where free, so the address reads like
+  the one the worker reported.
 - **A card's files are its result, in tabs beside the demo** (owner, 2026-10-21), named files first.
   Rejected: an open button per change-list entry (no place for the result, Markdown unread in the
   browser), Markdown formatted only in the diff overlay (the result hidden behind "Show"), a

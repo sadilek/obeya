@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { chosenConversationLanguage, chosenLanguage, conversationLanguageIn, OWNER_SETTINGS_FILE as SETTINGS_FILE, ownerLanguageIn, ownerSettingsWritten, systemLanguage } from '../../plugin/skills/demo/lib/language.ts';
 import { type Language, LANGUAGES } from '../core/locale';
 import { type CostsView, type LanguageView, type RemoteSetting, type Theme, THEMES, type ThemeView, type UsageMeterView } from '../core/types';
-import { AGENT_DEFAULTS, AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, agentDefault, type AgentEffort, type AgentFallback, type AgentRole, type AgentSetting, type AgentsView, type Harness, HARNESSES, type HarnessView, modelFits, storedModel } from '../core/agents';
+import { AGENT_DEFAULTS, AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, agentDefault, type AgentEffort, type AgentFallback, type AgentRole, type AgentSetting, type AgentsView, type Harness, HARNESS_NAMES, HARNESSES, type HarnessView, modelFits, storedModel } from '../core/agents';
 import { BadRequest } from './board';
 
 interface Settings {
@@ -125,8 +125,8 @@ type Chosen = Partial<AgentSetting>;
 /**
  * The known choices in a file's `agents`: a harness chosen, and a model and effort that differ from
  * the defaults; anything else in it is left out. A model differs from its harness's preset (the
- * harness named, else Claude Code's), and only one that harness takes; a Codex model is its family
- * (a model id or `default` written before reads as one).
+ * harness named, else Claude Code's), and only one that harness takes; a Codex or Gemini model is
+ * its family (a model id or `default` written before reads as one).
  */
 function agentsOf(input: unknown): Partial<Record<AgentRole, Chosen>> {
   const o = { ...((input && typeof input === 'object' ? input : {}) as Record<string, { harness?: unknown; model?: unknown; effort?: unknown; fallback?: unknown } | undefined>) };
@@ -148,7 +148,7 @@ function agentsOf(input: unknown): Partial<Record<AgentRole, Chosen>> {
   return agents;
 }
 
-/** A fallback as the file holds it: a harness with a model it takes (a Codex model as its family); none for anything else. */
+/** A fallback as the file holds it: a harness with a model it takes (a Codex or Gemini model as its family); none for anything else. */
 function fallbackOf(input: unknown): AgentFallback | undefined {
   const f = (input && typeof input === 'object' ? input : {}) as { harness?: unknown; model?: unknown; effort?: unknown };
   const harness = HARNESSES.find((h) => h === f.harness);
@@ -160,7 +160,7 @@ function fallbackOf(input: unknown): AgentFallback | undefined {
 /**
  * The harness, model and effort a group of agents runs with: the owner's choice, else the default;
  * read whenever one starts. `fallback`: the harness of a group the owner chose none for (Claude Code,
- * unless this machine has only Codex). A model the harness does not take is its default.
+ * unless it is not ready and Codex or Gemini is). A model the harness does not take is its default.
  */
 export function agentSetting(home: string, role: AgentRole, fallback: Harness = AGENT_DEFAULTS[role].harness): AgentSetting {
   const chosen = read(home).agents?.[role] ?? {};
@@ -181,9 +181,9 @@ export function agentsView(home: string, harnesses: HarnessView[] = [], fallback
 
 /**
  * Saves the choices for the groups given (`{ worker: { harness: 'codex' } }`). A harness chosen
- * without a model takes that harness's preset model; a Codex model is saved as its family (a model
- * id given saves the family it belongs to). `fallback` (`{ harness, model, effort? }` on the other
- * harness, `null` for none) is what the group runs on while its harness is at its limit. Other groups and
+ * without a model takes that harness's preset model; a Codex or Gemini model is saved as its family
+ * (a model id given saves the family it belongs to). `fallback` (`{ harness, model, effort? }` on
+ * another harness, `null` for none) is what the group runs on while its harness is at its limit. Other groups and
  * settings in the file stay.
  */
 export function saveAgents(home: string, input: unknown, harnesses: HarnessView[] = [], fallback?: Harness): AgentsView {
@@ -198,7 +198,7 @@ export function saveAgents(home: string, input: unknown, harnesses: HarnessView[
     if (harness !== undefined && !HARNESSES.some((h) => h === harness)) throw new BadRequest('invalid', `harness must be one of ${HARNESSES.join(', ')}`);
     const before = agentSetting(home, r, fallback);
     const on = (harness as Harness | undefined) ?? before.harness;
-    if (model !== undefined && (typeof model !== 'string' || !modelFits(on, model))) throw new BadRequest('invalid', on === 'claude' ? `model must be one of ${AGENT_MODELS.join(', ')}` : 'model must be a Codex model family or id');
+    if (model !== undefined && (typeof model !== 'string' || !modelFits(on, model))) throw new BadRequest('invalid', on === 'claude' ? `model must be one of ${AGENT_MODELS.join(', ')}` : `model must be a ${HARNESS_NAMES[on]} model family or id`);
     if (effort !== undefined && !AGENT_EFFORTS.some((e) => e === effort)) throw new BadRequest('invalid', `effort must be one of ${AGENT_EFFORTS.join(', ')}`);
     // another harness starts from its own default model
     const next = model !== undefined ? storedModel(on, model as string) : on === before.harness ? before.model : agentDefault(r, on).model;
@@ -211,7 +211,7 @@ export function saveAgents(home: string, input: unknown, harnesses: HarnessView[
       const f = (typeof instead === 'object' ? instead : {}) as { harness?: unknown; model?: unknown; effort?: unknown };
       const fh = HARNESSES.find((h) => h === f.harness);
       if (!fh) throw new BadRequest('invalid', `a fallback's harness must be one of ${HARNESSES.join(', ')}`);
-      if (fh === on) throw new BadRequest('invalid', "a fallback runs on the other harness than the group's");
+      if (fh === on) throw new BadRequest('invalid', "a fallback runs on another harness than the group's");
       if (f.model !== undefined && (typeof f.model !== 'string' || !modelFits(fh, f.model))) throw new BadRequest('invalid', "the fallback's model is not one its harness takes");
       if (f.effort !== undefined && !AGENT_EFFORTS.some((e) => e === f.effort)) throw new BadRequest('invalid', `the fallback's effort must be one of ${AGENT_EFFORTS.join(', ')}`);
       nextFallback = { harness: fh, model: storedModel(fh, (f.model as string | undefined) ?? agentDefault(r, fh).model), ...(f.effort ? { effort: f.effort as AgentEffort } : {}) };

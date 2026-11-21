@@ -1,10 +1,11 @@
-// The agents Obeya runs: their roles, harnesses, models and efforts, and how a Codex family resolves to a model.
+// The agents Obeya runs: their roles, harnesses, models and efforts, and how a model family (Codex's,
+// Gemini's) resolves to a model.
 
 /** The agents Obeya runs, grouped as the owner sets their harness, model and effort (`src/server/settings.ts`). */
 export const AGENT_ROLES = ['coordinator', 'worker', 'explorer', 'chores'] as const;
 export type AgentRole = (typeof AGENT_ROLES)[number];
 /** The coding agents Obeya runs its agents on, each on the machine's own installation and login. */
-export const HARNESSES = ['claude', 'codex'] as const;
+export const HARNESSES = ['claude', 'codex', 'gemini'] as const;
 export type Harness = (typeof HARNESSES)[number];
 /** Claude Code's models a setting may name: its default, or one of its aliases, each the newest of its family; the menus offer the aliases. */
 export const AGENT_MODELS = ['default', 'fable', 'opus', 'sonnet', 'haiku'] as const;
@@ -13,8 +14,9 @@ export const AGENT_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 export type AgentEffort = (typeof AGENT_EFFORTS)[number];
 /**
  * The harness, model and effort a group of agents runs with. `model`: for Claude Code one of
- * `AGENT_MODELS` (`default` for its own default); for Codex a model family (`codexFamily`), which
- * each start resolves to the newest model of that family the machine the agent runs on lists.
+ * `AGENT_MODELS` (`default` for its own default); for Codex and Gemini a model family
+ * (`modelFamily`), which each start resolves to the newest model of that family the machine the
+ * agent runs on lists.
  */
 export interface AgentSetting {
   harness: Harness;
@@ -22,11 +24,11 @@ export interface AgentSetting {
   effort: AgentEffort;
   /**
    * What the group runs on while its harness is at its usage limit (or cannot be reached): a model
-   * of the other harness, with the group's effort. Absent: its agents wait for the limit to lift.
+   * of another harness, with the group's effort. Absent: its agents wait for the limit to lift.
    */
   fallback?: AgentFallback;
 }
-/** A group's fallback (`AgentSetting.fallback`): always on the other harness than the group's; its effort, else the group's. */
+/** A group's fallback (`AgentSetting.fallback`): always on another harness than the group's; its effort, else the group's. */
 export interface AgentFallback {
   harness: Harness;
   model: string;
@@ -45,16 +47,27 @@ export interface CardAgent {
 export const CODEX_MODEL = /^(?=[^#]*#?[^#]*$)(?!#$)[A-Za-z0-9#][\w.:#-]{0,79}$/;
 /** The Codex family a group runs on until the owner chooses another: Sol. */
 export const CODEX_PRESET = 'gpt-#-sol';
+/**
+ * A Gemini model as a setting may name it: a family of Gemini's own models (`gemini-#-neon`) or a
+ * model id Antigravity lists (`gemini-4-neon`), read as its family. Other models Antigravity offers
+ * (Claude, GPT-OSS) are no Gemini model: they only repeat what the other harnesses run directly.
+ */
+export const GEMINI_MODEL = /^gemini-(?=[^#]*#?[^#]*$)[\w.#-]{1,72}$/;
+/** The Gemini family a group runs on until the owner chooses another: Neon. */
+export const GEMINI_PRESET = 'gemini-#-neon';
+/** The harnesses whose models are chosen by family (`modelFamily`), each start resolving it to the newest of the family. */
+export const byFamily = (h: Harness): boolean => h !== 'claude';
 /** A Codex model id's family and version: `gpt-6.1-sol` is `gpt-#-sol` 6.1; none for an id without a number. */
 function codexVersion(id: string): { family: string; version: number[] } | null {
   const m = /^(\D*?)(\d+(?:\.\d+)*)(.*)$/.exec(id);
   return m ? { family: `${m[1]}#${m[3]}`, version: m[2]!.split('.').map(Number) } : null;
 }
 /**
- * The Codex family a setting names: a family as it is, a model id's family (`gpt-6.1-sol` is
- * `gpt-#-sol`; an id without a number is a family of its own), `default` the preset's.
+ * The family a setting names: a family as it is, a model id's family (`gpt-6.1-sol` is `gpt-#-sol`,
+ * `gemini-4-neon` `gemini-#-neon`; an id without a number is a family of its own), `default` Codex's
+ * preset.
  */
-export function codexFamily(model: string): string {
+export function modelFamily(model: string): string {
   if (model === 'default') return CODEX_PRESET;
   if (model.includes('#')) return model;
   return codexVersion(model)?.family ?? model;
@@ -63,7 +76,7 @@ const newer = (a: number[], b: number[]) => {
   for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
   return false;
 };
-/** Of each family Codex lists, the newest model (`gpt-6.1-sol`, not `gpt-5.6-sol` beside it), in Codex's order. */
+/** Of each family a harness lists, the newest model (`gpt-6.1-sol`, not `gpt-5.6-sol` beside it), in the harness's order. */
 export function newestOfFamilies<M extends { id: string }>(models: M[]): M[] {
   const newest = new Map<string, { id: string; version: number[] }>();
   for (const m of models) {
@@ -76,16 +89,19 @@ export function newestOfFamilies<M extends { id: string }>(models: M[]): M[] {
     return !f || newest.get(f.family)?.id === m.id;
   });
 }
-/** The model a setting stores for a harness: for Codex its family, for Claude Code the alias as it is. */
-export const storedModel = (harness: Harness, model: string): string => (harness === 'codex' ? codexFamily(model) : model);
-/** A card's own choice as stored with it, a Codex model as its family (an id or `default` stored before reads so). */
+/** The model a setting stores for a harness: for Codex and Gemini its family (Gemini's `default` its preset), for Claude Code the alias as it is. */
+export const storedModel = (harness: Harness, model: string): string => (harness === 'gemini' && model === 'default' ? GEMINI_PRESET : byFamily(harness) ? modelFamily(model) : model);
+/** A card's own choice as stored with it, a Codex or Gemini model as its family (an id or `default` stored before reads so). */
 export function cardAgentOf(stored: string): CardAgent {
   const agent = JSON.parse(stored) as CardAgent;
   return agent.harness && agent.model ? { ...agent, model: storedModel(agent.harness, agent.model) } : agent;
 }
-/** Whether `model` is one a group on `harness` may run with: Claude Code's aliases are no Codex model, but for the default. */
-export const modelFits = (harness: Harness, model: string): boolean =>
-  harness === 'claude' ? AGENT_MODELS.some((m) => m === model) : CODEX_MODEL.test(model) && (model === 'default' || !AGENT_MODELS.some((m) => m === model));
+/** Whether `model` is one a group on `harness` may run with: Claude Code's aliases are no Codex model, but for the default; a Gemini model is one of Gemini's own. */
+export const modelFits = (harness: Harness, model: string): boolean => {
+  if (harness === 'claude') return AGENT_MODELS.some((m) => m === model);
+  if (harness === 'gemini') return model === 'default' || GEMINI_MODEL.test(model);
+  return CODEX_MODEL.test(model) && (model === 'default' || !AGENT_MODELS.some((m) => m === model));
+};
 /** What applies until the owner chooses otherwise: Opus throughout, high effort for workers and exploration agents. */
 export const AGENT_DEFAULTS: Record<AgentRole, AgentSetting> = {
   coordinator: { harness: 'claude', model: 'opus', effort: 'medium' },
@@ -96,8 +112,8 @@ export const AGENT_DEFAULTS: Record<AgentRole, AgentSetting> = {
 /**
  * What an agent of a group runs on instead while harness `on` is at its limit: the group's fallback
  * (with its own effort, else `effort`) where it runs on the group's harness, the group's own setting
- * where it runs on the fallback's (a card chosen for the other harness), with `effort`; none where
- * the group has no fallback.
+ * where it runs on the fallback's (a card chosen for that harness), with `effort`; none where the
+ * group has no fallback, or the agent runs on a third harness.
  */
 export function replacement(group: AgentSetting, on: Harness, effort: AgentEffort = group.effort): AgentSetting | undefined {
   const f = group.fallback;
@@ -108,21 +124,21 @@ export function replacement(group: AgentSetting, on: Harness, effort: AgentEffor
 }
 
 /** The harnesses by their names, the same in every language. */
-export const HARNESS_NAMES: Record<Harness, string> = { claude: 'Claude Code', codex: 'Codex' };
+export const HARNESS_NAMES: Record<Harness, string> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini' };
 
-/** An agent's harness and model as the card's conversation names them: Codex · Sol, Claude Code · Opus. */
+/** An agent's harness and model as the card's conversation names them: Codex · Sol, Gemini · Neon, Claude Code · Opus. */
 export function agentName(s: { harness: Harness; model: string }): string {
-  const model = s.harness === 'codex' ? codexFamilyName(codexFamily(s.model)) : `${s.model[0]!.toUpperCase()}${s.model.slice(1)}`;
+  const model = byFamily(s.harness) ? familyName(storedModel(s.harness, s.model)) : `${s.model[0]!.toUpperCase()}${s.model.slice(1)}`;
   return `${HARNESS_NAMES[s.harness]} · ${model}`;
 }
 
-/** The other harness than `h`. */
-export const otherHarness = (h: Harness): Harness => (h === 'claude' ? 'codex' : 'claude');
+/** The family a harness's agents run on until the owner chooses another: Codex's Sol, Gemini's Neon; none for Claude Code, whose presets name an alias. */
+export const PRESET_FAMILY: Partial<Record<Harness, string>> = { codex: CODEX_PRESET, gemini: GEMINI_PRESET };
 
-/** The default of a group on a harness: the preset's effort, with the harness's preset model (Codex's Sol family). */
+/** The default of a group on a harness: the preset's effort, with the harness's preset model (Codex's Sol family, Gemini's Neon). */
 export function agentDefault(role: AgentRole, harness: Harness): AgentSetting {
   const preset = AGENT_DEFAULTS[role];
-  return harness === preset.harness ? preset : { harness, model: CODEX_PRESET, effort: preset.effort };
+  return harness === preset.harness ? preset : { harness, model: PRESET_FAMILY[harness] ?? 'opus', effort: preset.effort };
 }
 
 /**
@@ -137,8 +153,8 @@ export function modelName(model: string): string {
 }
 
 /**
- * A model id's version as people know it: `claude-opus-5-5` 5.5, `gpt-6.1-sol` 6.1; none for an id
- * without a number.
+ * A model id's version as people know it: `claude-opus-5-5` 5.5, `gpt-6.1-sol` 6.1, `gemini-4-neon`
+ * 4; none for an id without a number.
  */
 export function modelVersion(id: string): string | undefined {
   const name = modelName(id);
@@ -153,7 +169,7 @@ export interface HarnessModel {
   name?: string;
   /** The model a Claude Code alias stands for here (`opus`: `claude-opus-5-5`), the newest of its family Claude Code lists, once it has said. */
   resolved?: string;
-  /** The efforts it takes, where the harness says (Codex); absent: all of `AGENT_EFFORTS`. */
+  /** The efforts it takes, where the harness says (Codex, Gemini); absent: all of `AGENT_EFFORTS`. */
   efforts?: AgentEffort[];
   /** The one the harness takes by default (Codex's), which a family no longer listed runs on. */
   isDefault?: true;
@@ -161,7 +177,7 @@ export interface HarnessModel {
 
 /**
  * A model as the pickers offer it (the Configuration's and a card's): `value` is what a setting stores
- * (Claude Code's alias, a Codex family), `name` the Codex family's name (`codexFamilyName`; absent
+ * (Claude Code's alias, a Codex or Gemini family), `name` the family's name (`familyName`; absent
  * for Claude Code, whose aliases the page names itself), the efforts its newest model here takes.
  */
 export interface ModelChoice {
@@ -174,31 +190,33 @@ export interface ModelChoice {
 
 /**
  * The models a picker offers on a harness, with the one chosen (`chosen`, as stored) among them even
- * where the harness no longer lists it. Codex's are its families, each named without a version, which `version` carries.
+ * where the harness no longer lists it. Codex's and Gemini's are their families, each named without
+ * a version, which `version` carries.
  */
 export function modelChoices(harness: HarnessView | undefined, chosen?: string): ModelChoice[] {
-  const codex = harness?.id === 'codex';
+  const families = !!harness && byFamily(harness.id);
   const listed: ModelChoice[] = newestOfFamilies(harness?.models ?? []).map((m) => {
-    const name = codex ? codexFamilyName(codexFamily(m.id), m.name ?? m.id) : undefined;
+    const name = families ? familyName(modelFamily(m.id), m.name ?? m.id) : undefined;
     // a family named by its newest model (`o3`) has its version in the name already
-    const version = modelVersion(codex ? m.id : (m.resolved ?? ''));
+    const version = modelVersion(families ? m.id : (m.resolved ?? ''));
     return {
-      value: codex ? codexFamily(m.id) : m.id,
+      value: families ? modelFamily(m.id) : m.id,
       ...(name !== undefined ? { name } : {}),
       ...(version && !name?.includes(version) ? { version } : {}),
       efforts: m.efforts ?? AGENT_EFFORTS,
     };
   });
   if (chosen === undefined || listed.some((c) => c.value === chosen)) return listed;
-  return [...listed, { value: chosen, ...(codex ? { name: codexFamilyName(chosen) } : {}), efforts: AGENT_EFFORTS }];
+  return [...listed, { value: chosen, ...(families ? { name: familyName(chosen) } : {}), efforts: AGENT_EFFORTS }];
 }
 
 /**
- * A Codex family by the name people know it by, without a version, as Claude Code's aliases are
- * named: what follows the version (`gpt-#-sol` is Sol, `gpt-#-codex-max` Codex Max); a family named
- * only by its version (`gpt-#`, `o#`) by its newest model's name here (`newest`), else its key without the version.
+ * A family by the name people know it by, without a version, as Claude Code's aliases are named:
+ * what follows the version (`gpt-#-sol` is Sol, `gpt-#-codex-max` Codex Max, `gemini-#-neon` Neon); a
+ * family named only by its version (`gpt-#`, `o#`) by its newest model's name here (`newest`), else
+ * its key without the version.
  */
-export function codexFamilyName(family: string, newest?: string): string {
+export function familyName(family: string, newest?: string): string {
   const after = /#[-.]?([A-Za-z].*)$/.exec(family)?.[1];
   if (after) return after.split(/[-_.]/).filter(Boolean).map((w) => `${w[0]!.toUpperCase()}${w.slice(1)}`).join(' ');
   return newest ?? family.replace(/[-.]?#/, '');
@@ -211,7 +229,7 @@ export interface HarnessView {
   ready: boolean;
   /** Its version, once found. */
   version?: string;
-  /** The models it offers to choose from: Claude Code's aliases; Codex's, of each family the newest. */
+  /** The models it offers to choose from: Claude Code's aliases; Codex's and Gemini's, of each family the newest. */
   models: HarnessModel[];
   /** Its update on this machine. */
   update?: HarnessUpdate;
@@ -229,11 +247,12 @@ export interface HarnessUpdate {
   error?: string;
 }
 
-/** A harness on a host: the version it is at there, and its update. */
+/** A harness on a host: the version it is at there, its update, and `loggedIn: false` where it is not logged in there (Gemini, whose login there Obeya looks at). */
 export interface HarnessHost {
   name: string;
   version: string;
   update?: HarnessUpdate;
+  loggedIn?: false;
 }
 
 /** The harness, model and effort of each group of agents, as they apply (`settings.json` over `AGENT_DEFAULTS`). */
@@ -241,6 +260,6 @@ export interface AgentsView {
   file: string;
   agents: Record<AgentRole, AgentSetting>;
   harnesses: HarnessView[];
-  /** What a group the owner chose nothing for runs on here: Claude Code, unless only Codex is ready. */
+  /** What a group the owner chose nothing for runs on here: Claude Code, unless it is not ready and Codex (else Gemini) is. */
   preset: Harness;
 }

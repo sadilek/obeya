@@ -96,6 +96,9 @@ describe('what Obeya needs on this machine', () => {
       // Codex could stand in for Claude Code: neither is ready, so Claude Code is the one asked for
       { id: 'codex', state: 'missing', install: { commands: ['npm install -g @openai/codex'], url: 'https://developers.openai.com/codex/cli' }, or: true },
       { id: 'codexLogin', state: 'missing', or: true },
+      // Gemini likewise, by Antigravity's installer
+      { id: 'gemini', state: 'missing', install: { commands: ['curl -fsSL https://antigravity.google/cli/install.sh | bash'], url: 'https://antigravity.google/docs/install' }, act: 'install', or: true },
+      { id: 'geminiLogin', state: 'missing', or: true },
       { id: 'git', state: 'ok', found: '2.45.0' },
       expect.objectContaining({ id: 'gitUser', state: 'missing', act: 'identity' }),
     ]);
@@ -117,7 +120,7 @@ describe('what Obeya needs on this machine', () => {
     const needed = section(v, 'needed').items;
     expect(needed[0]).toMatchObject({ id: 'claude', state: 'missing', install: { commands: ['curl -fsSL https://claude.ai/install.sh | bash'] }, act: 'install' });
     expect(needed[1]).toEqual({ id: 'claudeLogin', state: 'missing' });
-    expect(needed[5]).toEqual({ id: 'gitUser', state: 'ok', found: 'Ada <Ada>' });
+    expect(needed[7]).toEqual({ id: 'gitUser', state: 'ok', found: 'Ada <Ada>' });
     expect(section(v, 'pr').items).toEqual([
       { id: 'gh', state: 'ok', found: '2.60.0' },
       { id: 'ghLogin', state: 'ok', found: 'ada' },
@@ -300,6 +303,36 @@ describe('the first canvas', () => {
     await expect(setup().canvas({ clone: origin, into: join(dir, 'code') })).rejects.toMatchObject({ code: 'cloneTarget' });
   });
 
+  test('a repository without a commit gets its first one before it becomes a canvas', async () => {
+    const shop = join(dir, 'shop');
+    mkdirSync(shop);
+    git(shop, 'init', '--quiet', '--initial-branch=trunk');
+    writeFileSync(join(shop, 'app.ts'), '');
+    globalGit('[user]\n\tname = Ada\n\temail = ada@example.com\n');
+    const s = setup();
+    expect(await s.folder({ path: shop })).toEqual({ repo: true, branch: 'trunk', empty: true });
+    await expect(s.canvas({ path: shop })).rejects.toMatchObject({ code: 'noCommit' });
+    expect(existsSync(join(home, 'canvases.json'))).toBe(false);
+    expect(s.gitPreview({ path: shop })).toMatchObject({ repo: true, branch: 'trunk', files: 2 });
+    expect(s.gitSetup({ path: shop })).toEqual({ branch: 'trunk' });
+    expect(await s.canvas({ path: shop })).toMatchObject({ canvas: 'shop', branch: 'trunk' });
+  });
+
+  test('a clone of an empty repository gets its first commit on the branch the clone names', async () => {
+    const origin = join(dir, 'origin', 'shop.git');
+    mkdirSync(origin, { recursive: true });
+    git(origin, 'init', '--quiet', '--bare', '--initial-branch=trunk');
+    globalGit('[user]\n\tname = Ada\n\temail = ada@example.com\n');
+    const machine = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^path$/i.test(k))) as Record<string, string>;
+    const tools = [dirname(Bun.which('git')!), ...(process.platform === 'win32' ? [dirname(gitSh())] : [])];
+    const s = setup({ env: { ...machine, PATH: [bin, ...tools].join(delimiter), OBEYA_CLAUDE: join(dir, 'none', 'claude') } });
+    await s.canvas({ clone: origin, into: join(dir, 'code') });
+    await s.done();
+    const clone = join(dir, 'code', 'shop');
+    expect((await s.view()).job).toMatchObject({ kind: 'clone', running: false, canvas: 'shop', branch: 'trunk' });
+    expect(git(clone, 'ls-tree', '--name-only', 'trunk')).toBe('.gitignore');
+  });
+
   test('names a clone after its repository', () => {
     expect(cloneName('owner/shop')).toBe('shop');
     expect(cloneName('https://github.com/owner/shop.git')).toBe('shop');
@@ -307,15 +340,29 @@ describe('the first canvas', () => {
     expect(cloneName('/srv/git/shop/')).toBe('shop');
   });
 
-  test('the canvas the assistant created gets one first card that says what to try', () => {
-    const board = new Board(store, { id: 'shop', name: 'Shop', repos: [{ id: 'shop', name: 'Shop', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
-    const canvas = { id: 'shop', board } as unknown as CanvasRuntime;
-    writeFileSync(join(home, WELCOME_FILE), 'shop');
-    welcome(home, [canvas]);
-    welcome(home, [canvas]);
-    const cards = board.snapshot().items.filter((i) => i.kind === 'task');
-    expect(cards.map((c) => c.title)).toEqual([board.t.welcome.title]);
-    expect(existsSync(join(home, WELCOME_FILE))).toBe(false);
+  test('the canvas the assistant created gets one first card that says what to try; in an empty repository, to describe what to build', async () => {
+    const first = async (path: string) => {
+      const id = `c${Math.random().toString(36).slice(2, 8)}`;
+      const board = new Board(store, { id, name: 'Shop', repos: [{ id: 'shop', name: 'Shop', path, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+      const canvas = { id, board } as unknown as CanvasRuntime;
+      writeFileSync(join(home, WELCOME_FILE), id);
+      await Promise.all([welcome(home, [canvas]), welcome(home, [canvas])]);
+      expect(existsSync(join(home, WELCOME_FILE))).toBe(false);
+      return { titles: board.snapshot().items.filter((i) => i.kind === 'task').map((c) => c.title), t: board.t };
+    };
+    const shop = await first(gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n', 'src/shop.ts': 'export {};\n' }));
+    expect(shop.titles).toEqual([shop.t.welcome.title]);
+    // a folder counts as work whatever its name
+    const agents = await first(gitRepo(join(dir, 'agents'), { 'README.md': 'Agents\n', 'agents/main.py': 'print(1)\n' }));
+    expect(agents.titles).toEqual([agents.t.welcome.title]);
+    // a README, a licence and git's own files are not yet anything to change
+    const fresh = await first(gitRepo(join(dir, 'fresh'), { 'README.md': '# Fresh\n', LICENSE: 'MIT\n', '.gitignore': 'dist/\n' }));
+    expect(fresh.titles).toEqual([fresh.t.welcomeEmpty.title]);
+    // nor is a repository without a single commit
+    const unborn = join(dir, 'unborn');
+    mkdirSync(unborn);
+    git(unborn, 'init', '--quiet', '-b', 'main');
+    expect((await first(unborn)).titles).toEqual([fresh.t.welcomeEmpty.title]);
   });
 });
 

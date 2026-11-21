@@ -191,11 +191,15 @@ test("an agent with a harness, model or effort of its own (a card's) starts on t
 test('byHarness starts each agent on the runtime of the harness its spec names, Claude Code where it names none', () => {
   const claude = new FakeRuntime();
   const codex = new FakeRuntime();
-  const runtime = byHarness({ claude, codex });
+  const gemini = new FakeRuntime();
+  const runtime = byHarness({ claude, codex, gemini });
   const spec = { cwd: '/r', system: '', tools: [], onEvent: () => {} };
   runtime.start({ ...spec, harness: 'codex' });
   runtime.start(spec);
   runtime.start({ ...spec, resume: 'codex:thread-1' });
+  runtime.start({ ...spec, resume: 'gemini:session-1' });
+  runtime.start({ ...spec, harness: 'gemini' });
+  expect(gemini.sessions.length).toBe(2);
   expect(codex.sessions.length).toBe(2);
   expect(claude.sessions.length).toBe(1);
 });

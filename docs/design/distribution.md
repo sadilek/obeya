@@ -250,7 +250,8 @@ framework or build, JavaScript only for the video's play button and chapter list
 counter, so it opens from the file too. Paths are relative, so it also works under
 sadilek.github.io/obeya. It opens with one sentence, "Direct coding agents like an engineering director" (the one who decides and directs spoke
 to a test reader more than "like a team"), and the hero video; then six pillars with screenshots;
-"Fits your setup", four index cards on what a newcomer asks before trying it (workers on other
+"Fits your setup", six index cards on what a newcomer asks before trying it (Claude Code, Codex or
+Gemini on the newcomer's own subscription, what happens at its usage limit, workers on other
 machines over SSH, folders without git, GitHub, Forgejo and Gitea, English and German); "From idea
 to main"; "The big room", what the name means and the one wall as the way out of many
 parallel chats (no Toyota, as in the README); "Obeya is built with Obeya."; and getting started

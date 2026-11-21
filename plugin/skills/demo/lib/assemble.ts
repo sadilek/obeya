@@ -11,6 +11,7 @@ import { holdPidLock } from '../../../lib/process.ts';
 import { languageName, preferredTrack } from './locale.ts';
 import { type Clip, heardNotes, printHeard } from './narration.ts';
 import type { NarrationLanguage } from './settings.ts';
+import { crfFor, tvRange } from './range.ts';
 import { narrationVtt, type Track, trackFile, trackLanguage, trackVtt, vttTime } from './subtitles.ts';
 import { CLOCK, type Cut, type Frame, frameDurations, mmss } from './timeline.ts';
 
@@ -153,11 +154,12 @@ export function assemble({ outDir, work, list, clips, marks, total, viewport, sh
     '-y', '-loglevel', 'error',
     '-f', 'concat', '-safe', '0', '-i', list,
     ...(clips ? ['-i', narration] : []),
-    // the clock strip, painted over from the pixels around it
-    '-vf', `fps=30,scale=${viewport.width * scale}:${viewport.height * scale},delogo=x=${scale}:y=${(CLOCK.top - 2) * scale}:w=${(CLOCK.bits * CLOCK.cell + 2) * scale}:h=${(CLOCK.cell + 4) * scale},format=yuv420p`,
-    // Screen content: CRF 30 keeps text sharp at about 2.5 MB per minute; a public video (`sharp`)
-    // gets CRF 18, where no compression shows on the page's flat colours and fine type.
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', sharp ? '18' : '30', '-tune', 'stillimage',
+    // The frames are JPEGs, full range; the video gets the limited range and BT.709 every player
+    // assumes, tagged so (range.ts). Then the clock strip, painted over from the pixels around it.
+    '-vf', `fps=30,${tvRange(viewport.width * scale, viewport.height * scale)},delogo=x=${scale}:y=${(CLOCK.top - 2) * scale}:w=${(CLOCK.bits * CLOCK.cell + 2) * scale}:h=${(CLOCK.cell + 4) * scale}`,
+    // Screen content: a public video (`sharp`) gets a CRF where no compression shows on the page's
+    // flat colours and fine type.
+    '-c:v', 'libx264', '-preset', 'slow', '-crf', String(crfFor(sharp)), '-tune', 'stillimage',
     ...(clips ? ['-c:a', 'aac', '-b:a', sharp ? '160k' : '96k', '-shortest'] : ['-an']),
     '-movflags', '+faststart',
     video,

@@ -95,11 +95,13 @@ export interface SharedRead {
 }
 
 /**
- * Where a repository keeps its own Claude Code configuration: an agent's session working in it reads
- * it and runs what it names outside the permission checks (the hooks, MCP servers and helpers of
- * `.claude/settings.json`; the hooks and MCP servers of its skills, commands and subagents; `.mcp.json`).
+ * Where a repository keeps its own configuration of the agents' harnesses: an agent's session working
+ * in it reads it and runs what it names outside the permission checks. Claude Code's (the hooks, MCP
+ * servers and helpers of `.claude/settings.json`; the hooks and MCP servers of its skills, commands
+ * and subagents; `.mcp.json`) and Antigravity's, which Gemini's sessions read (the hooks, MCP servers
+ * and plugins of `.agents/` and the other names agy takes for it).
  */
-export const CLAUDE_PATHS = ['.claude', '.mcp.json'];
+export const CLAUDE_PATHS = ['.claude', '.mcp.json', '.agents', '.agent', '_agents', '_agent'];
 
 /** Reads the text of a `.obeya/settings.json`: a field that is unknown or of the wrong type does not count, the rest does. */
 export function parseShared(text: string): SharedRead {

@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, setSystemTime, test } from 'bun:test';
 import type { HarnessHost } from '../core/agents';
 import { aliasesOf, type HostHarness, type ClaudeListed, Harnesses, hostClaude } from './harnesses';
 import { registerHost } from './hosts';
@@ -217,6 +217,27 @@ test("a host's Codex that is behind gets a line of its own and is updated there;
   h.update('codex', 'box');
   for (let i = 0; i < 50 && (await codexOf())[0]?.update; i++) await Bun.sleep(1);
   expect([await codexOf(), updated, claudeHost.updates]).toEqual([[{ name: 'box', version: '0.167.0' }], 1, 0]);
+});
+
+test("a host's Gemini is listed with its version, says where it is not logged in there, and gets no update line: agy updates itself", async () => {
+  let loggedIn = false;
+  let looks = 0;
+  const geminiHost: HostHarness = { name: 'box', harness: 'gemini', reachable: () => true, look: async () => (looks++, { version: '1.5.14', loggedIn }) };
+  const h = new Harnesses({ cwd: '/tmp', claude: async () => ({ version: '2.1.338', loggedIn: true }), codex: async () => null, gemini: async () => ({ version: '1.5.14', loggedIn: true }), geminiModels: async () => [], codexNewest: async () => '99.0.0', hosts: () => [geminiHost] });
+  await h.refresh();
+  const geminiOf = async () => (await h.view())[2]!.hosts ?? [];
+  for (let i = 0; i < 50 && !(await geminiOf()).length; i++) await Bun.sleep(1);
+  expect(await geminiOf()).toEqual([{ name: 'box', version: '1.5.14', loggedIn: false }]);
+  // logged in there meanwhile: a host not logged in is looked at again within half a minute, not ten
+  loggedIn = true;
+  const now = Date.now();
+  setSystemTime(new Date(now + 25_000));
+  try {
+    for (let i = 0; i < 50 && (await geminiOf())[0]?.loggedIn === false; i++) await Bun.sleep(1);
+  } finally {
+    setSystemTime();
+  }
+  expect([await geminiOf(), looks]).toEqual([[{ name: 'box', version: '1.5.14' }], 2]);
 });
 
 /** A host's Claude Code as `Harnesses` asks it, at `version` there, listing `models`. */

@@ -350,6 +350,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
           open={open}
           opened={opened}
           items={opened ? snaps[opened.canvas.id]!.items : []}
+          allItems={all.map((x) => x.item)}
           repos={opened ? snaps[opened.canvas.id]!.canvas.repos : []}
           // the snapshots are still on their way, or the card went (archived, deleted)
           gone={Object.keys(snaps).length === canvases.length}
@@ -361,7 +362,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
           flush={flushEdit}
           onDelete={() => void deleteOpen()}
           onDone={onDone}
-          onTell={(text, images, field, replyTo) => void tellTyped(text, images, { card: opened!.item.id }, field, replyTo)}
+          onTell={(text, images, field, replyTo, spoken) => tellTyped(text, images, { card: opened!.item.id }, { field, replyTo, spoken })}
         />
       ) : (
         <PhoneHome
@@ -378,7 +379,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
           putAside={putAside}
           bringBack={bringBack}
           onObeya={setObeyaCanvas}
-          onTell={(text, images, replyTo) => void tellTyped(text, images, null, undefined, replyTo)}
+          onTell={(text, images, replyTo, draft, spoken) => void tellTyped(text, images, null, { replyTo, draft, spoken })}
         />
       )}
       {/* made afresh as a card opens or closes: what waits beside the microphone for Obeya stays in Obeya's draft */}
@@ -571,6 +572,7 @@ function PhoneCardPage({
   open,
   opened,
   items,
+  allItems,
   repos,
   gone,
   several,
@@ -583,6 +585,8 @@ function PhoneCardPage({
   opened: { item: Item; canvas: CanvasInfo } | undefined;
   /** The cards of its canvas. */
   items: Item[];
+  /** Every live card across all canvases, so cross-canvas links open in place without reloading. */
+  allItems: Item[];
   repos: RepoRef[];
   /** Every canvas's snapshot is there: a card that is not went. */
   gone: boolean;
@@ -644,7 +648,7 @@ function PhoneCardPage({
         {banner}
         <div className="card-sheet ph-sheet">
           {i ? (
-            <Cards.Provider value={{ items, open: onOpen }}>
+            <Cards.Provider value={{ items: allItems, open: onOpen }}>
               <TalkElsewhere.Provider value={elsewhere}>
                 <Detail
                   key={i.id}
@@ -707,7 +711,7 @@ function PhoneHome({
   putAside: (i: Item) => void;
   bringBack: (i: Item) => void;
   onObeya: (canvas: string) => void;
-  onTell: (text: string, images: string[] | undefined, replyTo?: number | TalkRef) => void;
+  onTell: (text: string, images: string[] | undefined, replyTo?: number | TalkRef, draft?: string, spoken?: boolean) => void;
 }) {
   const { talk, shown, openTalk, leaveTalk, banner } = panel;
   const homeRef = useRef<HTMLDivElement>(null);
@@ -811,7 +815,7 @@ function PhoneHome({
         <TalkPanel title={t.coordinator.title} label={t.phone.talkTitle} banner={banner} leaving={panel.leaving} onLeave={leaveTalk}>
           {obeyaSnap && (
             <div className="ph-talk" key={obeyaId}>
-              <CoordinatorTalk on talk={obeyaSnap.talk} items={obeyaSnap.items} repos={obeyaSnap.canvas.repos} onOpen={onOpen} onTell={onTell} draft={obeyaDraft(obeyaId)} />
+              <CoordinatorTalk on talk={obeyaSnap.talk} items={obeyaSnap.items} allItems={all.map((x) => x.item)} repos={obeyaSnap.canvas.repos} onOpen={onOpen} onTell={onTell} draft={obeyaDraft(obeyaId)} />
             </div>
           )}
         </TalkPanel>

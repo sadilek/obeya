@@ -64,9 +64,9 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
 - An interaction that several kinds of card share (answering questions with comments and one Send
   button, the conversation history, starting ("Build it like this", "Accept and start") while the agent
   is still working) is built once in shared code and works the same on each of them; no card kind
-  gets its own variant. So every button that starts an agent or hands it work ("Start agent",
+  gets its own variant. So every card whose buttons start an agent or hand it work ("Start agent",
   "Build it like this", "Discuss as an idea", the other buttons on idea cards, starting from the
-  chat) offers the same choice of the model the worker runs on, and carries over a model already
+  chat) shows the same one choice of the model its agents run on, and carries over a model already
   picked, visibly.
 - The phone view stays as simple as possible: not every desktop view belongs on it (the workspaces
   list, say, stays desktop-only). What it does show follows the desktop version: same controls,
@@ -139,7 +139,8 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
 - Commit directly to `main`; this repo uses no feature branches or pull requests. An Obeya worker
   is the exception: it commits on its card's branch, and Obeya lands that branch on `main`.
 - When a task handles a GitHub issue, its worker closes the issue once the work has landed, with a
-  comment linking the demo video and the commit on `main`.
+  comment linking the demo video and the commit on `main` (by its subject instead, where Obeya says
+  `origin` does not have the commit yet: a later pull may give it a new hash).
 - Once the owner approves the demo of an external contributor's pull request: comment on the PR
   with the demo link, squash-merge it, then `git pull` on `main` so the local checkout is current.
 - Pull requests Obeya opens in other people's repositories carry no Obeya attribution: no

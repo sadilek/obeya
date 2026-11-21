@@ -5,6 +5,7 @@ import { flushSync } from 'react-dom';
 import { cardTag } from '../core/card-number';
 import { type Bounds, boundsOf, CARD_SIZE, onCanvas, type Place, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import type { CanvasInfo, CanvasSnapshot, CardPatch, Item, PendingRestart, AppUpdate, SourceUpdate, Usage } from '../core/types';
+import { MAX_MESSAGE_CHARS } from '../core/types';
 import { archivedWithDone, nameless, needsYou, titleFrom, unreadAnswers, unreadPerProject, type Waiting, waitingIn } from '../core/card';
 import type { ConfigProblem } from '../core/config';
 import { api, beforeReload, type CanvasFeed, cardsOn, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
@@ -39,8 +40,8 @@ import { movesWith, shifted } from './selection';
 import { closeWish, keepWish, openWish, useWish, WishDialog } from './wish';
 import { PlanDirNote, planDirBoxes, useHiddenEmptyNotes } from './planDirs';
 import { pastedShots, pastedText } from './pasteHint';
-import { filesTo, imageFiles } from './shots';
-import { cardDraft, drafted, fieldOn, focusedDraft, insertPasted, keepDrafts, fieldOrMic, OBEYA_DRAFT, takesImages } from './draft';
+import { filesTo, imageFiles, textAsFile } from './shots';
+import { cardDraft, drafted, fieldOn, focusedDraft, insertPasted, keepDrafts, fieldOrMic, OBEYA_DRAFT, takesImages, withPasted } from './draft';
 import { HoldToTalk, PushToTalk, SPACE_SHOWS_MS, TAP_MS, ToldList, usePushToTalk, useTold } from './voice';
 import { videoOf } from './spot';
 import { CardView, shownState, Edges, Minimap, TalkIcon } from './parts';
@@ -935,6 +936,8 @@ function Canvas({
       if (!text) return;
       e.preventDefault();
       pastedText();
+      // what would make the field's text too long for a message goes in as a file, by its path; as text where the upload fails
+      if (withPasted(key, text).trim().length > MAX_MESSAGE_CHARS) return void textAsFile(key, text, { outside: true });
       insertPasted(key, [text]);
     };
     addEventListener('keyup', up, true);
@@ -1588,7 +1591,7 @@ function Canvas({
                   flush={flushEdit}
                   onDelete={deleteOpen}
                   onDone={onDone}
-                  onTell={(text, images, field, replyTo) => tellTyped(text, images, { card: openItem.id }, field, replyTo)}
+                  onTell={(text, images, field, replyTo, spoken) => tellTyped(text, images, { card: openItem.id }, { field, replyTo, spoken })}
                 />
                 </CardLog>
                 </Cards.Provider>
@@ -1619,7 +1622,7 @@ function Canvas({
             }}
           />
         )}
-        <CoordinatorSheet on={kOn} canvas={snapshot.canvas.id} items={items} preferences={snapshot.preferences} settings={snapshot.settingProposals ?? []} repos={snapshot.canvas.repos} talk={snapshot.talk} reshare={snapshot.reshare} onOpen={(i) => void openFresh(i)} onTell={(text, images, replyTo) => tellTyped(text, images, null, undefined, replyTo)} onConfig={(repo, setting) => {
+        <CoordinatorSheet on={kOn} canvas={snapshot.canvas.id} items={items} preferences={snapshot.preferences} settings={snapshot.settingProposals ?? []} repos={snapshot.canvas.repos} talk={snapshot.talk} reshare={snapshot.reshare} onOpen={(i) => void openFresh(i)} onTell={(text, images, replyTo, draft, spoken) => tellTyped(text, images, null, { replyTo, draft, spoken })} onConfig={(repo, setting) => {
             showRepoClones({ canvas: snapshot.canvas.id, repo, field: 'settings', setting });
             setCOn(true);
           }} />

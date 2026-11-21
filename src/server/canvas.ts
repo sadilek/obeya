@@ -18,7 +18,7 @@ import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
 import type { Awaited, CardAction, CardPatch, Item, PendingRestart, RepoRef, ProposedSetting, Skill, SpotInput } from '../core/types';
 import { agentListens, awaited, awaitsContributorNext, untouched, finished, nameless, needsYou, pausable, pausableNow, halted, snoozable, laterTime, plannedToStart } from '../core/card';
-import { AGENT_DEFAULTS, agentDefault, type AgentRole, type AgentSetting, type Harness, otherHarness, replacement } from '../core/agents';
+import { AGENT_DEFAULTS, agentDefault, type AgentRole, type AgentSetting, type Harness, HARNESSES, replacement } from '../core/agents';
 import { type CanvasConfig, type CanvasDeletion, layerSettings, type RepoConfig, repoShape, type RepoSettings, type SettingsShared, SHARED_FIELDS, type DemoSite } from '../core/config';
 import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, TITLE_MAX, replyNote } from './board';
@@ -26,7 +26,8 @@ import { pathOfRef, repoOfRef } from './plan-ref';
 import { DEMO_LOOK_MS } from './shared-pages';
 import { fromJson, toJson, type StoredContribution } from './row';
 import type { ChangeRoute } from '../core/types';
-import { type Command, Commander, reaches } from './commands';
+import { MAX_MESSAGE_CHARS } from '../core/types';
+import { type Command, Commander, type Executed, reaches } from './commands';
 import type { Config } from './config';
 import type { Store } from './db';
 import { Explorers } from './explorers';
@@ -192,6 +193,8 @@ interface Repo extends RepoRuntime {
   moving?: Promise<unknown>;
   /** Settles once its read tree is in place and the clones it was to make are made (or failed). */
   ready: Promise<void>;
+  /** Whether it was empty (`isEmptyRepo`) when its setup card was last considered (`proposeSetup`), to consider it again once that changes. */
+  emptySeen?: boolean;
 }
 
 /**
@@ -433,6 +436,8 @@ export class CanvasRuntime {
       imageFiles: this.imageFiles,
       onReplied: (cardId, replied) => this.ideas.replied(cardId, replied),
       toObeya: this.toObeya,
+      harness: () => agents('explorer').harness,
+      avail,
       ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
     });
     this.ideas = new IdeaActions({
@@ -573,10 +578,22 @@ export class CanvasRuntime {
     const uncount = board.onChange(() => this.countAgents());
     // a project that has just taken its idea's place settles the idea's prototypes, as does one that stood before Obeya started
     const unsettle = board.onChange(() => this.ideas.settleLater());
+    // when cards leave or join this canvas (archived, deleted, restored, moved), refresh any other canvas whose chat links them
+    let live = new Set(board.items().map((i) => i.id));
+    const unlinked = board.onChange(() => {
+      const next = new Set(board.items().map((i) => i.id));
+      const changed: string[] = [];
+      for (const id of live) if (!next.has(id)) changed.push(id);
+      for (const id of next) if (!live.has(id)) changed.push(id);
+      live = next;
+      if (!changed.length) return;
+      for (const other of deps.canvases?.() ?? []) if (other !== this) other.board.refreshLinked(changed);
+    });
     this.unwatch = () => {
       unwake();
       uncount();
       unsettle();
+      unlinked();
     };
     this.countAgents();
     this.ideas.settleLater();
@@ -869,6 +886,7 @@ export class CanvasRuntime {
     workers = new Workers({
       board,
       runtime: deps.workerRuntime ?? deps.runtime,
+      ...(deps.idleWorkers ? { idleWorkers: true } : {}),
       workspaces,
       adapter,
       machineSettings: this.settingsOf(rc),
@@ -907,6 +925,7 @@ export class CanvasRuntime {
       toObeya: this.toObeya,
       forge: deps.forge,
       repoPath: info.path,
+      empty: () => this.reads.empty(info.path) === true,
       remote: originUrl(info),
       ...(workspaces instanceof Workspaces ? { pulls: workspaces } : {}),
       ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
@@ -915,13 +934,12 @@ export class CanvasRuntime {
       demoLanguage: () => readDemoSettings(deps.home).language,
       questionHistory: (cardId) => questionTask(board, cardId, (thread) => answersDir(deps.home, this.id, thread), this.imageFiles),
       harness: () => (deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]))('worker').harness,
-      moveTo: (on, effort) => {
+      moveTo: (on, effort, to) => {
         const group = (deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]))('worker');
         const e = effort ?? group.effort;
-        const other =
-          replacement(group, on, e) ??
-          (group.harness !== on ? { harness: group.harness, model: group.model, effort: e } : { ...agentDefault('worker', otherHarness(on)), effort: e });
-        return other.harness !== on && this.avail.ready(other.harness) && !this.avail.limit(other.harness) ? other : undefined;
+        // the workers' fallback, else their own setting, else another harness's preset: the first that can take over
+        const candidates = [replacement(group, on, e), group.harness !== on ? { harness: group.harness, model: group.model, effort: e } : undefined, ...HARNESSES.map((h) => ({ ...agentDefault('worker', h), effort: e }))];
+        return candidates.find((c): c is AgentSetting => !!c && c.harness !== on && (!to || c.harness === to) && this.avail.ready(c.harness) && !this.avail.limit(c.harness));
       },
       limits: this.limits,
       demoDirectory: () => demoDirectory(readDemoSettings(deps.home)),
@@ -1460,6 +1478,9 @@ export class CanvasRuntime {
       // the settings may be there now, or gone
       this.proposeSetup(r);
     }
+    // the first work may have landed in a repository that was empty
+    this.reads.setEmpty(path, read.empty);
+    if (r.emptySeen !== read.empty) this.proposeSetup(r);
     const layered = layerSettings<RepoSettings>(this.reads.sharedOf(path)(), this.settingsOf(r.config)());
     const workIn = r.info.folder ? 'folder' : namesClones(r.config, r.info, layered) ? 'clones' : (layered?.workspaces ?? defaultsFor(r.info).workspaces);
     if (workIn !== r.workspaces.mode) {
@@ -1620,8 +1641,9 @@ export class CanvasRuntime {
     // the rule it changes may have been deleted in the meantime: then it is a new one
     const replaces = o.replaces !== undefined && this.board.preferences('active').some((p) => p.id === o.replaces) ? o.replaces : undefined;
     if (o.repos?.length) {
-      this.board.fileRule(text, o.repos, o.card ?? null, replaces);
+      const cards = this.board.fileRule(text, o.repos, o.card ?? null, replaces);
       this.fileRules();
+      return cards;
     } else if (replaces !== undefined) this.board.setPreference(replaces, text);
     else this.board.addPreference(text, o.card ?? null);
   }
@@ -1779,8 +1801,9 @@ export class CanvasRuntime {
     // a prototype may leave it to the idea's brief what it shows; a screenshot or an option picked may speak for itself
     const picks = a.action === 'answer' && Array.isArray(a.picks) ? a.picks.filter((o): o is string => typeof o === 'string') : [];
     const decided = a.action === 'message' && !!a.findings && typeof a.findings === 'object' && Object.keys(a.findings).length > 0;
-    if ('text' in a && (typeof text !== 'string' || (!text.trim() && a.action !== 'prototype' && !images.length && !picks.length && !decided) || text.length > 20000))
+    if ('text' in a && (typeof text !== 'string' || (!text.trim() && a.action !== 'prototype' && !images.length && !picks.length && !decided)))
       throw new BadRequest('emptyText', 'text must be a non-empty string');
+    if (text.length > MAX_MESSAGE_CHARS) throw new BadRequest('textTooLong', `text may have at most ${MAX_MESSAGE_CHARS} characters`);
     switch (a.action) {
       case 'start':
         if (card?.newRepo) return this.ideas.intoNewRepo(cardId);
@@ -1844,6 +1867,8 @@ export class CanvasRuntime {
         return this.repoOf(cardId).workers.revoke(cardId);
       case 'keepApproval':
         return this.repoOf(cardId).workers.keepApproval(cardId);
+      case 'unapprove':
+        return this.repoOf(cardId).workers.unapprove(cardId);
       case 'pushChanges':
         return this.repoOf(cardId).workers.pushContribution(cardId);
       case 'editHeld':
@@ -2037,10 +2062,12 @@ export class CanvasRuntime {
   /**
    * Obeya proposes the card that fills in a repository's settings where it knows them not (nothing
    * of the repository's own in `.obeya/settings.json`, or an adapter module left on its main branch),
-   * as the Configuration dialog offers it; a folder without git is left alone.
+   * as the Configuration dialog offers it; a folder without git is left alone, and so is a
+   * repository while it is empty (`isEmptyRepo`): there is nothing to run yet.
    */
   private proposeSetup(r: Repo) {
-    if (!this.deps.setupProposals || r.info.folder) return;
+    r.emptySeen = !!this.reads.empty(r.info.path);
+    if (!this.deps.setupProposals || r.info.folder || r.emptySeen) return;
     const settings = this.reads.sharedRead(r.info.path)?.settings ?? {};
     const own = SHARED_FIELDS.some((k) => settings[k] !== undefined);
     this.board.proposeSetup(r.ref.id, r.ref.name, !own || !!this.reads.adapterModule(r.info.path));
@@ -2094,7 +2121,7 @@ export class CanvasRuntime {
    * copied over; a follow-up of a card here goes there in no group and names that card. Its id, for
    * a wait in the same command.
    */
-  private elsewhere(c: Extract<Command, { do: 'newCard' | 'newIdea' }>): unknown {
+  private elsewhere(c: Extract<Command, { do: 'newCard' | 'newIdea' }>): Executed | Promise<Executed> {
     const there = this.deps.canvases?.().find((x) => x.id === c.canvas);
     if (!there) throw new Error(`the canvas ${c.canvas} does not run`);
     if (c.images?.length) this.images.copyTo(there.images, c.images);
@@ -2113,15 +2140,22 @@ export class CanvasRuntime {
    * A card the owner's command made: one for later waits until then, a time that passed in the undo
    * window starting it now; one to start goes to the Coordinator. Its id.
    */
-  private created(cardId: string, c: Pick<Extract<Command, { do: 'newCard' }>, 'until' | 'start'>): string {
-    this.board.log(cardId, 'state', 'owner', this.board.t.voice.created);
+  private created(cardId: string, c: Pick<Extract<Command, { do: 'newCard' }>, 'until' | 'start' | 'spoken'>): string {
+    this.madeBy(cardId, c);
     if (c.until && Date.parse(c.until) > Date.now()) this.snooze(cardId, c.until);
     else if (c.start || c.until) this.coordinator.request(cardId);
     return cardId;
   }
 
-  /** A voice (or typed) command, once its undo window has passed; a new card's id, for a wait on it in the same command. */
-  run(c: Command) {
+  /** The first line of a card the owner's command made: whether their words were spoken or typed. */
+  private madeBy(cardId: string, c: { spoken?: boolean }) {
+    const { voice } = this.board.t;
+    this.board.log(cardId, 'state', 'owner', c.spoken ? voice.createdSpoken : voice.created);
+  }
+
+  /** A voice (or typed) command, once its undo window has passed; returns the id(s) of any card(s) created or filed into. */
+  run(c: Command): Executed | Promise<Executed> {
+    const done = (v: unknown): Executed | Promise<Executed> => (v instanceof Promise ? v.then(() => undefined) : undefined);
     switch (c.do) {
       case 'newCard': {
         if (c.canvas && c.canvas !== this.id) return this.elsewhere(c);
@@ -2135,14 +2169,14 @@ export class CanvasRuntime {
         });
         // in a repository Obeya makes for it (a clone of a project, perhaps): started there, as "Start agent" on its card with that repository picked
         if (c.newRepo) {
-          this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
+          this.madeBy(card.id, c);
           this.board.setNewRepo(card.id, { ...c.newRepo, by: 'owner' });
           this.act(card.id, { action: 'start' });
           return card.id;
         }
         // on a branch of the owner's: taken first (git and the forge are asked), started once it is
         if (c.branch) {
-          this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
+          this.madeBy(card.id, c);
           void this.onBranch(card.id, c.branch, () => (c.until && Date.parse(c.until) > Date.now() ? this.snooze(card.id, c.until) : c.start || c.until ? this.coordinator.request(card.id) : undefined));
           return card.id;
         }
@@ -2151,16 +2185,16 @@ export class CanvasRuntime {
       case 'newIdea': {
         if (c.canvas && c.canvas !== this.id) return this.elsewhere(c);
         const card = this.board.create({ idea: true, title: c.title, body: c.body, ...(c.repo ? { repo: c.repo } : {}), ...this.board.freeSpot(c.place ?? this.inView) });
-        this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
+        this.madeBy(card.id, c);
         // the agent opens the discussion with what the owner said
         this.explorers.discuss(card.id, c.body.trim() || c.title, true, this.images.resolve(c.images));
-        return;
+        return card.id;
       }
       case 'newRepo': {
         const card = this.board.item(c.card);
         if (!card) throw new BadRequest('unknownCard', 'unknown card');
         this.board.setNewRepo(c.card, { path: c.path, canvas: c.canvas, ...(c.from ? { from: c.from } : {}), by: 'owner' });
-        return this.act(c.card, { action: card.state === 'idea' ? 'build' : 'start' });
+        return done(this.act(c.card, { action: card.state === 'idea' ? 'build' : 'start' }));
       }
       case 'reviewPr':
         return this.reviewPr(c);
@@ -2169,19 +2203,20 @@ export class CanvasRuntime {
       case 'feedback':
       case 'answer':
       case 'revise':
-        return this.act(c.card, { action: c.do === 'note' || c.do === 'feedback' ? 'message' : c.do, text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
+        return done(this.act(c.card, { action: c.do === 'note' || c.do === 'feedback' ? 'message' : c.do, text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) }));
       case 'prototype':
-        return this.act(c.card, { action: 'prototype', text: c.text });
+        return this.act(c.card, { action: 'prototype', text: c.text }) as string[] | undefined;
+      case 'splitOff':
+        return this.act(c.card, { action: 'splitOff' }) as string | undefined;
       case 'accept':
-        return this.act(c.card, { action: 'accept', ...(c.idea ? { idea: true } : {}) });
+        return done(this.act(c.card, { action: 'accept', ...(c.idea ? { idea: true } : {}) }));
       case 'snooze':
-        return this.act(c.card, { action: 'snooze', until: c.until });
+        return done(this.act(c.card, { action: 'snooze', until: c.until }));
       case 'start':
       case 'force':
       case 'buildPrototype':
       case 'discard':
       case 'build':
-      case 'splitOff':
       case 'planDoc':
       case 'park':
       case 'drop':
@@ -2196,25 +2231,25 @@ export class CanvasRuntime {
       case 'awaitContributor':
         // screenshots said with the start belong to the task, so the worker gets them with it
         if ((c.do === 'start' || c.do === 'force') && c.images?.length) this.ideas.addTaskImages(c.card, c.images);
-        return this.act(c.card, { action: c.do });
+        return done(this.act(c.card, { action: c.do }));
       case 'configure':
         // a canvas left out is deleted, as with its bin in the dialog
-        return this.deps.config?.save(c.canvases, { deletes: true });
+        return done(this.deps.config?.save(c.canvases, { deletes: true }));
       case 'remember':
         return this.remember(c.text, c);
       case 'workRetro':
-        return this.workRetro.now(c.repo);
+        return done(this.workRetro.now(c.repo));
       case 'group':
         return void this.board.createGroup(c.name, c.cards);
       case 'ungroup':
-        return this.board.group(c.cards, null);
+        return void this.board.group(c.cards, null);
       case 'renameGroup':
-        return this.board.renameGroup(c.group, c.name);
+        return void this.board.renameGroup(c.group, c.name);
       case 'merge':
-        return this.merge(c.card, c.others, c.title);
+        return void this.merge(c.card, c.others, c.title);
       case 'delete':
         this.untouched(c.card);
-        return this.remove(c.card);
+        return void this.remove(c.card);
     }
   }
 
@@ -2265,7 +2300,7 @@ export class CanvasRuntime {
       return on.id;
     }
     const card = this.board.create({ title: info.title.slice(0, TITLE_MAX), body: c.text || t.worker.goOnWith(number, url), repo: repo.ref.id, ...this.board.freeSpot(c.place ?? this.inView) });
-    this.board.log(card.id, 'state', 'owner', t.voice.created);
+    this.madeBy(card.id, c);
     await this.onBranch(card.id, branch, () => {
       this.coordinator.request(card.id);
       this.board.notify({ text: t.worker.adoptedPr(number, branch), cardId: card.id, open: true });
@@ -2328,7 +2363,7 @@ export class CanvasRuntime {
       ...(info.headRef ? { headRef: info.headRef } : {}),
     };
     this.board.work(card.id, { contribution: toJson(stored) });
-    this.board.log(card.id, 'state', 'owner', t.voice.created);
+    this.madeBy(card.id, c);
     this.watchPrs(repo);
     this.coordinator.request(card.id);
     // the card opens, so the owner sees its review begin

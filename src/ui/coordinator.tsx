@@ -5,7 +5,7 @@
 
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import type { Item, Preference, RepoRef, Reshare, SettingProposal, Talk, TalkQuote, TalkRef, TalkWait } from '../core/types';
-import { api, failText } from './api';
+import { api, ApiError, failText } from './api';
 import { useAct } from './act';
 import { Body, Inline, plain } from './markdown';
 import { AnswerFiles, Continues, Msg, Quote, Reading, ThreadCard } from './message';
@@ -27,14 +27,16 @@ import { ClockMark } from './snooze';
 import { know, read, session, useStoredState, write, useKnown } from './stored';
 import { cardPath } from './address';
 import { PlayMark, StopMark } from './parts';
-import { CardLink, Naming } from './cardLink';
+import { CardLink, Naming, ReplyBody } from './cardLink';
+import { TextDiff } from './textDiff';
 
 interface Props {
   on: boolean;
   /** The canvas, whose sections stay open or closed as the owner left them. */
   canvas: string;
   /** A command typed in the sheet, maybe in reply to a message of it: read like a spoken one; the conversation shows it at once. */
-  onTell: (text: string, images?: string[], replyTo?: Reply['to']) => void;
+  /** `draft`: the field the words came from, which gets them back if Obeya refuses them; `spoken`: they were dictated into it. */
+  onTell: (text: string, images?: string[], replyTo?: Reply['to'], draft?: string, spoken?: boolean) => void;
   items: Item[];
   preferences: Preference[];
   /** Values for repositories' settings the work retrospective proposes. */
@@ -113,13 +115,22 @@ export function CoordinatorSheet({ on, canvas, items, preferences, settings, rep
  * field's (the sidebar's, or the phone view's for this canvas). `on`: the conversation is in view,
  * so the answers waiting in it are read.
  */
-export function CoordinatorTalk({ on, talk, items, repos, onOpen, onTell, draft = OBEYA_DRAFT }: Pick<Props, 'on' | 'talk' | 'items' | 'repos' | 'onOpen' | 'onTell'> & { draft?: string }) {
+export function CoordinatorTalk({
+  on,
+  talk,
+  items,
+  allItems,
+  repos,
+  onOpen,
+  onTell,
+  draft = OBEYA_DRAFT,
+}: Pick<Props, 'on' | 'talk' | 'items' | 'repos' | 'onOpen' | 'onTell'> & { allItems?: Item[]; draft?: string }) {
   const fresh = useRead(on, talk, () => api.readTalk());
   return (
     <>
-      <Conversation talk={talk} fresh={fresh} items={items} onOpen={onOpen} draft={draft} />
+      <Conversation talk={talk} fresh={fresh} items={allItems ?? items} onOpen={onOpen} draft={draft} />
       {/* a command in writing, for when speaking is not possible; its screenshots go to the cards it creates or concerns */}
-      <Composer className="tell" draft={draft} placeholder={t.voice.typePlaceholder} obeya onSend={onTell} />
+      <Composer className="tell" draft={draft} placeholder={t.voice.typePlaceholder} obeya onSend={(text, images, replyTo, spoken) => onTell(text, images, replyTo, draft, spoken)} />
       <ReviewHint items={items} repos={repos} />
     </>
   );
@@ -183,9 +194,13 @@ export function ProjectTalk({ on, project, talk, items, onOpen }: { on: boolean;
           draft={draft}
           placeholder={t.plan.askPlaceholder}
           label={t.plan.askSend}
-          onSend={(text, images, replyTo) => {
+          onSend={(text, images, replyTo, spoken) => {
             setError('');
-            return api.act(project.id, { action: 'consult', text, ...(images ? { images } : {}), ...(replyTo && typeof replyTo !== 'number' ? { replyTo } : {}) }).catch((e) => setError(failText(e)));
+            return api.act(project.id, { action: 'consult', text, ...(images ? { images } : {}), ...(replyTo && typeof replyTo !== 'number' ? { replyTo } : {}), ...(spoken ? { spoken } : {}) }).catch((e) => {
+              setError(failText(e));
+              // refused: the words stay in the field for another try
+              if (e instanceof ApiError && e.code) throw e;
+            });
           }}
         />
       )}
@@ -345,7 +360,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
                 onReply={reply('reply', 'coordinator', x.reply)}
                 head={x.thread === undefined && tellable(x, items) && <WalkthroughButton of={{ talk: x.id }} hint={x.id === hinted} />}
               >
-                <Body md={x.reply} />
+                <ReplyBody md={x.reply} created={x.created} items={items} onOpen={onOpen} />
                 {x.wish && !x.undone && <WishReplyLink wish={x.wish} />}
                 {x.undone && <div className="hint">{t.coordinator.undone}</div>}
                 {x.waits?.map((w) => <WaitLine key={w.card} talk={x.id} wait={w} card={items.find((i) => i.id === w.card)} onOpen={onOpen} />)}
@@ -555,7 +570,7 @@ const asText = (v: string | string[]) => (Array.isArray(v) ? v.join('\n') : v);
 
 /**
  * A value for a repository's setting the work retrospective proposes, with the cards it rests on and
- * the value it would replace: the owner takes it, as it is or changed, on this machine or into the
+ * what it changes in the value it would replace, as a diff that follows the owner's edits: the owner takes it, as it is or changed, on this machine or into the
  * repository for everyone (neither is the default: they choose each time), or rejects it.
  */
 function SettingRow({ p, items, repo, onOpen, onConfig }: { p: SettingProposal; items: Item[]; repo: RepoRef | undefined; onOpen: (i: Item) => void; onConfig: () => void }) {
@@ -584,10 +599,16 @@ function SettingRow({ p, items, repo, onOpen, onConfig }: { p: SettingProposal; 
         </a>
       </span>
       <span className="setting-diff">
-        {now !== null && (
+        {now === '' && (
           <>
             <span className="setting-label">{k.settingWas}</span>
-            <pre className={now ? 'setting-value was' : 'setting-value was setting-none'}>{now || k.settingEmpty}</pre>
+            <pre className="setting-value was setting-none">{k.settingEmpty}</pre>
+          </>
+        )}
+        {!!now && (
+          <>
+            <span className="setting-label">{k.settingChange}</span>
+            {now === draft.trim() ? <span className="setting-same hint">{k.settingSame}</span> : <TextDiff before={now.split('\n')} after={draft.trim().split('\n')} />}
           </>
         )}
         <span className="setting-label">{k.settingNew}</span>

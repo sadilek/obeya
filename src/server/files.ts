@@ -5,7 +5,7 @@
 // its home and the field gets that copy's path.
 
 import { mkdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { readdir } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, join } from 'node:path';
 import { MAX_FILE_BYTES } from '../core/types';
@@ -109,6 +109,13 @@ export class Files {
     const path = join(dir, safeName(name));
     writeFileSync(path, bytes);
     return path;
+  }
+
+  /** The stored file `name` in folder `id` (as `save` made them), for the owner to open; null for anything else. */
+  async stored(id: string, name: string): Promise<string | null> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id) || safeName(name) !== name) return null;
+    const path = join(this.dir, id, name);
+    return (await stat(path).catch(() => null))?.isFile() ? path : null;
   }
 }
 

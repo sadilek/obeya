@@ -172,6 +172,17 @@ describe('landing on main from a clone of the remote', () => {
     expect(state(c.id)).toBe('live');
     expect(git(main, 'log', '--format=%s', '-3').split('\n')).toEqual(['Zählerstände als CSV', 'Andere Karte', 'init']);
   });
+
+  test('landed on a main origin lacks yet: the worker hears to link no commit of it, as a pull before the push gives it a new hash', async () => {
+    rebuild({ remote: origin });
+    const c = board.create({ title: 'Zählerstände exportieren', x: 0, y: 0 });
+    await workers.start(c.id);
+    commit(board.row(c.id).workspace!, 'k.ts', 'k', 'Zählerstände als CSV');
+    await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
+    await workers.approve(c.id);
+    expect(runtime.last.inbox.at(-1)).toContain('Origin does not have it yet');
+    expect(runtime.last.inbox.at(-1)).toContain('Link no commit of it');
+  });
 });
 
 describe('landing on main, then pushing main to origin (`push`)', () => {
@@ -199,6 +210,7 @@ describe('landing on main, then pushing main to origin (`push`)', () => {
     expect(git(origin, 'rev-parse', 'main')).toBe(git(main, 'rev-parse', 'main'));
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', author: 'obeya', text: `Zu origin/main gepusht (${git(main, 'rev-parse', '--short=7', 'main')}).` });
     expect(session.inbox.at(-1)).toContain('Obeya pushed main to origin as well.');
+    expect(session.inbox.at(-1)).not.toContain('Link no commit');
   });
 
   test('a push origin refuses leaves the work landed and the card live, and tells the owner and the worker why', async () => {
@@ -381,6 +393,137 @@ describe('approving directly onto main where work goes out as a pull request', (
     await workers.approve(c.id, { direct: true });
     expect(state(c.id)).toBe('done');
     expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
+  });
+
+  describe('approved while the worker is still at work on the owner’s words', () => {
+    /** A handover of `X`, then the owner's words on it, which the worker is taking in. */
+    const answering = async () => {
+      const s = await started();
+      commitIn(s.clone, 'x.ts', 'X');
+      await s.session.call('ready_for_review', { summary: 'S', demo: artifact() });
+      s.session.emit({ type: 'idle' });
+      workers.message(s.c.id, 'Bitte die Goldens erneuern.');
+      expect(board.item(s.c.id)).toMatchObject({ state: 'waiting', answering: true });
+      return s;
+    };
+
+    test('the push waits for the reply: the work its new handover brings goes onto main', async () => {
+      const { c, session, clone } = await answering();
+      expect(await workers.approve(c.id, { direct: true })).toEqual({ afterReply: true });
+      // the card stays at work on the owner's words, and says the approval waits
+      expect(board.item(c.id)).toMatchObject({ state: 'waiting', answering: true, approvesAfterReply: 'approve' });
+      expect(board.item(c.id)!.landing).toBeUndefined();
+      expect(board.events(c.id).at(-1)).toMatchObject({ author: 'owner', text: 'Direkt auf main pushen, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht gepusht.' });
+      expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
+      // the worker hears of it once, with its next step
+      expect(session.toolStep()).toContain('The owner approved your work while you are still at it');
+      expect(session.toolStep() ?? '').not.toContain('The owner approved');
+      commitIn(clone, 'golden.json', 'Goldens');
+      await session.call('ready_for_review', { summary: 'Goldens erneuert.', demo: artifact() });
+      expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
+      session.emit({ type: 'idle' });
+      await until(() => state(c.id) === 'live');
+      expect(git(origin, 'log', '--format=%s', 'main').split('\n')).toEqual(['Goldens', 'X', 'init']);
+      expect(board.item(c.id)!.approvesAfterReply).toBeUndefined();
+      expect(board.events(c.id).some((e) => e.text === 'Freigegeben und direkt auf main gepusht.')).toBe(true);
+    });
+
+    test('a reply without a new handover lands the branch as it stands then', async () => {
+      const { c, session, clone } = await answering();
+      await workers.approve(c.id, { direct: true });
+      session.emit({ type: 'tool', name: 'Bash', input: {} });
+      commitIn(clone, 'golden.json', 'Goldens');
+      session.call('reply', { text: 'Goldens erneuert.' });
+      session.emit({ type: 'idle' });
+      await until(() => state(c.id) === 'live');
+      expect(git(origin, 'log', '--format=%s', 'main').split('\n')).toEqual(['Goldens', 'X', 'init']);
+    });
+
+    test('where work lands on main, the approval waits as well', async () => {
+      await setup(MAIN);
+      const { c, session, clone } = await answering();
+      await workers.approve(c.id);
+      expect(git(main, 'log', '--format=%s', '-1')).toBe('init');
+      session.emit({ type: 'tool', name: 'Bash', input: {} });
+      commitIn(clone, 'golden.json', 'Goldens');
+      session.call('reply', { text: 'Goldens erneuert.' });
+      session.emit({ type: 'idle' });
+      await until(() => state(c.id) === 'live');
+      expect(git(main, 'log', '--format=%s', '-2').split('\n')).toEqual(['Goldens', 'X']);
+    });
+
+    test('a question from the worker instead lets the approval lapse: the card waits for the owner', async () => {
+      const { c, session } = await answering();
+      await workers.approve(c.id, { direct: true });
+      session.emit({ type: 'tool', name: 'Read', input: {} });
+      session.call('ask', { question: 'Alle Goldens oder nur die zwei?' });
+      session.emit({ type: 'idle' });
+      await until(() => board.events(c.id).some((e) => e.text === 'Nicht gepusht: Der Agent hat noch eine Frage.'));
+      expect(board.item(c.id)).toMatchObject({ state: 'waiting', need: 'question' });
+      expect(board.item(c.id)!.approvesAfterReply).toBeUndefined();
+      expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
+    });
+
+    test('“Don’t approve after all” takes it back: after the reply the card waits for the owner', async () => {
+      const { c, session } = await answering();
+      await workers.approve(c.id, { direct: true });
+      session.toolStep();
+      workers.unapprove(c.id);
+      expect(board.item(c.id)!.approvesAfterReply).toBeUndefined();
+      expect(board.events(c.id).at(-1)).toMatchObject({ author: 'owner', text: 'Doch nicht freigeben.' });
+      // it heard of the approval, so it hears that it goes
+      expect(session.toolStep()).toContain('took back the approval');
+      session.emit({ type: 'tool', name: 'Read', input: {} });
+      session.call('reply', { text: 'Erledigt.' });
+      session.emit({ type: 'idle' });
+      await Bun.sleep(50);
+      expect(board.item(c.id)).toMatchObject({ state: 'waiting', need: 'demo' });
+      expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
+    });
+
+    test('a new handover that asks something in its demo report lets the approval lapse too', async () => {
+      const { c, session, clone } = await answering();
+      await workers.approve(c.id, { direct: true });
+      commitIn(clone, 'golden.json', 'Goldens');
+      await session.call('ready_for_review', { summary: 'Goldens erneuert.', demo: { ...artifact(), question: { text: 'Auch die dritte Szene?' } } });
+      session.emit({ type: 'idle' });
+      await until(() => board.events(c.id).some((e) => e.text === 'Nicht gepusht: Der Agent hat noch eine Frage.'));
+      expect(state(c.id)).toBe('waiting:demo');
+      expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
+    });
+
+    test('asking the owner for a permission lets it lapse at once', async () => {
+      const { c, session } = await answering();
+      await workers.approve(c.id, { direct: true });
+      void session.spec.askOwner!({ name: 'Bash', input: { command: 'rm -rf build' } }, new AbortController().signal);
+      await until(() => board.item(c.id)!.need === 'question');
+      expect(board.item(c.id)).toMatchObject({ state: 'waiting', need: 'question' });
+      expect(board.item(c.id)!.approvesAfterReply).toBeUndefined();
+      expect(board.events(c.id).at(-1)).toMatchObject({ text: 'Nicht gepusht: Der Agent hat noch eine Frage.' });
+    });
+
+    test('a restart after the new handover, before the turn ended, carries the approval out', async () => {
+      const { c, session, clone } = await answering();
+      await workers.approve(c.id, { direct: true });
+      commitIn(clone, 'golden.json', 'Goldens');
+      await session.call('ready_for_review', { summary: 'Goldens erneuert.', demo: artifact() });
+      workers.shutdown();
+      rebuild();
+      workers.resumeAll();
+      await until(() => state(c.id) === 'live');
+      expect(git(origin, 'log', '--format=%s', 'main').split('\n')).toEqual(['Goldens', 'X', 'init']);
+    });
+
+    test('a turn that broke off without a reply carries out nothing', async () => {
+      const { c, session } = await answering();
+      await workers.approve(c.id, { direct: true });
+      session.emit({ type: 'tool', name: 'Read', input: {} });
+      session.emit({ type: 'error', message: 'API Error: 500' });
+      session.emit({ type: 'idle' });
+      await until(() => board.events(c.id).some((e) => e.text === 'Nicht gepusht: Die Antwort kam nicht zustande.'));
+      expect(board.item(c.id)).toMatchObject({ state: 'waiting', need: 'demo' });
+      expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
+    });
   });
 });
 
@@ -806,8 +949,10 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
     /** Lands W1 with its doc gone; its worker waits for the restart. */
     const landWaiting = async () => {
       setWorkers(restarting(board));
-      const w = await handOver();
+      // its session reported its id in the turn it handed over in
+      const w = (await handedOver({ card: w1(), commit: 'config.ts', summary: 'Konfiguration vorbereitet.', idle: false })).card;
       runtime.last.emit({ type: 'session', id: 'sess-1' });
+      runtime.last.emit({ type: 'idle' });
       setDocs([]);
       await workers.approve(w.id);
       runtime.last.call('after_restart', {});

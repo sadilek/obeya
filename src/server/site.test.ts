@@ -374,7 +374,8 @@ describe('a site Obeya keeps', () => {
     // it loads its own files and nothing from elsewhere, its policy first, the site named for Safari
     const origin = new URL(URL_).origin;
     expect(copy).toStartWith(`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self' ${origin} data: blob:;`);
-    expect(copy).toContain('<meta http-equiv="x-dns-prefetch-control" content="off"><html><body><h2>Graph</h2>');
+    // in its head it names the address search engines list it under, the one its frame loads
+    expect(copy).toContain(`<meta http-equiv="x-dns-prefetch-control" content="off"><link rel="canonical" href="${URL_}auswertung-abc123/artifact/"><html><body><h2>Graph</h2>`);
     // the host sends that again with its files, with the sandbox, and keeps their connections to the site
     expect(readFileSync(join(siteDir(), '_headers'), 'utf8')).toBe(
       ['/:slug/artifact/*', '/:slug/:n/artifact/*']
@@ -386,7 +387,8 @@ describe('a site Obeya keeps', () => {
     );
     const html = readFileSync(join(at, 'index.html'), 'utf8');
     // the frame opens no window, and the page lets it show nothing but the site's own files
-    expect(html).toContain('<iframe src="artifact/index.html" sandbox="allow-scripts" ');
+    expect(html).toContain('<iframe src="artifact/" sandbox="allow-scripts" ');
+    expect(html).not.toContain('artifact/index.html');
     expect(html).toContain(`<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:;`);
     // alone in its window it stays in the frame: its own file would run in the site's origin
     expect(html).toContain('<a href="?alone" target="_blank"');
@@ -570,13 +572,15 @@ describe('a site Obeya keeps', () => {
     expect(r).toMatchObject({ url: `${URL_}filter/` });
     const at = join(deployed(), 'filter');
     expect(readFileSync(join(at, 'demo.mp4'), 'utf8')).toBe('video');
-    expect(readFileSync(join(at, '2', 'artifact', 'index.html'), 'utf8')).toStartWith('<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy"');
+    const copy = readFileSync(join(at, '2', 'artifact', 'index.html'), 'utf8');
+    expect(copy).toStartWith('<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy"');
+    expect(copy.match(/<link rel="canonical" href="([^"]*)">/g)).toEqual([`<link rel="canonical" href="${URL_}filter/2/artifact/">`]);
     expect(readFileSync(join(at, '3', 'demo.mp4'), 'utf8')).toBe('later video');
     const html = readFileSync(join(at, 'index.html'), 'utf8');
     expect(html).toContain('<h1>Titel filter</h1>');
     expect(html).toContain('<nav class="sections"><a href="#v1">1. Demo</a><a href="#v2">2. Ergänzung vom ');
     expect(html).toContain('<h3>Die Tabelle</h3>');
-    expect(html).toContain('<iframe src="2/artifact/index.html" sandbox="allow-scripts"');
+    expect(html).toContain('<iframe src="2/artifact/" sandbox="allow-scripts"');
     expect(html).toContain('<a href="?alone=2" target="_blank"');
     expect(html).toContain('src="3/demo.mp4"');
     expect(html).toContain('3/captions.de.vtt');
@@ -600,6 +604,45 @@ describe('a site Obeya keeps', () => {
     await target.publish(page('filter'));
     expect(existsSync(join(deployed(), 'filter', '2'))).toBe(false);
     expect(readFileSync(join(deployed(), 'filter', 'index.html'), 'utf8')).not.toContain('class="sections"');
+  });
+
+  test('videos encoded anew go out in place: each page keeps its date and its page, and sharing it again with the same video keeps them too', async () => {
+    const later = videoDemo(join(dir, 'later'));
+    writeFileSync(join(later, 'demo.mp4'), 'later video');
+    await target.publish(page('a-111111', { more: [{ title: 'Später', text: 'Ein Detail.', kind: 'video', chapters: [[0, 'Danach']], dir: later }] }));
+    await target.publish(page('b-222222', { shared: ['a-111111'] }));
+    const before = { meta: meta('a-111111'), html: readFileSync(join(siteDir(), 'a-111111/index.html'), 'utf8'), rev: manifest().pages['a-111111']!.rev };
+    const encoded = join(dir, 'encoded');
+    mkdirSync(encoded);
+    writeFileSync(join(encoded, 'first.mp4'), 'video in range');
+    writeFileSync(join(encoded, 'later.mp4'), 'later video in range');
+    const files = { 'demo.mp4': join(encoded, 'first.mp4'), '2/demo.mp4': join(encoded, 'later.mp4') };
+    // a failed deploy leaves the page as it was
+    writeFileSync(join(dir, 'fail'), '');
+    expect(await target.replace([{ slug: 'a-111111', files }], ['a-111111', 'b-222222'])).toMatchObject({ why: 'The site’s deploy failed (exit code 3).' });
+    expect(readFileSync(join(siteDir(), 'a-111111/demo.mp4'), 'utf8')).toBe('video');
+    expect(readFileSync(join(siteDir(), 'a-111111/2/demo.mp4'), 'utf8')).toBe('later video');
+    expect(meta('a-111111')).toEqual(before.meta);
+    rmSync(join(dir, 'fail'));
+    expect(await target.replace([{ slug: 'a-111111', files }], ['a-111111', 'b-222222'])).toMatchObject({ said: expect.stringContaining('Uploaded') });
+    expect(readFileSync(join(deployed(), 'a-111111/demo.mp4'), 'utf8')).toBe('video in range');
+    expect(readFileSync(join(deployed(), 'a-111111/2/demo.mp4'), 'utf8')).toBe('later video in range');
+    expect(readFileSync(join(deployed(), 'a-111111/index.html'), 'utf8')).toBe(before.html);
+    const now = meta('a-111111') as ReturnType<typeof meta> & { source: string; more: { source: string; at: string }[] };
+    expect({ ...now, source: '', more: now.more.map((m) => ({ ...m, source: '' })) }).toEqual({ ...before.meta, source: '', more: (before.meta as typeof now).more.map((m) => ({ ...m, source: '' })) });
+    expect(now.source).not.toBe((before.meta as typeof now).source);
+    expect(manifest().pages['a-111111']!.rev).toBe(before.rev + 1);
+    expect(overview().indexOf('Titel b-222222')).toBeLessThan(overview().indexOf('Titel a-111111'));
+    expect(readdirSync(join(siteDir(), '../backup'))).toEqual([]);
+    // the card's demos replaced the same way: shared again, the page keeps its date
+    writeFileSync(join(demo, 'demo.mp4'), 'video in range');
+    writeFileSync(join(later, 'demo.mp4'), 'later video in range');
+    await target.publish(page('a-111111', { shared: ['b-222222'], more: [{ title: 'Später', text: 'Ein Detail.', kind: 'video', chapters: [[0, 'Danach']], dir: later }] }));
+    expect(meta('a-111111').at).toBe(before.meta.at);
+    expect(overview().indexOf('Titel b-222222')).toBeLessThan(overview().indexOf('Titel a-111111'));
+    // a file the page lacks, or larger than the site takes, is refused
+    expect(await target.replace([{ slug: 'b-222222', files: { '2/demo.mp4': join(encoded, 'later.mp4') } }], ['a-111111', 'b-222222'])).toMatchObject({ why: expect.stringContaining('2/demo.mp4 is missing in') });
+    expect(await make(SITE({ maxFile: 4 })).replace([{ slug: 'b-222222', files }], ['a-111111', 'b-222222'])).toMatchObject({ why: expect.stringContaining('the site takes at most') });
   });
 
   test('a site is named by its URL', () => {

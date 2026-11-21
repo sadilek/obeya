@@ -89,7 +89,10 @@ const de = {
     /** An outage keeps the Coordinator from reading the words: it reads them by itself when it tries again. */
     heldOutage: (when: string) => `Claude ist gerade nicht erreichbar, meist eine Störung bei Anthropic (status.claude.com). Ich lese das ${when} von selbst.`,
     undone: 'Zurückgenommen.',
-    created: 'Per Sprache angelegt.',
+    /** The first line of a card the owner's spoken words made, said to Obeya or dictated into a field. */
+    createdSpoken: 'Per Sprache angelegt.',
+    /** The first line of a card Obeya made from typed words, or from a step it took up without new ones. */
+    created: 'Von Obeya angelegt.',
     /** On the task Obeya merged others into: which, by their titles. */
     merged: (titles: string[]) => `Zusammengeführt mit ${titles.map((t) => `„${t}“`).join(', ')}.`,
   },
@@ -97,6 +100,8 @@ const de = {
     notLoggedIn: 'Claude ist auf diesem Rechner nicht angemeldet: im Terminal „claude“ starten und „/login“ ausführen.',
     /** Codex lost its login on `host` (null: this machine); the card's error line offers to log in again. */
     codexNotLoggedIn: (host: string | null) => `Codex ist ${host ? `auf ${host}` : 'auf diesem Rechner'} nicht mehr angemeldet: „Bei Codex anmelden“ in der Meldung auf der Karte.`,
+    /** Gemini lost its login on this machine; the card's error line offers to log in again in a terminal. */
+    geminiNotLoggedIn: (host: string | null) => `Gemini ist ${host ? `auf ${host}` : 'auf diesem Rechner'} nicht mehr angemeldet: „Erneut anmelden“ in der Meldung auf der Karte.`,
     session: (message: string) => `Die Sitzung des Agenten brach mit einem Fehler ab: ${message}`,
     /** The Claude API could not be reached or did not serve the request (`claudeUnreachable`): Claude Code's own words in brackets. */
     unreachable: (message: string) => `Claude ist gerade nicht erreichbar (${message}). Meist ist das eine Störung bei Anthropic, die status.claude.com zeigt, kein Fehler deiner Einrichtung.`,
@@ -205,10 +210,21 @@ const de = {
     approvedFollows: (prs: string[]) =>
       prs.length > 1 ? `Freigegeben. Vom Branch landet nichts; die Karte verfolgt die PRs ${prs.join(', ')}, bis alle gemergt sind.` : `Freigegeben. Vom Branch landet nichts; die Karte verfolgt PR ${prs[0]}, bis er gemergt ist.`,
     approvedDirect: 'Freigegeben und direkt auf main gepusht.',
+    approveAfterReply: (how: 'approve' | 'direct' | 'push'): string =>
+      how === 'direct'
+        ? 'Direkt auf main pushen, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht gepusht.'
+        : how === 'push'
+          ? 'Die Änderungen pushen, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht gepusht.'
+          : 'Freigeben, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht freigegeben.',
+    unapproved: (push: boolean): string => (push ? 'Doch nicht pushen.' : 'Doch nicht freigeben.'),
+    notApproved: (how: 'approve' | 'direct' | 'push', why: 'question' | 'noReply' | 'unhanded') =>
+      `${how === 'approve' ? 'Nicht freigegeben' : 'Nicht gepusht'}: ${why === 'question' ? 'Der Agent hat noch eine Frage.' : why === 'unhanded' ? 'Der Agent hat die Arbeit geändert, ohne sie neu zu übergeben.' : 'Die Antwort kam nicht zustande.'}`,
     landedDirect: 'Nach der Freigabe direkt auf main gepusht.',
     approvedMain: 'Freigegeben und auf main.',
     landedMain: 'Nach der Freigabe auf main gelandet.',
     pushedLanded: (branch: string, commit: string) => `Zu origin/${branch} gepusht (${commit}).`,
+    pushedBase: (branch: string) => `origin hatte noch keinen Branch ${branch}: Obeya hat ${branch} dorthin gepusht, als Basis für den Pull Request.`,
+    baseRefused: (branch: string, why: string) => `origin hat noch keinen Branch ${branch}, und der Push dorthin wurde abgelehnt: ${why}. Der Pull Request braucht ihn als Basis.`,
     approvedUpstream: (into: string, name: string) => `Freigegeben: auf ${into} und als Pull Request an ${name}.`,
     upstreamClosedQuestion: (name: string, into: string) => `${name} hat den Pull Request geschlossen, ohne ihn zu mergen. Die Arbeit ist auf ${into}. Wie geht es weiter?`,
     keepOnMain: (into: string) => `Nur auf ${into} behalten`,
@@ -249,8 +265,8 @@ const de = {
     /** A workstream no worker was on (stopped) is no longer in the plan doc on the default branch: its workspace goes back to the pool. */
     goneFreed: 'Nicht mehr im Plan-Doc auf dem Hauptbranch: Workspace freigegeben.',
     /** The card's workspace left the pool, its folder moved or deleted by hand; a card at work is planned again. */
-    workspaceGone: (path: string, planned: boolean) =>
-      `Den Workspace ${path} gibt es nicht mehr: freigegeben${planned ? ', die Karte ist wieder geplant' : ''}. Der nächste Start nimmt einen anderen.`,
+    workspaceGone: (path: string, then: 'planned' | 'start' | 'agent') =>
+      `Den Workspace ${path} gibt es nicht mehr: freigegeben${then === 'planned' ? ', die Karte ist wieder geplant' : ''}. ${then === 'agent' ? 'Ihr Agent nimmt einen neuen auf ihrem Branch, sobald etwas für ihn kommt.' : 'Der nächste Start nimmt einen anderen.'}`,
     prClosed: 'Pull Request ohne Merge geschlossen.',
     /** Taking back the owner's approval (design: Taking back an approval). */
     revoking: 'Nimmt die Freigabe zurück …',
@@ -308,6 +324,8 @@ const de = {
     parkFailed: (output: string) => `Die App im Workspace zu stoppen, ist fehlgeschlagen: ${output}`,
     /** The page the owner's browser gets for a card whose app no longer runs. */
     appGone: 'Die App dieser Karte läuft nicht mehr. Soll der Agent sie wieder starten, sag es ihm auf der Karte.',
+    /** The page another device gets for a card's app that Obeya could not make reachable for it. */
+    appUnreachable: (why: string) => `Die App dieser Karte läuft, aber Obeya konnte sie für dieses Gerät nicht erreichbar machen: ${why}`,
     stoppedPrOpen: (n: number) => `Gestoppt. Pull Request #${n} bleibt offen.`,
     restartDue: (pause: Pause) =>
       `${pause === 'stop' ? 'Beenden von Obeya' : pause === 'repo' ? 'Neustart der Agenten dieses Repositorys' : 'Neustart von Obeya'} angekündigt; der Agent pausiert beim nächsten sicheren Punkt.`,
@@ -373,6 +391,9 @@ const de = {
     waitsForWorkspace: 'Wartet auf Workspace',
     waitsForClone: 'Die Nachfrage wartet auf den nächsten freien Klon und geht dann von selbst weiter.',
     cloneFree: 'Ein Klon ist frei: Der Agent antwortet dort weiter.',
+    /** A card waiting for the owner or in its pull request had no workspace any more when something came for its agent. */
+    workspaceRegained: (path: string) => `Die Karte hatte keinen Workspace mehr: Ihr Agent arbeitet in einem neuen auf ihrem Branch weiter, ${path}.`,
+    awaitsClone: 'Die Karte hat keinen Workspace mehr, und kein Klon ist frei: Ihr Agent nimmt den nächsten freien und geht dann von selbst weiter.',
     preparingWorkspace: 'Bereitet den Workspace vor …',
     workspaceFailed: (detail: string) => `Der Workspace ließ sich nicht vorbereiten: ${detail}`,
   },
@@ -646,6 +667,11 @@ const de = {
     title: 'Erste Aufgabe: etwas Kleines ändern',
     body: 'Schreib in diese Karte, was ein Agent in diesem Repository tun soll, zum Beispiel: „Ergänze im README, wie man das Projekt startet.“ Dann „Agent starten“: Er arbeitet auf einem eigenen Branch, fragt nach, wenn er etwas nicht selbst entscheiden soll, und zeigt dir zum Schluss eine Demo. Du gibst sie frei oder schreibst, was noch fehlt.\n\nWeitere Aufgaben legst du mit „+ Neue Aufgabe“ an, oder du sagst sie: Leertaste halten und sprechen. „Konfiguration“ → „Einrichtung prüfen“ prüft auch später, was Obeya auf diesem Rechner braucht.',
   },
+  /** The same, on a canvas whose repository is still empty: what to build comes first. */
+  welcomeEmpty: {
+    title: 'Erste Aufgabe: beschreiben, was entstehen soll',
+    body: 'Dieses Repository ist noch leer. Schreib in diese Karte, was darin entstehen soll: wofür, für wen und was die erste Version können muss, zum Beispiel: „Eine Web-App, in der unser Verein Hallenzeiten bucht. Zuerst nur: freie Zeiten sehen und eine buchen.“ Dann „Als Idee besprechen“: Ein Agent fragt nach, was noch offen ist (Plattform, Technik, Umfang), zeigt Varianten oder einen Prototyp, und „So bauen“ lässt die erste Version bauen. Weißt du schon genau, was du willst, geht auch gleich „Agent starten“. Der Agent, der die erste Version baut, richtet das Repository mit ein: ein CLAUDE.md dazu, wie man darin arbeitet, und die Einstellungen, mit denen Obeya die App startet und vorführt.\n\nWeitere Aufgaben legst du mit „+ Neue Aufgabe“ an, oder du sagst sie: Leertaste halten und sprechen. „Konfiguration“ → „Einrichtung prüfen“ prüft auch später, was Obeya auf diesem Rechner braucht.',
+  },
   adapterSetup: {
     title: (repo: string) => `Obeya für ${repo} einrichten`,
     body: 'Füll mit dem Skill `obeya:settings` die Einstellungen dieses Repositorys für alle aus (`.obeya/settings.json`, in der Konfiguration unter „Einstellungen“ als „aus dem Repository“ zu sehen): welche Prüfungen laufen, wie Arbeit landet, wie ein Agent die App betreibt (starten, nach einer Änderung, für eine Demo), wie Obeya sie stoppt, und wo die Plan-Docs liegen, die Obeya als Projekte zeigt. Hat das Repository noch ein `.obeya/adapter/`, übernimm, was darin steht, in die Einstellungen und lösch es. Was du im Repository nicht herausfindest (Login, Testdaten), frag mich.',
@@ -722,12 +748,14 @@ const en: Messages = {
     held: (when: string) => `The usage limit is reached. I will read this by myself ${when}.`,
     heldOutage: (when: string) => `Claude cannot be reached right now, usually an outage at Anthropic (status.claude.com). I will read this by myself ${when}.`,
     undone: 'Taken back.',
-    created: 'Created by voice.',
+    createdSpoken: 'Created by voice.',
+    created: 'Created by Obeya.',
     merged: (titles: string[]) => `Merged with ${titles.map((t) => `“${t}”`).join(', ')}.`,
   },
   failure: {
     notLoggedIn: 'Claude is not logged in on this machine: run “claude” in a terminal and then “/login”.',
     codexNotLoggedIn: (host: string | null) => `Codex is no longer logged in ${host ? `on ${host}` : 'on this machine'}: “Log in to Codex” in the card’s message.`,
+    geminiNotLoggedIn: (host: string | null) => `Gemini is no longer logged in ${host ? `on ${host}` : 'on this machine'}: “Reauthenticate” in the card’s message.`,
     session: (message: string) => `The agent's session failed with an error: ${message}`,
     unreachable: (message: string) => `Claude cannot be reached right now (${message}). Usually that is an outage at Anthropic, which status.claude.com shows, not a fault of your setup.`,
   },
@@ -811,10 +839,21 @@ const en: Messages = {
     approvedFollows: (prs: string[]) =>
       prs.length > 1 ? `Approved. Nothing lands from the branch; the card follows PRs ${prs.join(', ')} until all are merged.` : `Approved. Nothing lands from the branch; the card follows PR ${prs[0]} until it is merged.`,
     approvedDirect: 'Approved and pushed straight to main.',
+    approveAfterReply: (how: 'approve' | 'direct' | 'push') =>
+      how === 'direct'
+        ? 'Push it straight to main once the reply is there; if the agent still asks something, it is not pushed.'
+        : how === 'push'
+          ? 'Push the changes once the reply is there; if the agent still asks something, they are not pushed.'
+          : 'Approve it once the reply is there; if the agent still asks something, it is not approved.',
+    unapproved: (push: boolean) => (push ? 'Not pushing them after all.' : 'Not approving it after all.'),
+    notApproved: (how: 'approve' | 'direct' | 'push', why: 'question' | 'noReply' | 'unhanded') =>
+      `${how === 'approve' ? 'Not approved' : 'Not pushed'}: ${why === 'question' ? 'the agent still has a question.' : why === 'unhanded' ? 'the agent changed the work without handing it over again.' : 'the reply did not come.'}`,
     landedDirect: 'Pushed straight to main after the approval.',
     approvedMain: 'Approved and on main.',
     landedMain: 'Landed on main after the approval.',
     pushedLanded: (branch: string, commit: string) => `Pushed to origin/${branch} (${commit}).`,
+    pushedBase: (branch: string) => `origin had no ${branch} branch yet: Obeya pushed ${branch} there, as the pull request's base.`,
+    baseRefused: (branch: string, why: string) => `origin has no ${branch} branch yet, and pushing it there was refused: ${why}. The pull request needs it as its base.`,
     approvedUpstream: (into: string, name: string) => `Approved: onto ${into}, and as a pull request to ${name}.`,
     upstreamClosedQuestion: (name: string, into: string) => `${name} closed the pull request without merging it. The work is on ${into}. How should it go on?`,
     keepOnMain: (into: string) => `Keep it on ${into} only`,
@@ -850,8 +889,8 @@ const en: Messages = {
     mergedTicked: 'Ticked off in the plan doc on the default branch: the pull request counts as merged. Live.',
     tickedFreed: 'Ticked off in the plan doc: workspace freed.',
     goneFreed: 'No longer in the plan doc on the default branch: workspace freed.',
-    workspaceGone: (path: string, planned: boolean) =>
-      `The workspace ${path} no longer exists: freed${planned ? ', the card is planned again' : ''}. The next start takes another.`,
+    workspaceGone: (path: string, then: 'planned' | 'start' | 'agent') =>
+      `The workspace ${path} no longer exists: freed${then === 'planned' ? ', the card is planned again' : ''}. ${then === 'agent' ? 'Its agent takes a fresh one on its branch as soon as something comes for it.' : 'The next start takes another.'}`,
     prClosed: 'Pull request closed without a merge.',
     revoking: 'Taking back the approval …',
     revokedApproval: 'Approval taken back: the next handover waits for you again instead of landing by itself.',
@@ -898,6 +937,8 @@ const en: Messages = {
     parkFailed: (output: string) => `Stopping the app in the workspace failed: ${output}`,
     /** The page the owner's browser gets for a card whose app no longer runs. */
     appGone: 'The app of this card no longer runs. To have the agent start it again, tell it on the card.',
+    /** The page another device gets for a card's app that Obeya could not make reachable for it. */
+    appUnreachable: (why: string) => `The app of this card runs, but Obeya could not make it reachable from this device: ${why}`,
     stoppedPrOpen: (n: number) => `Stopped. Pull request #${n} stays open.`,
     restartDue: (pause: Pause) => `Obeya is about to ${pause === 'stop' ? 'stop' : pause === 'repo' ? "restart this repository's agents" : 'restart'}; the agent pauses at the next safe point.`,
     restartWaits: (pause: Pause) =>
@@ -954,6 +995,8 @@ const en: Messages = {
     waitsForWorkspace: 'Waiting for a workspace',
     waitsForClone: 'The follow-up waits for the next free clone and then goes on by itself.',
     cloneFree: 'A clone is free: the agent goes on answering there.',
+    workspaceRegained: (path: string) => `The card had no workspace any more: its agent goes on in a fresh one on its branch, ${path}.`,
+    awaitsClone: 'The card has no workspace any more, and no clone is free: its agent takes the next free one and then goes on by itself.',
     preparingWorkspace: 'Preparing the workspace …',
     workspaceFailed: (detail: string) => `The workspace could not be prepared: ${detail}`,
   },
@@ -1206,6 +1249,10 @@ const en: Messages = {
   welcome: {
     title: 'First task: change something small',
     body: 'Write into this card what an agent should do in this repository, for example: “Add to the README how to start the project.” Then “Start agent”: it works on a branch of its own, asks when something is not its to decide, and shows you a demo at the end. You approve it or write what is still missing.\n\nMore tasks come from “+ New task”, or you say them: hold Space and speak. “Configuration” → “Check setup” checks again later what Obeya needs on this machine.',
+  },
+  welcomeEmpty: {
+    title: 'First task: describe what to build',
+    body: 'This repository is still empty. Write into this card what you want to build here: what for, for whom, and what the first version must do, for example: “A web app in which our club books hall times. To begin with only: see the free times and book one.” Then “Discuss as an idea”: an agent asks about what is still open (platform, technology, scope), shows variants or a prototype, and “Build it like this” has the first version built. If you already know exactly what you want, “Start agent” works right away too. The agent that builds the first version also sets up the repository: a CLAUDE.md on how to work in it, and the settings with which Obeya starts and demos the app.\n\nMore tasks come from “+ New task”, or you say them: hold Space and speak. “Configuration” → “Check setup” checks again later what Obeya needs on this machine.',
   },
   adapterSetup: {
     title: (repo: string) => `Set up Obeya for ${repo}`,

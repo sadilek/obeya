@@ -55,6 +55,15 @@ export interface Landed {
 }
 
 /**
+ * A pull of the remote's default branch into the checkout (`Workspaces.pullMain`): where it moved,
+ * and where it rebased the local branch's unpushed commits, each of them by its new commit
+ * (`rewrites`).
+ */
+export interface Pulled extends Landed {
+  rewritten?: Rewritten;
+}
+
+/**
  * Where pulling the remote's default branch into the checkout stops on a conflict: at `commit`
  * (with its `subject`) of the local default branch's `unpushed` commits, in `files`.
  */
@@ -394,17 +403,60 @@ async function diverged(repo: string, a: string, b: string): Promise<boolean> {
 }
 
 /**
- * After the local main's unpushed commits (those of `old` that `upstream` lacks) were rebased onto
- * `upstream` as `tip`: each of them, and the commit they stood on, by the commit that took its
- * place, so that what a card landed is found again. Paired in order, where the commits are as many
- * and their subjects alike; none otherwise (a commit dropped or split while resolving).
+ * What a rebase of the local main's unpushed commits made of them (`rewrites`): `commits`, each that
+ * is there again by its new commit; `bases`, each of them and the commit they stood on by the commit
+ * a range that started after it starts after now, so that `base..commit` of a card that landed some
+ * of them is again what it landed (a commit the rebase dropped, its change on `upstream` already, by
+ * the new commit of the last one before it that is there, or by `upstream`).
  */
-async function rewrites(repo: string, old: string, upstream: string, tip: string): Promise<Record<string, string>> {
+export interface Rewritten {
+  commits: Record<string, string>;
+  bases: Record<string, string>;
+}
+
+/**
+ * After the local main's unpushed commits (those of `old` that `upstream` lacks) were rebased onto
+ * `upstream` as `tip` (by a pull, or by a worker resolving one that stopped): where each of them is
+ * now, so that what a card landed is found again. A commit is found again by its change (`git
+ * patch-id`); one whose change a resolved conflict altered, by its subject among the new commits
+ * between those of its neighbours found so. One the rebase dropped (its change was on `upstream`
+ * already) or split while resolving is not.
+ */
+export async function rewrites(repo: string, old: string, upstream: string, tip: string): Promise<Rewritten> {
   const under = await gitAsync(repo, 'merge-base', old, upstream);
-  const list = async (range: string) => (await gitAsync(repo, 'log', '--reverse', '--no-merges', '--format=%H %s', range)).split('\n').filter(Boolean).map((l) => [l.slice(0, l.indexOf(' ')), l.slice(l.indexOf(' ') + 1)] as const);
+  const list = async (range: string) => {
+    const [log, patches] = await Promise.all([
+      gitAsync(repo, 'log', '--reverse', '--no-merges', '--format=%H %s', range),
+      gitAsync(repo, 'log', '-p', '--no-merges', '--no-color', '--no-decorate', '--no-ext-diff', '--format=commit %H', range).then((p) => gitRun(repo, ['patch-id', '--stable'], { stdin: `${p}\n` })),
+    ]);
+    const ids = new Map(patches.stdout.split('\n').filter(Boolean).map((l) => l.split(' ').reverse() as [string, string]));
+    return log.split('\n').filter(Boolean).map((l) => ({ commit: l.slice(0, l.indexOf(' ')), subject: l.slice(l.indexOf(' ') + 1), patch: ids.get(l.slice(0, l.indexOf(' '))) }));
+  };
   const [before, after] = await Promise.all([list(`${under}..${old}`), list(`${upstream}..${tip}`)]);
-  if (before.length !== after.length || before.some(([, s], i) => s !== after[i]![1])) return {};
-  return Object.fromEntries([[under, upstream], ...before.map(([c], i) => [c, after[i]![0]])]);
+  // the index in `after` of each commit of `before` found there; the rebase keeps their order
+  const at: (number | undefined)[] = [];
+  let next = 0;
+  for (const [i, c] of before.entries()) {
+    const j = c.patch ? after.findIndex((n, k) => k >= next && n.patch === c.patch) : -1;
+    if (j >= 0) [at[i], next] = [j, j + 1];
+  }
+  // a change a resolved conflict altered: by its subject, between the commits found around it
+  for (const [i, c] of before.entries()) {
+    if (at[i] !== undefined) continue;
+    const from = (at.slice(0, i).findLast((j) => j !== undefined) ?? -1) + 1;
+    const to = at.slice(i + 1).find((j) => j !== undefined) ?? after.length;
+    const j = after.findIndex((n, k) => k >= from && k < to && n.subject === c.subject && !at.includes(k));
+    if (j >= 0) at[i] = j;
+  }
+  const commits: Record<string, string> = {};
+  const bases: Record<string, string> = { [under]: upstream };
+  let last = upstream;
+  for (const [i, c] of before.entries()) {
+    const j = at[i];
+    if (j !== undefined) commits[c.commit] = last = after[j]!.commit;
+    bases[c.commit] = last;
+  }
+  return { commits, bases };
 }
 
 /** Whether this machine's git merges trees only as commits (`git merge-tree` takes trees from 2.45 on); found out by the first replay that tried. */
@@ -556,6 +608,12 @@ const SHORT_TEXT = { none: 'no workspace registered or all are leased', dirty: '
  * worktrees of a git repository (`Workspaces`), or the folder itself where it has no git
  * (`FolderWorkspaces` in `folder.ts`, which has no branches and lands nothing).
  */
+/**
+ * What `baseOnOrigin` did: pushed the main branch onto an `origin` that had none, or why that
+ * failed; null where nothing was to do (no `origin`, or it has the branch).
+ */
+export type BaseOnOrigin = { pushed: string } | { branch: string; problem: string } | null;
+
 export interface CardWorkspaces {
   readonly mode: 'clones' | 'worktrees' | 'folder';
   readonly dir: string;
@@ -575,6 +633,7 @@ export interface CardWorkspaces {
   addedFiles(cardId: string, dir: string): Promise<string[]>;
   landOnMain(cardId: string, branch: string, trailer?: string, push?: boolean): Promise<LandProblem | Landed>;
   pushToMain(cardId: string, trailer?: string): Promise<LandProblem | Landed>;
+  baseOnOrigin?(): Promise<BaseOnOrigin>;
   upstreamStart?(ref: string): Promise<UpstreamStart | null>;
   branchChoices?(): Promise<OwnBranch[]>;
   adoptStart?(branch: string): Promise<AdoptStart | null>;
@@ -616,6 +675,13 @@ export interface LeaseOptions {
    * forward to it, never reset.
    */
   adopt?: () => Promise<string | null>;
+  /**
+   * The branch holds the card's work already (a card that waits for the owner and lost its
+   * workspace): a clone that lacks it, and has no `from` to take it from, takes `origin`'s copy, else
+   * the checkout's; a worktree, where the checkout lacks it, `origin`'s; never a new branch off the
+   * main branch, which would lose that work.
+   */
+  keep?: boolean;
 }
 
 /**
@@ -1000,15 +1066,15 @@ export class Workspaces implements CardWorkspaces {
   lease(cardId: string, branch: string, o: LeaseOptions = {}): Lease {
     const own = this.leasedBy(cardId);
     // a worktree git is removing (its card deleted and brought back meanwhile) is added again once git is done
-    if (own && !this.cloned(own) && this.clears.has(own)) return this.leaseWorktree(cardId, branch, o.start, o.adopt);
+    if (own && !this.cloned(own) && this.clears.has(own)) return this.leaseWorktree(cardId, branch, o.start, o.adopt, !!o.keep);
     if (own) {
       // given back while git was making it ready, and taken again before git was done: it stays the card's
       this.releasing.delete(cardId);
       return { path: own, ready: this.preparing.get(cardId) ?? null };
     }
-    if (this.o.mode === 'clones') return this.leaseClone(cardId, branch, !!o.overSlots, o.from ?? null, o.start, o.adopt);
+    if (this.o.mode === 'clones') return this.leaseClone(cardId, branch, !!o.overSlots, o.from ?? null, o.start, o.adopt, !!o.keep);
     if (!o.overSlots && !this.room(null)) throw new WorkspaceError(SHORT_TEXT.slots, SHORT_CODE.slots);
-    return this.leaseWorktree(cardId, branch, o.start, o.adopt);
+    return this.leaseWorktree(cardId, branch, o.start, o.adopt, !!o.keep);
   }
 
   /**
@@ -1392,7 +1458,7 @@ export class Workspaces implements CardWorkspaces {
       if ((await gitAsync(from, 'branch', '--show-current')) === branch) {
         // only a free clone leaves the branch; one a card took meanwhile is on that card's own
         if (!this.list().some((w) => w.path === from && !w.card_id)) return;
-        await gitAsync(from, 'checkout', '--quiet', '--detach', `origin/${base}`);
+        await gitAsync(from, 'checkout', '--quiet', '--detach', await this.mainIn(from, base));
       }
       await gitAsync(from, 'branch', '--quiet', '-D', branch);
     }).catch(() => {});
@@ -1593,11 +1659,11 @@ export class Workspaces implements CardWorkspaces {
    * local main's unpushed commits would stop the pull on a conflict (`replayClash`), nothing is
    * pulled, and it says where (`stopped`); a pull that fails all the same is undone and says why.
    */
-  pullMain(): Promise<Landed | { problem: string } | { stopped: PullStopped }> {
+  pullMain(): Promise<Pulled | { problem: string } | { stopped: PullStopped }> {
     return oneAtATime(landings, this.o.repoPath, () => this.pull());
   }
 
-  private async pull(): Promise<Landed | { problem: string } | { stopped: PullStopped }> {
+  private async pull(): Promise<Pulled | { problem: string } | { stopped: PullStopped }> {
     const repo = this.o.repoPath;
     try {
       const base = await this.checkoutBase();
@@ -1618,7 +1684,10 @@ export class Workspaces implements CardWorkspaces {
         await gitAsync(repo, 'rebase', '--abort').catch(() => gitAsync(repo, 'merge', '--abort')).catch(() => {});
         return { problem: messageOf(e) };
       }
-      return { from, to: await gitAsync(repo, 'rev-parse', 'HEAD') };
+      const to = await gitAsync(repo, 'rev-parse', 'HEAD');
+      // rebased (Obeya's way where the local main has commits of its own, or the owner's): its unpushed commits have new hashes now
+      if (await isAncestor(repo, from, to, false)) return { from, to };
+      return { from, to, rewritten: await rewrites(repo, from, upstream, to).catch(() => ({ commits: {}, bases: {} })) };
     } catch (e) {
       return { problem: messageOf(e) };
     }
@@ -1628,22 +1697,30 @@ export class Workspaces implements CardWorkspaces {
    * Pushes the checkout's main to `origin`, never forced: what landed on it and nobody pushed goes
    * out. Where `origin`'s main has commits the local one lacks, they are pulled first as `pullMain`
    * pulls them; where that would stop on a conflict, nothing is pushed and it says why. Returns
-   * where `origin`'s main stood before and stands now.
+   * where `origin`'s main stood before and stands now, and the unpushed commits that pull rebased
+   * (`Pulled.rewritten`).
    */
-  pushMain(): Promise<{ from: string; to: string } | { problem: string }> {
+  pushMain(): Promise<{ from: string; to: string; rewritten?: Rewritten } | { problem: string; rewritten?: Rewritten }> {
     return oneAtATime(landings, this.o.repoPath, async () => {
       const repo = this.o.repoPath;
       try {
         const base = await this.checkoutBase();
         const from = await fetchedMain(repo, base);
+        let pulled: Awaited<ReturnType<Workspaces['pull']>> | undefined;
         if (!(await isAncestor(repo, from, `refs/heads/${base}`, false))) {
-          const pulled = await this.pull();
+          pulled = await this.pull();
           if ('stopped' in pulled) return { problem: `origin's ${base} has commits of its own that conflict with the local ${base}'s (${pulled.stopped.commit.slice(0, 7)} “${pulled.stopped.subject}” in ${pulled.stopped.files.join(', ')})` };
           if ('problem' in pulled) return pulled;
         }
         const to = await gitAsync(repo, 'rev-parse', `refs/heads/${base}`);
-        await gitAsync(repo, 'push', '--quiet', 'origin', `refs/heads/${base}:refs/heads/${base}`);
-        return { from, to };
+        const rewritten = pulled && 'rewritten' in pulled ? pulled.rewritten : undefined;
+        try {
+          await gitAsync(repo, 'push', '--quiet', 'origin', `refs/heads/${base}:refs/heads/${base}`);
+        } catch (e) {
+          // what the pull rewrote stays rewritten
+          return { problem: messageOf(e), ...(rewritten ? { rewritten } : {}) };
+        }
+        return { from, to, ...(rewritten ? { rewritten } : {}) };
       } catch (e) {
         return { problem: messageOf(e) };
       }
@@ -1682,7 +1759,7 @@ export class Workspaces implements CardWorkspaces {
    * top by themselves); what blocks the checkout the owner's. `already` where the checkout has the
    * merge by now (the owner pulled it). `rewritten`: each unpushed commit's new one (`rewrites`).
    */
-  landResolution(ws: string, at: { main: string; upstream: string }): Promise<(Landed & { rewritten: Record<string, string> }) | { already: string } | (LandProblem & { main?: string })> {
+  landResolution(ws: string, at: { main: string; upstream: string }): Promise<(Landed & { rewritten: Rewritten }) | { already: string } | (LandProblem & { main?: string })> {
     return oneAtATime(landings, this.o.repoPath, async () => {
       if (!ws) return { code: 'land', worker: false, detail: 'the card has no workspace' };
       const repo = this.o.repoPath;
@@ -1724,6 +1801,26 @@ export class Workspaces implements CardWorkspaces {
       } catch (e) {
         return { code: 'land', worker: false, detail: messageOf(e) };
       }
+    });
+  }
+
+  /**
+   * Where `origin` has no main branch yet (a clone of an empty remote), the local one goes there,
+   * never forced, so that the first pull request has a base to go onto (`BaseOnOrigin`). Asks
+   * `origin` only where the checkout knows no such branch of it.
+   */
+  baseOnOrigin(): Promise<BaseOnOrigin> {
+    return oneAtATime(landings, this.o.repoPath, async () => {
+      const repo = this.o.repoPath;
+      const base = await this.checkoutBase();
+      if (!base || (await gitTry(repo, 'remote', 'get-url', 'origin')) == null) return null;
+      if ((await gitTry(repo, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${base}`)) != null) return null;
+      if ((await gitTry(repo, 'rev-parse', '--verify', '--quiet', `refs/heads/${base}`)) == null) return null;
+      const there = await gitRun(repo, ['ls-remote', '--heads', 'origin', `refs/heads/${base}`], { env: NO_PROMPT, timeout: PUSH_TIMEOUT_MS }).catch(() => null);
+      // where origin cannot be asked, or has the branch after all, the pull request goes as it would
+      if (there?.code !== 0 || there.stdout.trim()) return null;
+      const r = await gitRun(repo, ['push', '--quiet', 'origin', `refs/heads/${base}:refs/heads/${base}`], { env: NO_PROMPT, timeout: PUSH_TIMEOUT_MS }).catch((e) => ({ code: 1, stdout: '', stderr: messageOf(e) }));
+      return r.code === 0 ? { pushed: base } : { branch: base, problem: pushRefusal(r.stderr || r.stdout).problem };
     });
   }
 
@@ -1923,7 +2020,7 @@ export class Workspaces implements CardWorkspaces {
       if (await existsAsync(ws)) {
         await gitAsync(ws, 'reset', '--quiet', '--hard');
         await gitAsync(ws, 'clean', '--quiet', '-fd');
-        await gitAsync(ws, 'checkout', '--quiet', '--detach', `origin/${await this.mainAsync(ws)}`);
+        await gitAsync(ws, 'checkout', '--quiet', '--detach', await this.mainIn(ws, await this.mainAsync(ws)));
         await deleteBranch(ws, branch, '-D');
       }
       this.release(cardId);
@@ -2122,7 +2219,7 @@ export class Workspaces implements CardWorkspaces {
    * card's branch. One that is not clean now gives way to the next `place` finds, the lease moving
    * there; where none is left, `ready` fails with the shortage.
    */
-  private leaseClone(cardId: string, branch: string, overSlots: boolean, from: string | null, start?: () => Promise<string | null>, adopt?: () => Promise<string | null>): Lease {
+  private leaseClone(cardId: string, branch: string, overSlots: boolean, from: string | null, start?: () => Promise<string | null>, adopt?: () => Promise<string | null>, keep = false): Lease {
     const looking = new Set(this.looking.keys());
     const found = this.place(overSlots, from);
     if ('short' in found) throw new WorkspaceError(SHORT_TEXT[found.short], SHORT_CODE[found.short]);
@@ -2164,11 +2261,15 @@ export class Workspaces implements CardWorkspaces {
         const adopted = adopt ? await this.startIn(path, adopt) : null;
         // the owner's branch never becomes a branch of the main branch's: a clone that cannot have it (on another machine, a branch only in the checkout) fails
         if (adopt && !adopted && !exists) throw new WorkspaceError(`the branch ${branch} is not on origin, and this clone cannot fetch it from the checkout`);
-        if (exists) {
+        // a branch that holds the card's work and is not in this clone: `origin`'s copy, else the checkout's
+        const held = keep && !exists ? await this.heldCopy(path, branch) : null;
+        if (keep && !exists && !held) throw new WorkspaceError(`the branch ${branch} is in no clone, not on origin and not in the checkout`);
+        if (held) await gitAsync(path, 'checkout', '--quiet', '-b', branch, held);
+        else if (exists) {
           await gitAsync(path, 'checkout', '--quiet', branch);
           // a copy left in this clone that is behind the owner's branch goes forward to it; one with commits of its own stays
           if (adopted && !kept && (await gitAsync(path, 'rev-parse', 'HEAD')) !== adopted && (await isAncestor(path, 'HEAD', adopted, false))) await gitAsync(path, 'merge', '--quiet', '--ff-only', adopted);
-        } else await gitAsync(path, 'checkout', '--quiet', '-b', branch, adopted ?? (await this.startIn(path, start)) ?? `origin/${base}`);
+        } else await gitAsync(path, 'checkout', '--quiet', '-b', branch, adopted ?? (await this.startIn(path, start)) ?? (await this.mainIn(path, base)));
         // the work it had not committed when its workspace was taken is uncommitted again, unless the
         // card was stopped meanwhile: then the clone goes back clean and the one that kept the branch keeps it
         if (from && !this.releasing.has(cardId) && (await gitAsync(path, 'log', '-1', '--format=%B')).includes(SAVED)) await gitAsync(path, 'reset', '--quiet', 'HEAD~1');
@@ -2269,7 +2370,7 @@ export class Workspaces implements CardWorkspaces {
    * The card's worktree, leased at once; added in the background, where it does not exist yet (in a
    * large repository that takes a minute), or once git has removed the one it had before.
    */
-  private leaseWorktree(cardId: string, branch: string, start?: () => Promise<string | null>, adopt?: () => Promise<string | null>): Lease {
+  private leaseWorktree(cardId: string, branch: string, start?: () => Promise<string | null>, adopt?: () => Promise<string | null>, keep = false): Lease {
     const path = join(this.o.dir, cardId.slice(0, 8));
     this.store.addWorkspace(this.canvasId, path, this.o.repo ?? null);
     this.store.setLease(path, cardId);
@@ -2292,6 +2393,12 @@ export class Workspaces implements CardWorkspaces {
         let base: string | undefined;
         await pastWorktreeRace(async () => {
           if ((await gitAsync(this.o.repoPath, 'branch', '--list', branch)) !== '') return void (await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', path, branch));
+          // a branch that holds the card's work and is not in the checkout: `origin`'s copy, never one off the main branch
+          if (keep) {
+            const there = `refs/remotes/origin/${branch}`;
+            if ((await gitTry(this.o.repoPath, 'rev-parse', '--verify', '--quiet', `${there}^{commit}`)) == null) throw new WorkspaceError(`the branch ${branch} is neither in the checkout nor on origin`);
+            return void (await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', '-b', branch, path, there));
+          }
           base ??= adopted ?? (await this.startIn(this.o.repoPath, start)) ?? (await this.mainAsync(this.o.repoPath));
           await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', '-b', branch, path, base);
         });
@@ -2299,6 +2406,24 @@ export class Workspaces implements CardWorkspaces {
       },
       () => this.store.removeWorkspace(path),
     );
+  }
+
+  /**
+   * Where a clone `ws` stands on the main branch `base`: `origin`'s, which it fetched. Where
+   * `origin` has none yet (a clone of an empty remote, whose first commit is only in the checkout
+   * until the first pull request's approval pushes it), the checkout's.
+   */
+  private async mainIn(ws: string, base: string): Promise<string> {
+    const there = `origin/${base}`;
+    if ((await gitTry(ws, 'rev-parse', '--verify', '--quiet', `refs/remotes/${there}^{commit}`)) != null) return there;
+    return (await this.startIn(ws, () => gitTry(this.o.repoPath, 'rev-parse', '--verify', '--quiet', `refs/heads/${base}^{commit}`))) ?? there;
+  }
+
+  /** Where a clone that lacks the card's branch finds the work it holds (`LeaseOptions.keep`): `origin`'s copy, else the checkout's, fetched from there. */
+  private async heldCopy(ws: string, branch: string): Promise<string | null> {
+    const there = `refs/remotes/origin/${branch}`;
+    if ((await gitTry(ws, 'rev-parse', '--verify', '--quiet', `${there}^{commit}`)) != null) return there;
+    return this.startIn(ws, () => gitTry(this.o.repoPath, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`));
   }
 
   /**
@@ -2574,13 +2699,13 @@ export function leavingClones(
  * What would be lost with a clone's folder: changes not committed, files git does not track (those
  * it ignores aside), a stash, submodules (not looked into), worktrees made from it that are in use
  * (a follow-up's), and commits of a branch, a tag or a detached HEAD that are on no branch of
- * `origin` (fetched with pruning: a branch deleted there counts as gone), unless its changes are on
- * `origin`'s main branch already (squashed or rebased onto it, see `landedOn`), or it is a tag
- * `origin` has as well (a release tagged on a branch since deleted). `origin` is where its work
- * lands: the remote, or the Obeya checkout where work lands on the local main. Empty where nothing
- * would be lost; `gone` where the folder is gone already; null where it cannot tell now (the host
- * does not answer, `origin` cannot be fetched), or the folder is no clone of `origins` (a worktree's
- * `.git` is a file, a clone of another repository).
+ * `origin` (fetched with pruning: a branch deleted there counts as gone) nor reached by a tag
+ * `origin` has as well, at the same commit (a release tagged on a branch since deleted), unless its
+ * changes are on `origin`'s main branch already (squashed or rebased onto it, see `landedOn`).
+ * `origin` is where its work lands: the remote, or the Obeya checkout where work lands on the local
+ * main. Empty where nothing would be lost; `gone` where the folder is gone already; null where it
+ * cannot tell now (the host does not answer, `origin` cannot be fetched), or the folder is no clone
+ * of `origins` (a worktree's `.git` is a file, a clone of another repository).
  */
 export async function unlanded(path: string, o: { origins?: string[]; main?: string } = {}): Promise<LostWork[] | 'gone' | null> {
   const run = (...args: string[]) => gitTry(path, ...args);
@@ -2621,26 +2746,35 @@ export async function unlanded(path: string, o: { origins?: string[]; main?: str
   const onMain = (await run('rev-parse', '--verify', '--quiet', main)) !== null;
   const refs = ((await run('for-each-ref', '--format=%(refname)')) ?? '').split('\n').filter((r) => r && !r.startsWith('refs/remotes/') && r !== 'refs/stash');
   if ((await run('symbolic-ref', '-q', 'HEAD')) === null) refs.push('HEAD');
-  // origin's tags by name, each with its object, an annotated one's commit under `<name>^{}`; asked once a tag needs them
-  let tags: Map<string, string> | null | undefined;
-  const originTags = async () => {
-    if (tags !== undefined) return tags;
+  // the commits of the tags origin has as well, at the same commit, as `^<commit>` lines for rev-list's
+  // stdin (no limit on their number, as a command line has on Windows); asked once a ref holds commits
+  // no branch of origin has. What they reach is on origin too: a release tagged on a branch since
+  // deleted, a HEAD left on it
+  let shared: string | null | undefined;
+  const sharedTags = async () => {
+    if (shared !== undefined) return shared;
+    const local = await run('for-each-ref', '--format=%(objectname) %(*objectname) %(refname)', 'refs/tags');
+    if (local === null) return (shared = null);
+    const mine = local.split('\n').filter(Boolean).map((l) => l.split(' ') as [string, string, string]);
+    if (!mine.length) return (shared = '');
     const listed = await run('ls-remote', '--tags', 'origin');
-    tags = listed === null ? null : new Map(listed.split('\n').flatMap((l) => (l.includes('\t') ? [[l.slice(l.indexOf('\t') + 1), l.slice(0, l.indexOf('\t'))] as [string, string]] : [])));
-    return tags;
+    if (listed === null) return (shared = null);
+    // origin's by name, each with its object, an annotated one's commit under `<name>^{}`
+    const theirs = new Map(listed.split('\n').flatMap((l) => (l.includes('\t') ? [[l.slice(l.indexOf('\t') + 1), l.slice(0, l.indexOf('\t'))] as [string, string]] : [])));
+    const same = mine.filter(([object, peeled, ref]) => theirs.get(ref) === object || (theirs.get(`${ref}^{}`) ?? theirs.get(ref)) === (peeled || object));
+    return (shared = same.map(([object, peeled]) => `^${peeled || object}\n`).join(''));
   };
-  for (const ref of refs) {
-    const n = await run('rev-list', '--count', ref, '--not', '--remotes=origin');
+  for (const ref of await holdingOwnCommits(path, refs)) {
+    let n = await run('rev-list', '--count', ref, '--not', '--remotes=origin');
     if (n === null) return null;
     if (n === '0') continue;
-    // a tag origin has too, at the same object or the same commit
-    if (ref.startsWith('refs/tags/')) {
-      const theirs = await originTags();
-      if (theirs === null) return null;
-      const object = await run('rev-parse', ref);
-      const commit = await run('rev-parse', `${ref}^{commit}`);
-      if ((object && theirs.get(ref) === object) || (commit && (theirs.get(`${ref}^{}`) ?? theirs.get(ref)) === commit)) continue;
+    const tags = await sharedTags();
+    if (tags === null) return null;
+    if (tags) {
+      const r = await gitRun(path, ['rev-list', '--count', '--stdin', ref, '--not', '--remotes=origin'], { stdin: tags }).catch(() => null);
+      if (r?.code === 0) n = r.stdout.trim();
     }
+    if (n === '0') continue;
     // its changes are on the main branch already (squashed, rebased); never so for leftovers Obeya kept,
     // whose staged snapshot beneath may differ from what their last commit leaves
     if (onMain && !ref.startsWith('refs/heads/obeya-leftovers/') && (await landedOn(path, main, ref))) continue;
@@ -2650,6 +2784,27 @@ export async function unlanded(path: string, o: { origins?: string[]; main?: str
   }
   return lost;
 }
+
+/**
+ * Of a clone's `refs`, those that may hold commits no branch of `origin` has, asked in two git calls
+ * for all of them: one per ref took seconds for a clone with a project's hundreds of tags, and over
+ * SSH a round trip each. A ref whose commit is on a branch of `origin` holds none and is left out; one
+ * that names no commit (a tag of a tree), or all of them where either call fails, stay to be asked one
+ * by one.
+ */
+async function holdingOwnCommits(path: string, refs: string[]): Promise<string[]> {
+  if (!refs.length) return refs;
+  const peeled = await gitRun(path, ['cat-file', '--batch-check=%(objectname)'], { stdin: refs.map((r) => `${r}^{commit}\n`).join('') }).catch(() => null);
+  const commits = peeled?.code === 0 ? peeled.stdout.split('\n').slice(0, refs.length) : [];
+  if (commits.length !== refs.length) return refs;
+  const known = [...new Set(commits.filter((c) => OBJECT_ID.test(c)))];
+  if (!known.length) return refs;
+  const outside = await gitRun(path, ['rev-list', '--stdin', '--not', '--remotes=origin'], { stdin: known.map((c) => `${c}\n`).join('') }).catch(() => null);
+  if (outside?.code !== 0) return refs;
+  const own = new Set(outside.stdout.split('\n').filter(Boolean));
+  return refs.filter((_, i) => !OBJECT_ID.test(commits[i]!) || own.has(commits[i]!));
+}
+const OBJECT_ID = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 
 /**
  * Whether the changes of `ref` since it left `main` are on `main` already, as a squashed or rebased

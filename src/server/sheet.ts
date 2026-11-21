@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import { type AnswerFile, type Talk, type TalkAfter, type TalkMoved, type TalkQuote, type TalkRef, type TalkWait } from '../core/types';
+import { type AnswerFile, type Talk, type TalkAfter, type TalkCard, type TalkMoved, type TalkQuote, type TalkRef, type TalkWait } from '../core/types';
 import type { Place } from '../core/layout';
 import type { Wish } from '../core/wish';
 
@@ -124,6 +124,13 @@ export class Sheet {
   /** The cards the Coordinator waits on after the exchange's reply, to take a step once each gets there; none once it no longer waits on any. */
   wait(id: number, waits: TalkWaitRow[]) {
     this.db.query('UPDATE talk SET waits = $waits WHERE id = $id').run({ id, waits: waits.length ? JSON.stringify(waits) : null });
+    this.changed();
+  }
+
+  /** The cards the Coordinator's command created once its undo window passed, for the exchange's reply to link to them. */
+  created(id: number, cards: TalkCard[]) {
+    if (!cards.length) return;
+    this.db.query('UPDATE talk SET created = $created WHERE id = $id').run({ id, created: JSON.stringify(cards) });
     this.changed();
   }
 
@@ -347,6 +354,7 @@ interface TalkRow {
   wish: string | null;
   held: string | null;
   waits: string | null;
+  created: string | null;
   after_wait: string | null;
   asked_in: string | null;
   moved: string | null;
@@ -379,6 +387,7 @@ const toTalk = (r: TalkRow): Talk => ({
   ...(r.wish ? { wish: JSON.parse(r.wish) as Wish } : {}),
   ...(r.held ? heldOf(JSON.parse(r.held) as HeldTalk) : {}),
   ...(r.waits ? { waits: (JSON.parse(r.waits) as TalkWaitRow[]).map(({ card, title, state }) => ({ card, title, state })) } : {}),
+  ...(r.created ? { created: JSON.parse(r.created) as TalkCard[] } : {}),
   ...(r.after_wait ? { after: JSON.parse(r.after_wait) as TalkAfter } : {}),
   ...(r.asked_in ? { askedIn: r.asked_in } : {}),
   ...(r.moved ? { moved: JSON.parse(r.moved) as TalkMoved } : {}),

@@ -111,6 +111,8 @@ export interface Live {
   restartPaused?: boolean;
   /** The worker ended a turn for the owner's pause at a safe point while its background work runs on: a turn that work starts hears that the owner still waits. */
   pauseHeld?: boolean;
+  /** Whether the worker has heard of the owner's approval that waits for its reply (`CardRow.approve_after`). */
+  toldApproval?: boolean;
   /** The owner's preferences as the worker last heard them: in its instructions, or since then. */
   preferences: string;
   /** The project the card is a workstream of, and the last of its decisions the worker has heard of. */
