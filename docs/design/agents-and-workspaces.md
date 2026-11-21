@@ -149,7 +149,7 @@ A turn that fails for the quota (agy's wording of Google's `RESOURCE_EXHAUSTED`,
 spend cap; not seen yet, as no quota ran out during the checks) waits for its reset as Claude Code's
 does: Obeya asks agy for the quota (`agy -p /quota --output-format json`, which starts no turn) and
 takes the earliest reset of a window used up among those the model counts against, else the
-earliest of them. A missing login ("Authentication required") offers to log in again on the card,
+earliest of those begun (an untouched window has no reset yet). A missing login ("Authentication required") offers to log in again on the card,
 in a terminal on this machine (`agy acp --login`, a code pasted there). Gemini runs on this machine
 only for now: an agent on a host whose group runs on Gemini runs there on the group's fallback, else
 on Claude Code.

@@ -3,8 +3,8 @@
 // numbers, beside the harness's name once the bar shows two. A tick on each meter marks how much of
 // its window has gone by: green while the usage stays at or under it, red once it runs ahead. A
 // click (a tap on the phone) lists every limit of every plan with how much of it is used, when it
-// starts anew and how long until then, and where the numbers come from; under it, until the owner
-// confirms it once, a line that explains the tick.
+// starts anew and how long until then (or that it starts with the first use), and where the numbers
+// come from; under it, until the owner confirms it once, a line that explains the tick.
 
 import { useEffect, useRef, useState } from 'react';
 import type { PlanUsage, Usage, UsageLimit } from '../core/types';
@@ -110,11 +110,14 @@ function PlanList({ plan, now }: { plan: PlanUsage; now: number }) {
             <span className="name">{limitName(l)}</span>
             <Meter limit={l} now={now} />
             <b>{percent(l.percent)}</b>
-            {l.resetsAt && (
+            {l.resetsAt ? (
               <span className="hint when">
                 {t.usage.resets(snoozeWhen(l.resetsAt))}
                 {Date.parse(l.resetsAt) > now && ` · ${t.usage.left(countdown(Date.parse(l.resetsAt) - now))}`}
               </span>
+            ) : (
+              // a window nothing has been used of has no reset yet: it begins with the first use
+              l.percent === 0 && <span className="hint when">{t.usage.unstarted}</span>
             )}
           </li>
         ))}

@@ -2185,6 +2185,8 @@ const de = {
     /** A limit for one model or surface only. */
     scoped: (scope: string) => `Woche, nur ${scope}`,
     resets: (when: string) => `neu ab ${when}`,
+    /** In place of that, for a window nothing has been used of yet: it begins with the first use. */
+    unstarted: 'beginnt mit der ersten Nutzung',
     /** How long until then, after it. */
     left: (span: string) => `noch ${span}`,
     /** The parts of that span. */
@@ -4479,6 +4481,7 @@ const en: Strings = {
     kinds: { session: 'Session (5 hours)', weekly_all: 'Week, all models' },
     scoped: (scope: string) => `Week, ${scope} only`,
     resets: (when: string) => `resets ${when}`,
+    unstarted: 'starts with the first use',
     left: (span: string) => `in ${span}`,
     days: (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`,
     hours: (n: number) => `${n} h`,

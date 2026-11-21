@@ -87,7 +87,25 @@ interface QuotaReport {
 interface QuotaGroup {
   name: string;
   description?: string;
-  buckets?: { id: string; name?: string; window?: string; remaining_fraction?: number; reset_time?: string }[];
+  buckets?: QuotaBucket[];
+}
+interface QuotaBucket {
+  id: string;
+  name?: string;
+  window?: string;
+  remaining_fraction?: number;
+  reset_time?: string;
+}
+
+/**
+ * When a window starts anew (milliseconds), where it has begun. A window starts with its first use,
+ * so one untouched (all of it left) has no reset yet: agy then reports the time of asking plus the
+ * window's length, which moves with every look, or the epoch.
+ */
+function resetOf(b: QuotaBucket): number | undefined {
+  if ((b.remaining_fraction ?? 1) >= 1 || !b.reset_time) return undefined;
+  const at = Date.parse(b.reset_time);
+  return at > 0 ? at : undefined;
 }
 
 /**
@@ -138,12 +156,13 @@ export function geminiUsageOf(report: QuotaReport, now = new Date()): PlanLimits
     return (g.buckets ?? []).map((b) => {
       const session = b.window === '5h';
       const percent = usedPercent(b.remaining_fraction);
+      const resets = resetOf(b);
       return {
         kind: scope ? 'weekly_scoped' : session ? 'session' : 'weekly_all',
         group: session ? 'session' : 'weekly',
         ...(scope ? { scope } : {}),
         percent,
-        ...(b.reset_time ? { resetsAt: new Date(b.reset_time).toISOString() } : {}),
+        ...(resets ? { resetsAt: new Date(resets).toISOString() } : {}),
         windowMinutes: session ? 300 : 10_080,
         severity: severity(percent),
       };
@@ -154,16 +173,17 @@ export function geminiUsageOf(report: QuotaReport, now = new Date()): PlanLimits
 
 /**
  * When the quota a turn on `model` ran into lifts (milliseconds): the earliest reset of a window used
- * up among those the model counts against (its own group, else Gemini's), else the earliest of them.
+ * up among those the model counts against (its own group, else Gemini's), else the earliest of those
+ * begun.
  */
 export function quotaResets(report: QuotaReport, model: string): number | undefined {
   const groups = report.command?.data?.groups ?? [];
   const name = familyName(modelFamily(model)).toLowerCase();
   const own = groups.filter((g) => !GEMINI_GROUP.test(g.name) && g.name.toLowerCase().includes(name));
   const counted = [...own, ...groups.filter((g) => GEMINI_GROUP.test(g.name))];
-  const windows = counted.flatMap((g) => g.buckets ?? []).filter((b) => b.reset_time);
+  const windows = counted.flatMap((g) => g.buckets ?? []).filter((b) => resetOf(b) !== undefined);
   const full = windows.filter((b) => (b.remaining_fraction ?? 1) <= 0);
-  const at = (full.length ? full : windows).map((b) => Date.parse(b.reset_time!)).filter((t) => !Number.isNaN(t));
+  const at = (full.length ? full : windows).map((b) => resetOf(b)!);
   return at.length ? Math.min(...at) : undefined;
 }
 

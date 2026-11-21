@@ -61,7 +61,7 @@ every plan with a login, whether agents run on it or not, each beside its name (
 "Gemini") when it shows more than one, without one when it shows one. A click lists every limit of
 every plan (the session, the week for all models, the week for a single model) with its meter and
 percentage, when it starts anew and how long until then ("in 3 h 12 min", counting down while the
-list is open), and where the numbers come from and as of when; a line under it says what the tick
+list is open; for a window nothing has been used of yet, that it starts with the first use), and where the numbers come from and as of when; a line under it says what the tick
 means, for whoever sees it the first time, until they put it away with "Got it" (kept in the
 browser). "Usage limits in the bar" under Configuration → General turns them off and on (on until then). The phone view shows
 the same at the right of its bar; its list hangs from the bar as wide as the screen.
@@ -596,7 +596,11 @@ code, a generic one otherwise.
 - **Gemini's limits come from `agy -p /quota`** (2026-11-20), which starts no turn: the five hours
   and the week of Gemini's models, and the week of a model with a quota of its own (Argon on a Pro
   plan) as a single model's. agy's group of Claude and GPT models is left out, since no agent of
-  Obeya's runs on it. A login by API key has no quota: the bar shows nothing for it.
+  Obeya's runs on it. A login by API key has no quota: the bar shows nothing for it. A window starts
+  with its first use: for one untouched (all of it left), agy reports the time of asking plus the
+  window's length, which moves with every look (or the epoch), so Obeya takes no reset from it and
+  the list says the window starts with the first use (2026-11-21). Rejected: agy's time as it
+  reports it, which read "in 5 h" and "in 7 days" at every look.
 - **The bar shows every plan with a login** (owner, 2026-11-04): what is left of a plan is what the
   owner decides on before starting an agent on it, a card on Codex say, so it shows while no agent
   runs there yet. Rejected: only the plans agents run on, which hid Codex's limits until a Codex

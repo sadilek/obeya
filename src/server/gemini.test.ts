@@ -332,6 +332,28 @@ test("the quota for the bar: Gemini's week and five hours, Argon's own week as a
   expect(geminiUsageOf({})).toBeNull();
 });
 
+test("an untouched window has no reset yet: agy's time for it, the time of asking plus the window (or the epoch), is left out", () => {
+  // as agy reported it at 09:07:53 for a login that had used nothing of the week and the five hours
+  const report = {
+    command: {
+      data: {
+        groups: [
+          { name: 'Gemini Models', buckets: [{ id: 'gemini-weekly', window: 'weekly', remaining_fraction: 1, reset_time: '2026-11-28T09:07:53Z' }, { id: 'gemini-5h', window: '5h', remaining_fraction: 0.99, reset_time: '2026-11-21T14:03:12Z' }] },
+          { name: 'Gemini 4 Argon', buckets: [{ id: 'gemini-argon-wtu-weekly', window: 'weekly', remaining_fraction: 1, reset_time: '1970-01-01T00:00:00Z' }] },
+        ],
+      },
+    },
+  };
+  expect(geminiUsageOf(report, new Date('2026-11-21T09:07:53Z'))!.limits.map((l) => [l.kind, l.percent, l.resetsAt])).toEqual([
+    ['weekly_all', 0, undefined],
+    ['session', 1, '2026-11-21T14:03:12.000Z'],
+    ['weekly_scoped', 0, undefined],
+  ]);
+  // a turn that ran into a quota waits for a window begun, never for one that has not
+  expect(quotaResets(report, 'gemini-4-neon')).toBe(Date.parse('2026-11-21T14:03:12Z'));
+  expect(quotaResets({ command: { data: { groups: [report.command.data.groups[1]!] } } }, 'gemini-4-argon')).toBeUndefined();
+});
+
 test("agy's tool calls as Claude Code's", () => {
   expect(geminiCall('1', 'run_command', { CommandLine: 'bun test', BypassSandbox: false })).toEqual({ id: '1', name: 'Bash', input: { command: 'bun test' } });
   expect(geminiCall('2', 'write_file', { Path: '/w/a.txt', Content: 'x' })).toEqual({ id: '2', name: 'Write', input: { file_path: '/w/a.txt' } });
