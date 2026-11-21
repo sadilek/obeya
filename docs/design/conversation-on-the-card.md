@@ -449,9 +449,12 @@ open. Picking types `/name ` over the word, as if by hand (⌘Z takes it back). 
 agent as they are: Claude Code's skill tool takes `/name` in a message as the owner asking for that
 skill, at the start or in the middle of a sentence. Until the owner has used the menu once (moved
 through it with the arrow keys or picked a skill), a hint under the field says so while it has the cursor ("“/” asks the agent for one of its skills.").
-Its line stays reserved while the field doesn't have the cursor, so leaving the field moves nothing:
-a click on a button below that takes the cursor out of the field would otherwise lose itself, its
-mouseup landing beside the button that moved away under it.
+The hint takes no room of its own: it shows in the gap between the field and what follows, which is
+a little wider for that from the moment the card opens until the menu has been used. So gaining or
+losing the cursor, or the agent's skills arriving, moves nothing on the card: a click on a button
+below that takes the cursor out of the field would otherwise lose itself, its mouseup landing
+beside the button that moved away under it (owner, 2026-11-21: hint in the gap over a line of its
+own, which left an empty line under the field and still moved the buttons once the skills came).
 
 Claude Code says which skills there are: Obeya starts it in the repository's read tree with the
 agent's plugins and settings, asks for its commands and skills, and ends it without a message (no

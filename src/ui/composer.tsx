@@ -181,8 +181,11 @@ export function Composer({
    * down and moved the layout before the click landed, so the first tap only closed the keyboard.
    */
   const keepFocus = (e: MouseEvent) => e.preventDefault();
+  // the skills hint shows in the gap under the field (`hinted` widens it from the start), taking no
+  // room of its own: a button below must not move between the mousedown that takes the cursor out of
+  // the field and the mouseup, or the click is lost, nor once the agent's skills have come
   return (
-    <div className={['composer', className, shots.dropping && 'dropping', dictating(d) && 'dictating'].filter(Boolean).join(' ')} {...shots.drop}>
+    <div className={['composer', className, shots.dropping && 'dropping', dictating(d) && 'dictating', !!skills && !knowsSkills() && 'hinted'].filter(Boolean).join(' ')} {...shots.drop}>
       <ShotStrip shots={shots} />
       {menuOn && <SkillMenu skills={menu} marked={marked} onPick={pick} />}
       <div className="c-field">
@@ -271,14 +274,7 @@ export function Composer({
         (typeof obeya === 'string' ? (
           <div className="c-listener">→ {obeya}</div>
         ) : (
-          // its line stays while the field is left, only unseen: a button under the field must not
-          // move between the mousedown that takes the cursor out and the mouseup, or the click is lost
-          !!skillList?.length &&
-          !knowsSkills() && (
-            <div className={`c-listener c-skills-hint${focused ? '' : ' unseen'}`} aria-hidden={!focused}>
-              {t.skills.hint}
-            </div>
-          )
+          focused && !!skillList?.length && !knowsSkills() && <div className="c-listener c-skills-hint">{t.skills.hint}</div>
         ))}
     </div>
   );
