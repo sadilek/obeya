@@ -28,7 +28,7 @@ describe('assemble', () => {
     }
     const video = path.join(dir, 'demo.mp4');
     const tags = run('ffprobe', ['-v', 'error', '-select_streams', 'v', '-show_entries', 'stream=pix_fmt,color_range,color_space,color_primaries,color_transfer', '-of', 'default=nw=1', video]);
-    expect(tags.trim().split('\n').sort()).toEqual(['color_primaries=bt709', 'color_range=tv', 'color_space=bt709', 'color_transfer=bt709', 'pix_fmt=yuv420p']);
+    expect(tags.trim().split(/\r?\n/).sort()).toEqual(['color_primaries=bt709', 'color_range=tv', 'color_space=bt709', 'color_transfer=bt709', 'pix_fmt=yuv420p']);
     // the stored luma, as a player reads it: card and button both below 235, the limit of white
     const luma = spawnSync('ffmpeg', ['-v', 'error', '-i', video, '-frames:v', '1', '-c:v', 'rawvideo', '-f', 'rawvideo', '-pix_fmt', 'yuv420p', 'pipe:1']).stdout;
     const at = (x: number, y: number) => luma[y * 160 + x]!;

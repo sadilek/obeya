@@ -22,7 +22,7 @@ function fullRange(crf: number): string {
   return video;
 }
 
-const tags = (video: string) => run('ffprobe', ['-v', 'error', '-select_streams', 'v', '-show_entries', 'stream=pix_fmt,color_range,color_space,color_primaries,color_transfer', '-of', 'default=nw=1', video]).trim().split('\n').sort();
+const tags = (video: string) => run('ffprobe', ['-v', 'error', '-select_streams', 'v', '-show_entries', 'stream=pix_fmt,color_range,color_space,color_primaries,color_transfer', '-of', 'default=nw=1', video]).trim().split(/\r?\n/).sort();
 const sound = (video: string) => spawnSync('ffmpeg', ['-v', 'error', '-i', video, '-map', '0:a', '-c', 'copy', '-f', 'md5', '-']).stdout.toString();
 
 describe('a demo video brought into limited range BT.709', () => {

@@ -8,7 +8,7 @@ import { Board } from './board';
 import type { CanvasRuntime } from './canvas';
 import { Config } from './config';
 import { Store } from './db';
-import { claudeToken } from './hosts';
+import { claudeToken, sh } from './hosts';
 import { Harnesses } from './harnesses';
 import { cloneName, codexManager, machineHint, MachineSetup, runnable, updateCodex, WELCOME_FILE, welcome } from './machine';
 import { claudeExecutable, runClaudeHere } from './claude';
@@ -37,6 +37,9 @@ afterEach(() => removeDir(dir));
 /** A program on the test's PATH that answers as the script says; its path. */
 const fake = (name: string, script: string) => fakeProgram(bin, name, script);
 
+/** A program's path as a POSIX shell's word, the way the Linux machine of these tests shows it: in single quotes where it holds what the shell would read otherwise (a Windows temp path's backslashes). */
+const word = (path: string) => (/^[\w@%+=:,./~-]+$/.test(path) ? path : sh(path));
+
 const config = () =>
   new Config({
     file: join(home, 'canvases.json'),
@@ -59,7 +62,7 @@ describe('what Obeya needs on this machine', () => {
     const machine = setup();
     expect(section(await machine.view(), 'needed').items.find((i) => i.id === 'claudeLogin')).toMatchObject({ state: 'ok' });
     // No terminal on this PATH: a valid login action returns the manual-command fallback.
-    expect(await machine.login({ section: 'needed', id: 'claudeLogin' })).toEqual({ opened: false, command: `${claude} auth login` });
+    expect(await machine.login({ section: 'needed', id: 'claudeLogin' })).toEqual({ opened: false, command: `${word(claude)} auth login` });
     await expect(machine.login({ section: 'needed', id: 'git' })).rejects.toThrow();
   });
 
@@ -67,7 +70,7 @@ describe('what Obeya needs on this machine', () => {
     const claude = fake('claude', 'case "$1" in --version) echo "2.1.300 (Claude Code)";; auth) echo \'{"loggedIn":true,"authMethod":"oauth_token"}\';; esac');
     const env: Record<string, string> = { PATH: bin, CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-old' };
     const machine = new MachineSetup({ home, config: config(), env, platform: 'linux', arch: 'x64', compiled: true });
-    expect(await machine.login({ section: 'needed', id: 'claudeLogin', token: true })).toEqual({ opened: false, command: `${claude} setup-token` });
+    expect(await machine.login({ section: 'needed', id: 'claudeLogin', token: true })).toEqual({ opened: false, command: `${word(claude)} setup-token` });
     await expect(machine.login({ section: 'needed', id: 'gh', token: true })).rejects.toThrow();
     expect(() => machine.saveToken({ token: 'two words' })).toThrow();
     expect(() => machine.saveToken({ token: ' ' })).toThrow();
@@ -146,7 +149,7 @@ describe('what Obeya needs on this machine', () => {
     const codex = fake('codex', 'case "$1" in --version) echo "codex-cli 0.159.2";; login) echo "Not logged in" >&2; exit 1;; esac');
     const out = section(await machine.view(), 'needed').items;
     expect(out.find((i) => i.id === 'codexLogin')).toEqual({ id: 'codexLogin', state: 'missing', install: { commands: ['codex login'] }, act: 'login', or: true });
-    expect(await machine.login({ section: 'needed', id: 'codexLogin' })).toEqual({ opened: false, command: `${codex} login` });
+    expect(await machine.login({ section: 'needed', id: 'codexLogin' })).toEqual({ opened: false, command: `${word(codex)} login` });
     expect(harnesses.preferred()).toBe('claude');
   });
 

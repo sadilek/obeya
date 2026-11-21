@@ -18,7 +18,7 @@ import { KEY_HEADER, keyOf } from './owner';
 import { Stalls } from './stalls';
 import { serve, serveNarration } from './server';
 import { canvas, dir, eachTest, runtime, start } from './canvas-fixture';
-import { artifact, asOwner, commit, gitClone, gitRepo, handedOverOn, identify, noForge, until, silent } from './testing';
+import { artifact, asOwner, commit, gitClone, gitRepo, handedOverOn, identify, noForge, PATIENCE, until, silent } from './testing';
 import { RECHECK_MS } from './workspaces';
 import { git } from './git';
 import type { Transcript } from './voice';
@@ -1430,7 +1430,7 @@ describe('landing approved work', () => {
     expect(pushed.board.item(a.id)!.state).toBe('live');
     expect(pushed.board.item(b.id)!.state).toBe('live');
     expect(git(origin, 'log', '--format=%s', 'main').split('\n').sort()).toEqual(['A.ts', 'B.ts', 'init']);
-  }, 15_000);
+  }, 15_000 * PATIENCE);
 });
 
 describe('starting a card', () => {
@@ -1483,7 +1483,7 @@ describe('starting a card', () => {
       expect(runtime.sessions.find((s) => s.spec.cwd === ws)!.inbox[0]).toContain('Langsamer Start');
       expect(c.board.item(card.id)!.statusLine).toBeUndefined();
     }
-  }, 15_000);
+  }, 15_000 * PATIENCE);
 });
 
 describe('the read tree and the free clones', () => {
@@ -1561,7 +1561,7 @@ describe('the read tree and the free clones', () => {
     go('status');
     await started;
     expect(runtime.sessions.find((s) => s.spec.cwd === clone!.path)!.inbox[0]).toContain('Langsamer Blick');
-  }, 15_000);
+  }, 15_000 * PATIENCE);
 });
 
 describe('freeing and discarding workspaces', () => {
@@ -1654,7 +1654,7 @@ describe('freeing and discarding workspaces', () => {
     await until(() => !existsSync(tree));
     await tools.repos[0]!.workers.freed();
     expect(tools.repos[0]!.workspaces.list()).toEqual([]);
-  }, 20_000);
+  }, 20_000 * PATIENCE);
 });
 
 test("what a worker on another machine reaches: Obeya's narration clips, inline, and nothing else", async () => {
