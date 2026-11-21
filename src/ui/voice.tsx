@@ -478,9 +478,13 @@ export function PushToTalk({ phase, level, flat, target, field, onDown }: { phas
       moveImages(MIC_DRAFT, key);
       if (paths.trim()) {
         const texts = pastedIn(beside);
-        insertFiles(key, wordsOf(withoutPasted(paths, texts)));
+        const words: string[] = wordsOf(withoutPasted(paths, texts));
+        insertFiles(key, words);
         insertPasted(key, texts);
-        updateDraft(MIC_DRAFT, { text: '', pasted: [] });
+        // a paste's path goes with the note that it stands for a paste
+        const { pastedAsFile } = beside;
+        if (pastedAsFile && words.includes(pastedAsFile)) updateDraft(key, { pastedAsFile });
+        updateDraft(MIC_DRAFT, { text: '', pasted: [], pastedAsFile: undefined });
       }
     } else if (key === MIC_DRAFT && obeya.current) {
       moveImages(obeya.current, MIC_DRAFT);
