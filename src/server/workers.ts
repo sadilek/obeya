@@ -2740,7 +2740,7 @@ export class Workers {
       return;
     }
     // its worker starts once its workspace is ready and hears them then, or, should git fail, the next start's does
-    if ((said.length && this.takesLater(cardId)) || this.preparingFor(cardId)) {
+    if ((said.length && this.takesLater(cardId)) || this.startsLater(cardId)) {
       this.tellLater(cardId, text, { said, images });
       return;
     }
@@ -2768,7 +2768,7 @@ export class Workers {
 
   /** Whether the worker is in the middle of a turn, so that the owner's words wait for its next step. */
   private takesLater(cardId: string): boolean {
-    if (this.preparingFor(cardId)) return true;
+    if (this.startsLater(cardId)) return true;
     const live = this.live.get(cardId);
     return !!live && live.busy && !live.work.waiting && !this.apps.stopping.has(cardId) && !this.pausedOf(cardId);
   }
@@ -2776,6 +2776,16 @@ export class Workers {
   /** Whether the card's worker waits for git to make its workspace ready, without a session yet. */
   private preparingFor(cardId: string): boolean {
     return this.preparing.has(cardId) && !this.live.has(cardId);
+  }
+
+  /**
+   * Whether what comes for the card waits for a worker that starts later, as no session can take it
+   * in now: git still makes its workspace ready, or, with idle workers, the card has none (one a
+   * scratch Obeya staged at work), where no session can start. Elsewhere a card without a workspace
+   * has no worker coming for it, and delivering to it fails rather than wait for one.
+   */
+  private startsLater(cardId: string): boolean {
+    return this.preparingFor(cardId) || (!!this.o.idleWorkers && !this.live.has(cardId) && !this.o.board.row(cardId).workspace);
   }
 
   /** What waits for the worker, without what starts with `prefix` (news an event since has made stale). */

@@ -18,6 +18,11 @@ import type { CardWorkspaces, Landed, Workspaces } from './workspaces';
 export interface WorkerOptions {
   board: Board;
   runtime: AgentRuntime;
+  /**
+   * No agent works on a started card (`--idle-workers`, a scratch Obeya): a card staged at work
+   * without a workspace keeps what comes for it, as no worker can start there.
+   */
+  idleWorkers?: boolean;
   workspaces: CardWorkspaces;
   adapter: RepoAdapter;
   /**
