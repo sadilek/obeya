@@ -8,6 +8,7 @@ import { needsYou } from '../core/card';
 import { BadRequest } from './board';
 import { DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN } from './demo';
 import { Images } from './images';
+import { fromJson } from './row';
 import { artifact, until } from './testing';
 import { board, dir, eachTest, handedOver, manual, rebuild, runtime, setup, state, workers } from './workers-fixture';
 
@@ -357,6 +358,19 @@ describe('handing over with a demo', () => {
     await workers.standIn(c.id, { end: true });
     expect(board.item(c.id)!.answering).toBeUndefined();
     expect(board.item(c.id)!.answered).toBe(true);
+  });
+
+  test('a note to a card at work without a workspace, as a scratch Obeya stages one, waits for the worker that starts later', () => {
+    const c = manual();
+    board.work(c.id, { state: 'working', branch: 'obeya/zaehlerstaende' });
+    const n = runtime.sessions.length;
+    workers.message(c.id, 'Bitte auch als CSV.');
+    expect(runtime.sessions.length).toBe(n);
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'hint', author: 'owner', text: 'Bitte auch als CSV.', unread: true });
+    expect(fromJson(board.row(c.id).unheard)?.at(-1)?.text).toContain('Bitte auch als CSV.');
+    // and so does what Obeya has for it
+    workers.prEvent(c.id, 'Check rot.', 'A check of your pull request failed: test.');
+    expect(runtime.sessions.length).toBe(n);
   });
 
   test('a handover that keeps the demo leaves its answered question with the handover it came with', async () => {
