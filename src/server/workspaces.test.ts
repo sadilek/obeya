@@ -11,7 +11,7 @@ import { onStart } from './spawn';
 import { alive, commit, gitClone, gitRepo, identify, leftBehind, ownGlobalGitConfig, PATIENCE, removeDir, testBoard, until } from './testing';
 import { addTrailer, originFetch, pushRefusal, statusEntries, unlanded, Workspaces } from './workspaces';
 import { defaultBranch } from './branches';
-import { git, hasCommit, isAncestor } from './git';
+import { git, GIT, hasCommit, isAncestor } from './git';
 
 let dir: string;
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'obeya-branch-'))));
@@ -977,6 +977,10 @@ describe('clones the configuration no longer names', () => {
     git(released, 'checkout', '--quiet', '--detach', 'v1.0.1');
     git(released, 'branch', '--quiet', '-D', 'hotfix');
     git(origin, 'branch', '--quiet', '-D', 'hotfix');
+    // beside it more tags of its own than a command line could name, on what origin has already
+    const main = git(released, 'rev-parse', 'main');
+    const tags = Array.from({ length: 600 }, (_, i) => `create refs/tags/local-${i} ${main}\n`).join('');
+    expect(Bun.spawnSync([GIT, '-C', released, 'update-ref', '--stdin'], { stdin: Buffer.from(tags) }).exitCode).toBe(0);
     // the same release's tag, here at a commit of its own
     git(moved, 'fetch', '--quiet', 'origin', 'tag', 'v1.0.1');
     commit(moved, 'other-fix.txt');

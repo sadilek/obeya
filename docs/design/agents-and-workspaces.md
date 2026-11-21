@@ -274,15 +274,16 @@ leased one when its card gives it back (no card moves mid-work). A clone Obeya m
 from disk, after its app stopped (see Parking), if nothing would be lost: no uncommitted or untracked files
 (ignored ones aside), no stash, no submodules, no worktree from it in use, and no branch, tag or
 detached HEAD with commits on no branch of `origin` (fetched with pruning) nor reached by a tag
-`origin` has too at the same commit (a release tagged on a branch since deleted: every clone has it,
-and a fetch brings it back once deleted), unless its changes are on `origin`'s main branch already. A
-local tag `origin` lacks, or has at another commit, counts like a branch. Changes count as on the main branch where merging the branch into the main branch's head
-changes nothing, or, where that merge conflicts, merging it into one of the main branch's last 50
-commits that changed the branch's files does (with a git before 2.38: where each file it changed is
-there as the branch has it): a branch squashed or rebased in its pull request counts as landed, also
-once the main branch changed the same files again. A merge into the head that is clean but changes
-something ends the search, so work not landed costs a handful of git calls, not one per commit (over
-SSH each is a round trip). Where work lands on the local main, `origin` is the Obeya checkout. The folder is moved aside first, so a
+`origin` has too at the same commit (a release tagged on a branch since deleted: `origin` keeps what
+its tag reaches), unless its changes are on `origin`'s main branch already. A local tag `origin`
+lacks, or has at another commit, counts like a branch. Changes count as on the main branch where
+merging the branch into the main branch's head changes nothing, or, where that merge conflicts,
+merging it into one of the main branch's last 50 commits that changed the branch's files does
+(with a git before 2.38: where each file it changed is there as the branch has it): a branch
+squashed or rebased in its pull request counts as landed, also once the main branch changed the
+same files again. A merge into the head that is clean but changes something ends the search, so
+work not landed costs a handful of git calls, not one per commit (over SSH each is a round trip).
+Where work lands on the local main, `origin` is the Obeya checkout. The folder is moved aside first, so a
 clone named again meanwhile (here or by another canvas) is never removed under a card. Otherwise it
 stays: the log says once what lies in it, the pool's list shows "stays, as work not landed lies
 there:" with what (a branch or tag by name with how many commits, uncommitted changes, a stash) and

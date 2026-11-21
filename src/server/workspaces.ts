@@ -2566,11 +2566,11 @@ export function leavingClones(
  * (a follow-up's), and commits of a branch, a tag or a detached HEAD that are on no branch of
  * `origin` (fetched with pruning: a branch deleted there counts as gone) nor reached by a tag
  * `origin` has as well, at the same commit (a release tagged on a branch since deleted), unless its
- * changes are on `origin`'s main branch already (squashed or rebased onto it, see `landedOn`). `origin` is where its work
- * lands: the remote, or the Obeya checkout where work lands on the local main. Empty where nothing
- * would be lost; `gone` where the folder is gone already; null where it cannot tell now (the host
- * does not answer, `origin` cannot be fetched), or the folder is no clone of `origins` (a worktree's
- * `.git` is a file, a clone of another repository).
+ * changes are on `origin`'s main branch already (squashed or rebased onto it, see `landedOn`).
+ * `origin` is where its work lands: the remote, or the Obeya checkout where work lands on the local
+ * main. Empty where nothing would be lost; `gone` where the folder is gone already; null where it
+ * cannot tell now (the host does not answer, `origin` cannot be fetched), or the folder is no clone
+ * of `origins` (a worktree's `.git` is a file, a clone of another repository).
  */
 export async function unlanded(path: string, o: { origins?: string[]; main?: string } = {}): Promise<LostWork[] | 'gone' | null> {
   const run = (...args: string[]) => gitTry(path, ...args);
@@ -2611,30 +2611,34 @@ export async function unlanded(path: string, o: { origins?: string[]; main?: str
   const onMain = (await run('rev-parse', '--verify', '--quiet', main)) !== null;
   const refs = ((await run('for-each-ref', '--format=%(refname)')) ?? '').split('\n').filter((r) => r && !r.startsWith('refs/remotes/') && r !== 'refs/stash');
   if ((await run('symbolic-ref', '-q', 'HEAD')) === null) refs.push('HEAD');
-  // the local tags origin lacks or has at another commit, by name; asked once a ref holds commits no branch of origin has.
-  // What only the others reach is on origin too: a release tagged on a branch since deleted, a HEAD left on it
-  let own: string[] | null | undefined;
-  const ownTags = async () => {
-    if (own !== undefined) return own;
+  // the commits of the tags origin has as well, at the same commit, as `^<commit>` lines for rev-list's
+  // stdin (no limit on their number, as a command line has on Windows); asked once a ref holds commits
+  // no branch of origin has. What they reach is on origin too: a release tagged on a branch since
+  // deleted, a HEAD left on it
+  let shared: string | null | undefined;
+  const sharedTags = async () => {
+    if (shared !== undefined) return shared;
     const local = await run('for-each-ref', '--format=%(objectname) %(*objectname) %(refname)', 'refs/tags');
-    if (local === null) return (own = null);
+    if (local === null) return (shared = null);
     const mine = local.split('\n').filter(Boolean).map((l) => l.split(' ') as [string, string, string]);
-    if (!mine.length) return (own = []);
+    if (!mine.length) return (shared = '');
     const listed = await run('ls-remote', '--tags', 'origin');
-    if (listed === null) return (own = null);
+    if (listed === null) return (shared = null);
     // origin's by name, each with its object, an annotated one's commit under `<name>^{}`
     const theirs = new Map(listed.split('\n').flatMap((l) => (l.includes('\t') ? [[l.slice(l.indexOf('\t') + 1), l.slice(0, l.indexOf('\t'))] as [string, string]] : [])));
-    return (own = mine.filter(([object, peeled, ref]) => theirs.get(ref) !== object && (theirs.get(`${ref}^{}`) ?? theirs.get(ref)) !== (peeled || object)).map(([, , ref]) => ref.slice('refs/tags/'.length)));
+    const same = mine.filter(([object, peeled, ref]) => theirs.get(ref) === object || (theirs.get(`${ref}^{}`) ?? theirs.get(ref)) === (peeled || object));
+    return (shared = same.map(([object, peeled]) => `^${peeled || object}\n`).join(''));
   };
   for (const ref of refs) {
     let n = await run('rev-list', '--count', ref, '--not', '--remotes=origin');
     if (n === null) return null;
     if (n === '0') continue;
-    const mine = await ownTags();
-    if (mine === null) return null;
-    // tag names hold no glob characters (git refuses `*`, `?`, `[`), so each excludes itself alone; past
-    // what a command line takes on Windows, none counts as origin's
-    if (mine.length < 500) n = (await run('rev-list', '--count', ref, '--not', '--remotes=origin', ...mine.map((t) => `--exclude=${t}`), '--tags')) ?? n;
+    const tags = await sharedTags();
+    if (tags === null) return null;
+    if (tags) {
+      const r = await gitRun(path, ['rev-list', '--count', '--stdin', ref, '--not', '--remotes=origin'], { stdin: tags }).catch(() => null);
+      if (r?.code === 0) n = r.stdout.trim();
+    }
     if (n === '0') continue;
     // its changes are on the main branch already (squashed, rebased); never so for leftovers Obeya kept,
     // whose staged snapshot beneath may differ from what their last commit leaves
