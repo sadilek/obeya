@@ -678,7 +678,8 @@ export interface LeaseOptions {
   /**
    * The branch holds the card's work already (a card that waits for the owner and lost its
    * workspace): a clone that lacks it, and has no `from` to take it from, takes `origin`'s copy, else
-   * the checkout's; never a new branch off the main branch, which would lose that work.
+   * the checkout's; a worktree, where the checkout lacks it, `origin`'s; never a new branch off the
+   * main branch, which would lose that work.
    */
   keep?: boolean;
 }
@@ -1065,7 +1066,7 @@ export class Workspaces implements CardWorkspaces {
   lease(cardId: string, branch: string, o: LeaseOptions = {}): Lease {
     const own = this.leasedBy(cardId);
     // a worktree git is removing (its card deleted and brought back meanwhile) is added again once git is done
-    if (own && !this.cloned(own) && this.clears.has(own)) return this.leaseWorktree(cardId, branch, o.start, o.adopt);
+    if (own && !this.cloned(own) && this.clears.has(own)) return this.leaseWorktree(cardId, branch, o.start, o.adopt, !!o.keep);
     if (own) {
       // given back while git was making it ready, and taken again before git was done: it stays the card's
       this.releasing.delete(cardId);
@@ -1073,7 +1074,7 @@ export class Workspaces implements CardWorkspaces {
     }
     if (this.o.mode === 'clones') return this.leaseClone(cardId, branch, !!o.overSlots, o.from ?? null, o.start, o.adopt, !!o.keep);
     if (!o.overSlots && !this.room(null)) throw new WorkspaceError(SHORT_TEXT.slots, SHORT_CODE.slots);
-    return this.leaseWorktree(cardId, branch, o.start, o.adopt);
+    return this.leaseWorktree(cardId, branch, o.start, o.adopt, !!o.keep);
   }
 
   /**
@@ -2359,7 +2360,7 @@ export class Workspaces implements CardWorkspaces {
    * The card's worktree, leased at once; added in the background, where it does not exist yet (in a
    * large repository that takes a minute), or once git has removed the one it had before.
    */
-  private leaseWorktree(cardId: string, branch: string, start?: () => Promise<string | null>, adopt?: () => Promise<string | null>): Lease {
+  private leaseWorktree(cardId: string, branch: string, start?: () => Promise<string | null>, adopt?: () => Promise<string | null>, keep = false): Lease {
     const path = join(this.o.dir, cardId.slice(0, 8));
     this.store.addWorkspace(this.canvasId, path, this.o.repo ?? null);
     this.store.setLease(path, cardId);
@@ -2382,6 +2383,12 @@ export class Workspaces implements CardWorkspaces {
         let base: string | undefined;
         await pastWorktreeRace(async () => {
           if ((await gitAsync(this.o.repoPath, 'branch', '--list', branch)) !== '') return void (await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', path, branch));
+          // a branch that holds the card's work and is not in the checkout: `origin`'s copy, never one off the main branch
+          if (keep) {
+            const there = `refs/remotes/origin/${branch}`;
+            if ((await gitTry(this.o.repoPath, 'rev-parse', '--verify', '--quiet', `${there}^{commit}`)) == null) throw new WorkspaceError(`the branch ${branch} is neither in the checkout nor on origin`);
+            return void (await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', '-b', branch, path, there));
+          }
           base ??= adopted ?? (await this.startIn(this.o.repoPath, start)) ?? (await this.mainAsync(this.o.repoPath));
           await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', '-b', branch, path, base);
         });
@@ -2391,11 +2398,6 @@ export class Workspaces implements CardWorkspaces {
     );
   }
 
-  /**
-   * Where a new branch in `ws` starts in place of the main branch (`LeaseOptions.start`), fetched
-   * there from the checkout where a clone lacks it; none where there is none, or a clone on another
-   * machine lacks it.
-   */
   /**
    * Where a clone `ws` stands on the main branch `base`: `origin`'s, which it fetched. Where
    * `origin` has none yet (a clone of an empty remote, whose first commit is only in the checkout
@@ -2414,6 +2416,11 @@ export class Workspaces implements CardWorkspaces {
     return this.startIn(ws, () => gitTry(this.o.repoPath, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`));
   }
 
+  /**
+   * Where a new branch in `ws` starts in place of the main branch (`LeaseOptions.start`), fetched
+   * there from the checkout where a clone lacks it; none where there is none, or a clone on another
+   * machine lacks it.
+   */
   private async startIn(ws: string, start?: () => Promise<string | null>): Promise<string | null> {
     const at = await start?.().catch(() => null);
     if (!at) return null;

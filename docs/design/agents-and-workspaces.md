@@ -517,17 +517,20 @@ workspace or session without being planned again: its folder was deleted by hand
 after another card took its clone. Whatever then comes for its agent (the owner's words, news of its
 pull request such as review comments or a failed check) waits for it, the owner's words marked as
 not read yet, and the card takes a fresh workspace on its branch at once, as a finished card's
-question does: a clean free clone on any machine, whatever its slots. Its session resumes there
-(a new one with the card's task where it never had one), told that its workspace went and that only
-what was committed came along, and hears all that waited, also what came while git made the
-workspace ready. A clone that lacks the branch takes it from the clone that still holds it, else
-`origin`'s copy, else the configured checkout's; never a new branch off the default branch, which
-would pass for the card's work without it. Where none has it, the conversation says so, and what
-came waits for the next try.
+question does: a clean free clone, whatever its slots, on the machine of the clone that still holds
+its branch where one does, else on any. Its session resumes there, told that its workspace went and
+that only what was committed came along, and hears all that waited, also what came while git made
+the workspace ready; where the card never had a session, or the workspace is on another machine
+than the one its session lies on, a new session starts with the card's task. A clone that lacks the
+branch takes it from the clone that still holds it, else `origin`'s copy, else the configured
+checkout's (a worktree, `origin`'s where the checkout lacks it); never a new branch off the default
+branch, which would pass for the card's work without it. Where none has it, the conversation says
+so, and what came waits for the next try.
 
 Where no clone is clean and free, the card waits for the next ("Waiting for a workspace", and the
 log says the agent goes on by itself), ahead of queued cards, as a follow-up that needs a full clone
-does; it takes no temporary worktree, which its landing could not work from. Meanwhile nothing on
+does (one bound to a machine leaves the others to the cards behind it); it takes no temporary
+worktree, which its landing could not work from. Meanwhile nothing on
 the card says an agent works on the owner's words: a handed-over card shows "Agent works on your
 message" only once its session runs. Stopping the card ends the wait.
 

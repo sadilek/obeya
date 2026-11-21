@@ -2,12 +2,13 @@
 // again: what comes for its worker takes it a fresh workspace on its branch, and the session goes on there.
 
 import { describe, expect, test } from 'bun:test';
-import { rmSync } from 'node:fs';
+import { rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { git } from './git';
 import { fromJson } from './row';
 import { commit, heard, identify } from './testing';
 import { PLANNED_AGAIN } from './workers';
-import { board, defaultAdapter, eachTest, handedOver, manual, origin, rebuild, runtime, spaces, workers } from './workers-fixture';
+import { board, defaultAdapter, eachTest, main, handedOver, manual, origin, rebuild, runtime, spaces, workers } from './workers-fixture';
 
 const unread = (id: string) => board.events(id).filter((e) => e.unread);
 
@@ -72,6 +73,25 @@ describe('a card in its pull request restored after another card took its clone'
     expect(unread(c.id)).toEqual([]);
   });
 
+  test('the clone it was given turning out dirty, with no other left, it waits for the next again', async () => {
+    const { c, other, clone } = await restoredWithoutClone();
+    workers.message(c.id, 'Bitte auch als CSV.');
+    await workers.stop(other.id);
+    board.remove(other.id);
+    await heard();
+    await workers.freed();
+    // the pool looked at the clone while it was clean; it has uncommitted changes by the time git takes it
+    writeFileSync(join(clone, 'scratch.txt'), 'left over\n');
+    const n = runtime.sessions.length;
+    expect(workers.takeClone(c.id)).toBe(true);
+    await workers.prepared();
+    await heard();
+    expect(runtime.sessions.length).toBe(n);
+    expect(board.row(c.id).workspace).toBeNull();
+    expect(board.item(c.id)).toMatchObject({ waitsForClone: true, statusLine: 'Wartet auf Workspace' });
+    expect(unread(c.id).map((e) => e.text)).toEqual(['Bitte auch als CSV.']);
+  });
+
   test('stopped while it waits for a clone, it waits no more', async () => {
     const { c } = await restoredWithoutClone();
     workers.message(c.id, 'Bitte auch als CSV.');
@@ -122,6 +142,30 @@ describe('a handed-over card whose clone’s folder was deleted', () => {
     g.emit({ type: 'idle' });
     expect(board.item(c.id)!.answering).toBeUndefined();
     expect(board.item(c.id)).toMatchObject({ state: 'waiting', need: 'demo', answered: true });
+  });
+});
+
+describe('a waiting card without a workspace in a repository that works in worktrees', () => {
+  eachTest({ ...defaultAdapter, workspaces: 'worktrees' });
+
+  test('takes a worktree on its branch as origin has it where the checkout lacks it, never a branch off main', async () => {
+    const c = manual();
+    const branch = 'obeya/zaehlerstaende';
+    git(main, 'checkout', '--quiet', '-b', 'scratch');
+    const head = commit(main, 'a.ts');
+    git(main, 'update-ref', `refs/remotes/origin/${branch}`, head);
+    git(main, 'checkout', '--quiet', '-');
+    git(main, 'branch', '--quiet', '-D', 'scratch');
+    board.work(c.id, { state: 'waiting', need: 'demo', branch, detail: JSON.stringify({ summary: 'S' }) as never });
+    workers.message(c.id, 'Bitte auch als CSV.');
+    await workers.prepared();
+    const tree = board.row(c.id).workspace!;
+    expect(git(tree, 'rev-parse', 'HEAD')).toBe(head);
+    expect(git(tree, 'branch', '--show-current')).toBe(branch);
+    // a card that never reported a session starts one with its task
+    expect(runtime.last.spec.resume).toBeUndefined();
+    expect(runtime.last.inbox[0]).toContain('Zählerstände exportieren');
+    expect(runtime.last.inbox[0]).toContain('Bitte auch als CSV.');
   });
 });
 

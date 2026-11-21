@@ -511,7 +511,8 @@ export class Workers {
     // the words end the watching, and go at once with the comments held back where there are any
     const send = (header: string, kind: 'feedback' | 'note', ends = false) => {
       const held = this.takeHeld(cardId);
-      const later = !(ends && held);
+      // no session takes them in now (one that starts later, `startsLater`): they wait for it, unread
+      const later = !(ends && held) || this.startsLater(cardId);
       const said = log(later);
       if (text) this.o.onOwnerInput?.(card, kind, text);
       const m = heldFirst(held, words, seen);
@@ -2952,6 +2953,8 @@ export class Workers {
     this.bump(cardId);
     this.o.board.work(cardId, { workspace: lease.path, awaits_clone: null, status_line: null, app: null, parked: null });
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.workspaceRegained(lease.path));
+    // its session lies on the machine it ran on: the clone that keeps its branch, else this one (a folder gone is one here)
+    const sessionHost = hostName(row.kept_in ?? '');
     void this.whenReady(
       cardId,
       lease.ready,
@@ -2959,14 +2962,20 @@ export class Workers {
         if (row.kept_in) this.o.board.work(cardId, { kept_in: null });
         const now = this.o.board.row(cardId);
         const text = regainedNote(now.workspace!, row.branch!);
-        if (now.session_id) return this.launch(cardId, text, now.session_id);
-        // a card that never reported a session: a new one needs the card first
+        if (now.session_id && hostName(now.workspace!) === sessionHost) return this.launch(cardId, text, now.session_id);
+        // a card that never reported a session, or whose session is on another machine: a new one needs the card first
         const card = this.card(cardId);
         this.launch(cardId, `${this.brief.briefing(card, row.branch!, true)}\n\n${text}`, undefined, this.brief.taskImages(card));
       },
       // without a workspace again, what came waits on for the next try; nothing works on the owner's words meanwhile
       () => this.o.board.work(cardId, { workspace: null, detail: this.notAnswering(cardId) }),
-    );
+      true,
+    ).catch((e: unknown) => {
+      // the clone found free turned out dirty, and no other is left: the card waits for the next
+      if (!(e instanceof BadRequest && shortageOf(e.code)) || this.o.board.row(cardId).workspace) return;
+      this.o.board.work(cardId, { awaits_clone: 1, status_line: this.o.board.t.worker.waitsForWorkspace });
+      this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.awaitsClone);
+    });
     return true;
   }
 
