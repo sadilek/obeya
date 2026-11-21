@@ -301,15 +301,16 @@ const de = {
   startAgainHint: 'Ein neuer Agent beginnt mit neuer Sitzung auf dem Branch der Aufgabe; committete Arbeit dort bleibt.',
   /** A task the owner marks to check something by hand (after its landing, say): it stands out and stays out of the archive until they remove the mark. */
   check: {
-    mark: 'Zum Prüfen markieren',
-    markHint: 'Die Karte bleibt hervorgehoben auf der Leinwand und unter „Braucht dich“, mit einer Notiz, was du noch von Hand prüfen willst. Ins Archiv geht sie erst, wenn du die Markierung entfernst. Ihr Agent erfährt davon nichts.',
-    title: 'Noch von Hand prüfen',
+    /** The checkbox beside "Archive" that keeps the card out of the archive, with a note, until checked by hand. */
+    mark: 'Nicht archivieren, bis von Hand geprüft',
+    markHint: 'Die Karte bleibt hervorgehoben auf der Leinwand und unter „Braucht dich“, mit einer Notiz, was du noch von Hand prüfen willst. Weder „Archivieren“ noch „Erledigte Karten archivieren“ nimmt sie, bis du den Haken entfernst. Ihr Agent erfährt davon nichts.',
     placeholder: 'Was willst du noch prüfen? Eine Notiz für dich, der Agent liest sie nicht.',
-    done: 'Geprüft, Markierung entfernen',
+    /** Under the note: that it needs no button, and how the mark ends. */
+    saved: 'Wird beim Tippen gespeichert. Entferne den Haken, wenn du geprüft hast.',
     /** On the card on the canvas, before the note. */
     short: 'Zu prüfen',
     /** Why the archive does not take the card. */
-    archiveHeld: 'Zum Prüfen markiert: erst die Markierung entfernen.',
+    archiveHeld: 'Von Hand zu prüfen: erst den Haken daneben entfernen.',
   },
   landedPart: {
     short: 'Teil gelandet',
@@ -812,7 +813,7 @@ const de = {
     fileTooLarge: 'Die Datei ist zu groß (höchstens 100 MB).',
     notDone: 'Archivieren lässt sich nur eine eigene Aufgabe, die live, erledigt oder gestoppt ist, oder eine geparkte oder verworfene Idee.',
     holdsWork: 'Auf dem Branch liegt Arbeit, die noch nicht gelandet ist. Starte die Aufgabe neu oder lösche sie.',
-    marked: 'Die Karte ist zum Prüfen markiert. Entferne zuerst die Markierung.',
+    marked: 'Die Karte ist von Hand zu prüfen. Entferne zuerst den Haken bei „Nicht archivieren, bis von Hand geprüft“.',
     notArchived: 'Das liegt nicht mehr im Archiv.',
     notIdea: 'Das ist keine Idee (mehr).',
     notUntouched: 'Zusammenführen und Löschen geht nur bei geplanten Aufgaben, an denen noch niemand gearbeitet hat.',
@@ -2793,13 +2794,12 @@ const en: Strings = {
   startAgain: 'Start again',
   startAgainHint: 'A new agent starts with a new session on the task’s branch; committed work there stays.',
   check: {
-    mark: 'Mark to check',
-    markHint: 'Keeps the card highlighted on the canvas and under “Needs you”, with a note on what you still want to check by hand. It goes into the archive only once you remove the mark. Its agent is not told.',
-    title: 'To check by hand',
+    mark: 'Keep out of the archive until checked by hand',
+    markHint: 'Keeps the card highlighted on the canvas and under “Needs you”, with a note on what you still want to check by hand. Neither “Archive” nor “Archive finished cards” takes it until you untick this. Its agent is not told.',
     placeholder: 'What do you still want to check? A note for yourself; the agent does not read it.',
-    done: 'Checked, remove mark',
+    saved: 'Saved as you type. Untick once you have checked.',
     short: 'To check',
-    archiveHeld: 'Marked to check: remove the mark first.',
+    archiveHeld: 'To check by hand: untick the box beside it first.',
   },
   landedPart: {
     short: 'Part landed',
@@ -3245,7 +3245,7 @@ const en: Strings = {
     fileTooLarge: 'The file is too large (100 MB at most).',
     notDone: 'Only your own task that is live, done or stopped, or a parked or dropped idea, can be archived.',
     holdsWork: 'Its branch holds work that has not landed. Start the task again or delete it.',
-    marked: 'The card is marked to check. Remove the mark first.',
+    marked: 'The card is to be checked by hand. Untick “Keep out of the archive until checked by hand” first.',
     notArchived: 'This is no longer in the archive.',
     notIdea: 'This is not an idea (any more).',
     notUntouched: 'Only planned tasks nobody has worked on yet can be merged or deleted.',

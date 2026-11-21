@@ -888,8 +888,11 @@ textarea.p-body:focus { border-color: var(--muted); }
 .question.proposal { border-style: dashed; border-color: var(--proposal); }
 .question.superseded { border-color: var(--proposal); background: color-mix(in srgb, var(--proposal) 6%, transparent); }
 .question.repo-down { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 6%, transparent); }
-.question.check { border-color: var(--check); background: color-mix(in srgb, var(--check) 10%, transparent); }
-.question.check textarea { display: block; width: 100%; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 3px; background: var(--card); color: var(--ink); font: inherit; resize: none; overflow: hidden; }
+.check-toggle { font-weight: 600; }
+.check-toggle input { accent-color: var(--check); }
+.check-note { margin-top: 10px; }
+.check-note textarea { display: block; width: 100%; padding: 8px 10px; border: 1px solid var(--check); border-radius: 3px; background: color-mix(in srgb, var(--check) 6%, var(--card)); color: var(--ink); font: inherit; resize: none; overflow: hidden; }
+.check-note .hint { margin-top: 4px; }
 .question.brief .p-lead { margin-top: 6px; font-size: 14px; }
 .question.brief .p-list { margin-top: 4px; }
 .talk { background: var(--chip); border-radius: 3px; padding: 12px 14px; overflow: auto;

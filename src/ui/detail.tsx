@@ -421,7 +421,6 @@ function TaskView(v: View) {
       <TaskState item={item} />
       <Where item={item} parent={parent} worked={worked} inFolder={inFolder} change={change} onReadPlan={v.onReadPlan} />
 
-      <CheckBox v={v} />
       <SupersededBox item={item} all={all} act={act} onDelete={v.onDelete} />
       <RepoDownBox item={item} />
       <MoveToBox item={item} act={act} />
@@ -509,10 +508,30 @@ function TaskView(v: View) {
 }
 
 /**
- * A task the owner marked to check by hand: their note on what, saved as they type, and the button
- * that takes the mark off, after which the archive may take the card again.
+ * Beside "Archive": whether a task whose work the owner approved stays out of the archive until they
+ * checked something by hand (`Item.check`). Ticked, their note on what opens under the row, saved as
+ * they type; unticked, the mark is gone and the archive takes the card again.
  */
-function CheckBox({ v }: { v: View }) {
+function CheckToggle({ v }: { v: View }) {
+  const { item } = v;
+  return (
+    <label className="share-check check-toggle" title={t.check.markHint}>
+      <input
+        type="checkbox"
+        checked={item.check !== undefined}
+        onChange={async (e) => {
+          const on = e.target.checked;
+          if (on) sessionStorage.setItem(MARKED, item.id);
+          await v.run(() => api.patch(item.id, { check: on ? '' : null }), { close: false });
+        }}
+      />
+      {t.check.mark}
+    </label>
+  );
+}
+
+/** The note of a card marked to check by hand, under the row with its checkbox (`CheckToggle`). */
+function CheckNote({ v }: { v: View }) {
   const { item } = v;
   // a local draft: the server echo must not overwrite what is being typed
   const [note, setNote] = useState(item.check ?? '');
@@ -522,7 +541,7 @@ function CheckBox({ v }: { v: View }) {
   useEffect(() => {
     if (item.check === undefined) setNote('');
   }, [item.check === undefined]);
-  // just marked: the cursor goes into the note
+  // just ticked: the cursor goes into the note
   useEffect(() => {
     if (item.check === '' && sessionStorage.getItem(MARKED) === item.id) {
       sessionStorage.removeItem(MARKED);
@@ -531,46 +550,26 @@ function CheckBox({ v }: { v: View }) {
   }, [item.check]);
   if (item.check === undefined) return null;
   return (
-    <div className="question check">
-      <h4>⚑ {t.check.title}</h4>
+    <div className="check-note">
       <textarea
         ref={ref}
         rows={1}
         value={note}
         placeholder={t.check.placeholder}
+        aria-label={t.check.mark}
         maxLength={20_000}
         onChange={(e) => {
           setNote(e.target.value);
           v.onEdit({ check: e.target.value });
         }}
       />
-      <div className="actions">
-        <button className="btn" onClick={() => v.run(() => api.patch(item.id, { check: null }), { close: false })}>
-          {t.check.done}
-        </button>
-      </div>
+      <p className="hint">{t.check.saved}</p>
     </div>
   );
 }
 
-/** The card the owner just marked to check, whose note takes the cursor once its box shows. */
+/** The card the owner just marked to check, whose note takes the cursor once it shows. */
 const MARKED = 'obeya.justMarked';
-
-/** Marks a task to check by hand (`CheckBox`). */
-function MarkButton({ v }: { v: View }) {
-  return (
-    <button
-      className="btn"
-      title={t.check.markHint}
-      onClick={async () => {
-        sessionStorage.setItem(MARKED, v.item.id);
-        await v.run(() => api.patch(v.item.id, { check: '' }), { close: false });
-      }}
-    >
-      {t.check.mark}
-    </button>
-  );
-}
 
 /**
  * Where a task's work stands, at the top in every state: the pull request a review card reviews,
@@ -1063,8 +1062,8 @@ function TaskActions({ v, worked, proto, approve }: { v: View; worked: boolean; 
   // a stopped task whose workspace holds work shows the button, which says why it stays
   const refusal = archiveRefusal(item);
   const archive = worked && (!refusal || refusal === 'holdsWork' || refusal === 'marked');
-  // a task whose work the owner approved may be marked to check something by hand; once marked, its box takes the mark off
-  const mark = worked && markable(item) && item.check === undefined;
+  // a task whose work the owner approved may be kept out of the archive until checked by hand; once marked, in any state since
+  const mark = worked && (markable(item) || item.check !== undefined);
   if (!unworked && !(running || archive || halted || onPrototype || rest || mark || snoozable(item) || item.revocable)) return null;
   return (
     <>
@@ -1099,10 +1098,11 @@ function TaskActions({ v, worked, proto, approve }: { v: View; worked: boolean; 
         )}
         {item.state === 'planned' && !item.queue && <CardAgentPick item={item} act={act} />}
         {archive && <ArchiveButton item={item} run={v.run} />}
-        {mark && <MarkButton v={v} />}
+        {mark && <CheckToggle v={v} />}
         {own && (unworked || (halted && !item.archivedAt)) && <DeleteButton onDelete={v.onDelete} />}
       </div>
       {unworked && fresh && <p className="hint">{fresh.hint}</p>}
+      {mark && <CheckNote v={v} />}
     </>
   );
 }
