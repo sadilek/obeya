@@ -51,6 +51,13 @@ fast-forward would overwrite, a push the remote turns away) goes to the owner, t
 review; its worker hears so with its next message, unless the work has landed by then, so it does
 not answer the owner as if the approval had not happened.
 
+A pull request needs its base on `origin`. Where the checkout knows no main branch of `origin`
+(a clone of an empty remote, whose first commit Obeya made: see Setting up git in a folder) and
+`origin` confirms it has none, Obeya pushes the local main there at the approval, never forced, so
+the worker's pull request has a base; the card's log says so. A refused push goes into the log as an
+error, and the worker hears why with the approval. Where `origin` cannot be asked, nothing is pushed
+and the pull request goes as it would.
+
 Where a `pr` repository's settings allow `direct`, the owner may approve "Straight to main": in the
 card's clone or worktree Obeya fetches, rebases onto `origin/<default>` and runs `git push origin
 HEAD:<default>`, never forced. A push refused because the branch moved is rebased and pushed once
@@ -574,6 +581,11 @@ A card no agent worked on, a prototype or an archived card has no field.
   landed (a repository that lands on `main` could never have a pull request its work needed
   elsewhere followed); holding the waiting cards until that pull request is merged too (they
   would be held again after the landing let them go, for a repository they do not build on).
+- **An empty `origin` gets the main branch at the first pull request's approval** (2026-11-21):
+  that is when the pull request needs a base, and the approval already sends the work to that
+  remote. Rejected: pushing right after the first commit (a network step in the setup, with a
+  failure to handle there before any work needs it, and only for repositories whose first commit
+  Obeya made); asking the owner before the push (a second confirmation of what the approval says).
 - **The worker tends its PR the repository's way** (2026-10-01). Rejected: Obeya scripting rebase
   and `--force-with-lease`, which clashed with a repository that merges `main` in and never
   force-pushes.

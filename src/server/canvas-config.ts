@@ -43,6 +43,8 @@ export interface RepoRead {
   shared: SharedRead;
   /** Its main branch holds nothing to work on yet (`isEmptyRepo`). */
   empty: boolean;
+  /** No commit yet: no branch of its own or of `origin`, HEAD on none; no card can start from it. */
+  unborn?: true;
 }
 
 /**
@@ -55,11 +57,12 @@ async function readRepo(path: string, folder: boolean, branch: string | undefine
   if (folder) return readFolder(path);
   const [remote, origin, branches] = await Promise.all([gitTry(path, 'remote', 'get-url', 'origin'), gitTry(path, 'config', '--get', 'remote.origin.url'), readBranches(path)]);
   if (branches == null) return null;
+  const unborn = !branches.local.size && !branches.remote.size && (await gitTry(path, 'rev-parse', '--verify', '--quiet', 'HEAD')) == null;
   const detected = await detectBranch(path, branches);
   const main = branch || detected;
   const commit = await branchCommit(path, main, branches);
   const [adapterModule, shared, upstream, remotes, empty] = await Promise.all([hasAdapterModule(path, commit), readSharedAt(path, commit), detectUpstream(path), remoteUrls(path), emptyAt(path, commit)]);
-  return { info: { path, remote: remote ?? null, branch: main, ...(remote && origin ? { origin } : {}), ...(upstream ? { upstream } : {}), ...(Object.keys(remotes).length ? { remotes } : {}) }, detected, adapterModule, shared, empty };
+  return { info: { path, remote: remote ?? null, branch: main, ...(remote && origin ? { origin } : {}), ...(upstream ? { upstream } : {}), ...(Object.keys(remotes).length ? { remotes } : {}) }, detected, adapterModule, shared, empty, ...(unborn ? { unborn } : {}) };
 }
 
 /**
@@ -156,6 +159,8 @@ export function resolveCanvas(
     const folder = r.git === false;
     const got = read(resolve(r.path), folder);
     if (!got) throw folder ? new ConfigError('noFolder', `${r.path} is no folder`, i) : new ConfigError('notRepo', `${r.path} is not a git repository`, i);
+    // cards start from a commit: the first one comes as "Set up a git repository here" makes it (git-setup.ts)
+    if (got.unborn) throw new ConfigError('noCommit', `${r.path} has no commit yet`, i);
     return got;
   });
   // a repository runs once on a canvas: twice, it would have two of everything, its plan docs' note too

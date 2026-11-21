@@ -66,8 +66,8 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     calls: { existsSync: 2, spawnSync: 3 },
   },
   'git-setup.ts': {
-    why: "server path, rare: setting up git in a folder the owner chose (setup, a card's new repository) runs git init, add and commit with the server waiting; a candidate for spawnOutput",
-    calls: { existsSync: 2, mkdtempSync: 1, rmSync: 3, spawnSync: 1, statSync: 2, writeFileSync: 2 },
+    why: "server path, rare: setting up git or the first commit in a folder the owner chose (setup, a card's new repository) runs git init, add and commit with the server waiting, the staged index kept aside meanwhile; a candidate for spawnOutput",
+    calls: { copyFileSync: 2, existsSync: 4, mkdtempSync: 1, rmSync: 5, spawnSync: 1, statSync: 2, writeFileSync: 2 },
   },
   'hosts.ts': {
     why: "cheap: the ssh socket directory checked per command, a session's files listed and stamped before it starts there, a host's copy replaced, Claude's token file",
@@ -81,8 +81,8 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   },
   'instance.ts': { why: "startup and shutdown: the running instance's file", calls: { readFileSync: 1, renameSync: 1, rmSync: 1, writeFileSync: 1 } },
   'machine.ts': {
-    why: "server path, cheap: the setup's checks of known paths (Claude's binary, a clone's target), the first canvas's welcome marker",
-    calls: { existsSync: 3, readFileSync: 1, rmSync: 1, writeFileSync: 1 },
+    why: "server path, cheap: the setup's checks of known paths (Claude's binary, a clone's target, whether a fresh clone holds anything), the first canvas's welcome marker",
+    calls: { existsSync: 3, readFileSync: 1, readdirSync: 1, rmSync: 1, writeFileSync: 1 },
   },
   'main.ts': { why: 'startup before the server listens, and the replay CLI', calls: { chmodSync: 1, existsSync: 2, mkdirSync: 1, rmSync: 1, statSync: 2, writeFileSync: 1 } },
   'narration.ts': {

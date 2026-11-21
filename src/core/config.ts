@@ -405,6 +405,8 @@ export type ConfigProblemCode =
   | 'noPath'
   /** A path that is no git repository. */
   | 'notRepo'
+  /** A git repository without a commit yet, which cards cannot start from. */
+  | 'noCommit'
   /** A folder without git (`RepoConfig.git` false) whose path is no folder. */
   | 'noFolder'
   /** A repository the canvas has already, under this path or another. */

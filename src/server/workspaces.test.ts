@@ -789,6 +789,40 @@ describe('pushing main', () => {
   });
 });
 
+describe('the base of the first pull request', () => {
+  ownGlobalGitConfig();
+
+  test('goes to an origin that has no main branch yet, and nowhere where it has one', async () => {
+    const origin = join(dir, 'origin.git');
+    git(dir, 'init', '--quiet', '--bare', '--initial-branch=main', origin);
+    git(dir, 'clone', '--quiet', origin, 'checkout');
+    const checkout = join(dir, 'checkout');
+    identify(checkout);
+    edit(checkout, 'README.md', 'hello\n');
+    const spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'worktrees', repoPath: checkout, dir: join(dir, 'ws') });
+    expect(await spaces.baseOnOrigin()).toEqual({ pushed: 'main' });
+    expect(git(origin, 'rev-parse', 'main')).toBe(git(checkout, 'rev-parse', 'main'));
+    // known now: origin is not asked again
+    edit(checkout, 'notes.md', 'mine\n');
+    expect(await spaces.baseOnOrigin()).toBeNull();
+    expect(git(origin, 'rev-parse', 'main')).not.toBe(git(checkout, 'rev-parse', 'main'));
+  });
+
+  test('says why where origin refuses it, and does nothing without an origin', async () => {
+    const origin = join(dir, 'origin.git');
+    git(dir, 'init', '--quiet', '--bare', '--initial-branch=main', origin);
+    writeFileSync(join(origin, 'hooks', 'pre-receive'), '#!/bin/sh\necho "no pushes here" >&2\nexit 1\n', { mode: 0o755 });
+    git(dir, 'clone', '--quiet', origin, 'checkout');
+    const checkout = join(dir, 'checkout');
+    identify(checkout);
+    edit(checkout, 'README.md', 'hello\n');
+    const spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'worktrees', repoPath: checkout, dir: join(dir, 'ws') });
+    expect(await spaces.baseOnOrigin()).toEqual({ branch: 'main', problem: expect.stringContaining('no pushes here') });
+    const alone = gitRepo(join(dir, 'alone'));
+    expect(await new Workspaces(new Store(':memory:'), 'c', { mode: 'worktrees', repoPath: alone, dir: join(dir, 'ws2') }).baseOnOrigin()).toBeNull();
+  });
+});
+
 describe('before a merge, the clash with unpushed commits', () => {
   ownGlobalGitConfig();
   let origin: string;

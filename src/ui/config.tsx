@@ -1753,6 +1753,7 @@ function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, 
       {problems.map((p, k) => (
         <div key={k} className="cfg-repo-problem">
           <Problem problem={p} where={where} ask={ask} retried={ask && onRecheck} />
+          {p.code === 'noCommit' && <GitSetup key={repo.path.trim()} path={repo.path.trim()} confirm={t.setup.git.commit} onDone={onRecheck} />}
           {p.code === 'notRepo' && noGit && <GitSetup key={noGit} path={noGit} confirm={t.setup.git.confirm} onDone={onRecheck} onFolder={() => onChange({ path: repo.path, git: false, ...(repo.settings ? { settings: repo.settings } : {}) })} />}
           {p.code === 'untrusted' && resolved?.trust && <TrustCommands path={repo.path} trust={resolved.trust} onDone={onRecheck} />}
         </div>

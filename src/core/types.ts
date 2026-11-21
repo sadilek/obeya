@@ -1776,6 +1776,8 @@ export type ErrorCode =
   | 'reshareBusy'
   /** Setup: the folder for the first canvas is no git repository. */
   | 'notRepo'
+  /** Setup: the repository for the first canvas has no commit yet. */
+  | 'noCommit'
   /** Setup: the folder a clone would go to exists already. */
   | 'cloneTarget'
   /** Setting up git in a folder: git has no name and e-mail for the first commit. */
@@ -2169,6 +2171,8 @@ export interface SetupFolder {
   branch?: string;
   /** A folder without a repository, in which git can be set up. */
   folder?: boolean;
+  /** A repository without a commit yet (`git init`, a clone of an empty remote), which gets its first commit before cards can start in it; `branch` is the one HEAD names. */
+  empty?: boolean;
 }
 
 /** From this size on a file is marked as large in the preview of a first commit. */
@@ -2179,6 +2183,8 @@ export interface GitSetupPreview {
   path: string;
   /** The branch the repository starts on. */
   branch: string;
+  /** The folder is a repository already, without a commit: only the first commit is made. */
+  repo?: true;
   /** The `.gitignore` Obeya writes, where the folder has none. */
   gitignore?: string;
   files: number;

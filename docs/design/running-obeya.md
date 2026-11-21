@@ -522,8 +522,10 @@ On the first start the page ends with "Where is your project?": two cards with a
 "Already on this computer" (a folder: a path or, from a browser on this machine, the system's folder dialog) and "On GitHub / a
 server" (a clone: `owner/name` through `gh repo clone` where gh is logged in, else by URL; any git
 URL; into the home directory unless another is given). It shows the main branch Obeya found there. A
-folder without git gets the offer to set it up (see Setting up git in a folder), whose confirmation
-also creates the canvas. Obeya writes `canvases.json` (worktrees, or two clones when the repository's
+folder without git gets the offer to set it up, a repository without a commit the preview of its
+first commit (see Setting up git in a folder); the confirmation also creates the canvas. A clone of
+an empty repository holds nothing to look at first: it gets its first commit (the default
+`.gitignore`) right after cloning. Obeya writes `canvases.json` (worktrees, or two clones when the repository's
 settings say clones), starts the canvas at once (see Live configuration) and the page opens it, with
 a first card that says what to try: a small change, such as a line in the README, in a repository
 with something in it; in one that is still empty ("First task: describe what to build"), to write
@@ -536,6 +538,9 @@ a first start.
 
 ### Setting up git in a folder
 
+Cards start from a commit, so a folder without git, or a repository without a commit yet (`git
+init` alone, a clone of an empty remote: no branch of its own or of `origin`), gets its first commit
+before it can be a canvas; until then the configuration names that as the problem and is not saved.
 Where the first canvas or "+ Repository" is given a folder in which git finds no repository, it
 offers "Use without git" (`"git": false` in its entry; see Folders without git) and "Set up a
 git repository here", each with a line on what it means. The latter first shows what the first
@@ -545,7 +550,12 @@ what stays out, and the default `.gitignore` (build output, dependencies, secret
 git directory of its own in the temp directory, so looking changes nothing; the owner keeps more out
 with a `.gitignore` and "Look again". Confirming runs `git init` on git's `init.defaultBranch`, else
 `main`, and commits every file not ignored (workers see only committed files) under git's name and
-e-mail (none: it says so and does nothing). A failed step undoes the ones before. Building a card
+e-mail (none: it says so and does nothing). A failed step undoes the ones before. A repository
+without a commit gets no choice, since it has git already: the same preview shows at once, with the
+repository's own exclusions (`.git/info/exclude`) heeded, and confirming makes only the commit, on
+the branch HEAD names (a clone of an empty remote names the remote's), with what the owner had
+staged; a failed commit puts the staged files back as they were. The commit stays local: the
+remote gets the main branch when the first pull request needs it as its base (see How work lands). Building a card
 in a new repository sets git up the same way, without the preview (see Building in a new
 repository).
 

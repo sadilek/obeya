@@ -608,6 +608,12 @@ const SHORT_TEXT = { none: 'no workspace registered or all are leased', dirty: '
  * worktrees of a git repository (`Workspaces`), or the folder itself where it has no git
  * (`FolderWorkspaces` in `folder.ts`, which has no branches and lands nothing).
  */
+/**
+ * What `baseOnOrigin` did: pushed the main branch onto an `origin` that had none, or why that
+ * failed; null where nothing was to do (no `origin`, or it has the branch).
+ */
+export type BaseOnOrigin = { pushed: string } | { branch: string; problem: string } | null;
+
 export interface CardWorkspaces {
   readonly mode: 'clones' | 'worktrees' | 'folder';
   readonly dir: string;
@@ -627,6 +633,7 @@ export interface CardWorkspaces {
   addedFiles(cardId: string, dir: string): Promise<string[]>;
   landOnMain(cardId: string, branch: string, trailer?: string, push?: boolean): Promise<LandProblem | Landed>;
   pushToMain(cardId: string, trailer?: string): Promise<LandProblem | Landed>;
+  baseOnOrigin?(): Promise<BaseOnOrigin>;
   upstreamStart?(ref: string): Promise<UpstreamStart | null>;
   branchChoices?(): Promise<OwnBranch[]>;
   adoptStart?(branch: string): Promise<AdoptStart | null>;
@@ -1787,6 +1794,26 @@ export class Workspaces implements CardWorkspaces {
       } catch (e) {
         return { code: 'land', worker: false, detail: messageOf(e) };
       }
+    });
+  }
+
+  /**
+   * Where `origin` has no main branch yet (a clone of an empty remote), the local one goes there,
+   * never forced, so that the first pull request has a base to go onto (`BaseOnOrigin`). Asks
+   * `origin` only where the checkout knows no such branch of it.
+   */
+  baseOnOrigin(): Promise<BaseOnOrigin> {
+    return oneAtATime(landings, this.o.repoPath, async () => {
+      const repo = this.o.repoPath;
+      const base = await this.checkoutBase();
+      if (!base || (await gitTry(repo, 'remote', 'get-url', 'origin')) == null) return null;
+      if ((await gitTry(repo, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${base}`)) != null) return null;
+      if ((await gitTry(repo, 'rev-parse', '--verify', '--quiet', `refs/heads/${base}`)) == null) return null;
+      const there = await gitRun(repo, ['ls-remote', '--heads', 'origin', `refs/heads/${base}`], { env: NO_PROMPT, timeout: PUSH_TIMEOUT_MS }).catch(() => null);
+      // where origin cannot be asked, or has the branch after all, the pull request goes as it would
+      if (there?.code !== 0 || there.stdout.trim()) return null;
+      const r = await gitRun(repo, ['push', '--quiet', 'origin', `refs/heads/${base}:refs/heads/${base}`], { env: NO_PROMPT, timeout: PUSH_TIMEOUT_MS }).catch((e) => ({ code: 1, stdout: '', stderr: messageOf(e) }));
+      return r.code === 0 ? { pushed: base } : { branch: base, problem: pushRefusal(r.stderr || r.stdout).problem };
     });
   }
 

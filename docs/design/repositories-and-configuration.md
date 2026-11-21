@@ -69,6 +69,11 @@ never in `.obeya/settings.json`, since that file is read from it. Without one it
 The usual names come before the checked-out branch so that a branch the owner checks out for a while
 does not become the main branch; landing on the local main refuses while the checkout is not on it.
 
+A repository without a commit has a main branch only by name, which no card can start from: its
+configuration is not saved, and a canvas listing it does not start, until it has a first commit,
+which the setup assistant and the Configuration dialog offer to make (see Setting up git in a
+folder).
+
 ### Read tree
 
 Every git repository of a canvas has a directory on its main branch, the read tree. Plan docs are

@@ -9,7 +9,7 @@
 // repository's folder, or a clone of one.
 
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
@@ -26,7 +26,7 @@ import { BadRequest } from './board';
 import { isEmptyRepo } from './branches';
 import type { CanvasRuntime } from './canvas';
 import type { Config } from './config';
-import { previewGitSetup, setUpGit, withoutGit } from './git-setup';
+import { previewGitSetup, setUpGit, withoutCommit, withoutGit } from './git-setup';
 import { onHost, remote, saveClaudeToken, type SshHost } from './hosts';
 import { parseRemote, repoInfo } from './repo';
 import { COMPILED } from './resources';
@@ -615,9 +615,11 @@ export class MachineSetup {
     return { path: out ? out.replace(/(?<=.)[/\\]$/, '') : null };
   }
 
-  /** A folder the owner names for the first canvas: whether it holds a repository, and its main branch. */
+  /** A folder the owner names for the first canvas: whether it holds a repository, and its main branch; or that it needs git, or a first commit. */
   async folder(input: unknown): Promise<SetupFolder> {
     const path = folderOf(input);
+    const unborn = withoutCommit(path);
+    if (unborn) return { repo: true, branch: unborn, empty: true };
     try {
       return { repo: true, branch: (await repoInfo(path)).branch };
     } catch {
@@ -625,12 +627,12 @@ export class MachineSetup {
     }
   }
 
-  /** What the first commit of a folder without git would hold; changes nothing. */
+  /** What the first commit of a folder without git, or of a repository without a commit, would hold; changes nothing. */
   gitPreview(input: unknown): GitSetupPreview {
     return previewGitSetup(folderOf(input));
   }
 
-  /** Sets up git in a folder that has none, with its first commit; the owner saw the preview. */
+  /** Sets up git in a folder that has none, or makes the first commit of a repository without one; the owner saw the preview. */
   gitSetup(input: unknown): { branch: string } {
     return setUpGit(folderOf(input));
   }
@@ -655,6 +657,8 @@ export class MachineSetup {
       { kind: 'clone' },
       async (log, job) => {
         await this.run(argv, log);
+        // a clone of an empty remote holds nothing to look at first: it gets its first commit (the default .gitignore) right away
+        if (withoutCommit(dest) && readdirSync(dest).every((f) => f === '.git')) setUpGit(dest);
         ({ canvas: job.canvas, branch: job.branch, opens: job.opens } = await this.add(dest));
       },
       (e) => {
@@ -674,7 +678,7 @@ export class MachineSetup {
       ({ problems, resolved } = await this.o.config.check(next));
     }
     const problem = problems.find(blocksSaving);
-    if (problem) throw new BadRequest(problem.code === 'notRepo' ? 'notRepo' : 'config', problem.detail);
+    if (problem) throw new BadRequest(problem.code === 'notRepo' || problem.code === 'noCommit' ? problem.code : 'config', problem.detail);
     const canvas = resolved.at(-1)!.id;
     writeFileSync(join(this.o.home, WELCOME_FILE), canvas);
     const { restarting, applied } = await this.o.config.save(next);

@@ -1024,12 +1024,19 @@ export class Workers {
     // a demo shared later gets its line from Obeya once the pull request is open
     const shared = card.share?.url;
     if (shared) this.pageHeard(cardId);
+    // a remote without the main branch yet (a clone of an empty one) gets it, so the pull request has a base
+    const base = await this.o.workspaces.baseOnOrigin?.().catch(() => null);
+    const t = this.o.board.t.worker;
+    if (base && 'pushed' in base) this.o.board.log(cardId, 'state', 'obeya', t.pushedBase(base.pushed));
+    if (base && 'problem' in base) this.o.board.log(cardId, 'error', 'obeya', t.baseRefused(base.branch, base.problem));
     this.deliver(
       cardId,
       [
         `The owner approved your work. In this repository it goes out as a pull request, opened the way the repository does it (its own skills and conventions): from now on you may push this branch. Whoever reads the pull request has not seen Obeya, the card or the plan doc. Do not merge it: ${this.o.adapter.autoMerge === false ? 'the people on the forge merge it' : 'Obeya merges it'} once its checks have passed and its review is through.`,
         card.adopted ? `Your branch ${card.adopted.branch} is the owner's and existed before this card: open the pull request from it under that name${card.adopted.remote ? `, pushing onto ${card.adopted.branch}${this.o.remote ? ` at ${this.o.remote}` : ''} fast-forward only (never force: what is there is published)` : ''}.` : '',
         shared ? `Your demo video is shared with the team on a page of its own: ${shared}. Link it in the pull request's description.` : '',
+        base && 'pushed' in base ? `\`origin\` had no ${base.pushed} branch yet: Obeya pushed the local ${base.pushed} there, as the pull request's base.` : '',
+        base && 'problem' in base ? `\`origin\` has no ${base.branch} branch yet, which the pull request needs as its base, and Obeya's push of the local ${base.branch} there was refused: ${base.problem}` : '',
         'Once you report its URL with pr_opened, Obeya watches it and passes you review comments, failed checks and conflicts; you handle them the way the repository does (its skill for review comments, if it has one). A comment that questions a decision, or a conflict that needs a product call, is the owner’s (ask). Where the work also needs a pull request in another repository, report that one with pr_opened too: Obeya watches each, and the card is live once all are merged.',
         ROUND_DEMO,
         comments?.text ?? '',
