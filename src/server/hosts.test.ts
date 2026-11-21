@@ -101,6 +101,89 @@ describe('a workspace on a host', () => {
     expect((await runAppCommand(onHost(name, join(dir, 'ws')), 'true')).ok).toBe(false);
   });
 
+  overSsh('finds the programs a terminal there finds, after the installers\' directories, with no more of its environment', async () => {
+    // a program the system's directories have (on a Mac `/etc/paths.d`), one under `~` there, one the installer put in `~/.local/bin`
+    const program = (at: string, name: string, says: string) => {
+      mkdirSync(at, { recursive: true });
+      writeFileSync(join(at, name), `#!/bin/sh\necho ${says}\n`, { mode: 0o755 });
+    };
+    const home = join(dir, 'net', 'home');
+    program(join(dir, 'dotnet'), 'dotnet', 'dotnet 9');
+    program(join(home, 'sdk'), 'sdk-tool', 'sdk tool');
+    program(join(dir, 'dotnet'), 'claude', 'not the installed one');
+    program(join(home, '.local', 'bin'), 'claude', 'the installed one');
+    writeFileSync(join(dir, 'net', 'profile'), `PATH="${join(dir, 'dotnet')}:~/sdk:$PATH"; export PATH; export ANTHROPIC_API_KEY=sk-from-rc\n`);
+    mkdirSync(join(dir, 'ws'));
+    expect((await host.run('dotnet; sdk-tool; claude; printf %s "$ANTHROPIC_API_KEY"')).stdout).toBe('dotnet 9\nsdk tool\nthe installed one\n');
+    const stack = await runAppCommand(onHost(name, join(dir, 'ws')), 'dotnet > stack.log');
+    expect(stack.ok).toBe(true);
+    expect(readFileSync(join(dir, 'ws', 'stack.log'), 'utf8')).toBe('dotnet 9\n');
+    // read once: what is installed there since counts from the next look at the host's harnesses on
+    program(join(dir, 'later'), 'later-tool', 'installed since');
+    writeFileSync(join(dir, 'net', 'profile'), `PATH="${join(dir, 'later')}:${join(dir, 'dotnet')}:$PATH"; export PATH\n`);
+    expect((await host.run('command -v later-tool || echo none')).stdout).toBe('none\n');
+    await host.claude();
+    expect((await host.run('later-tool; dotnet')).stdout).toBe('installed since\ndotnet 9\n');
+    // a shell that says nothing leaves the PATH read before
+    writeFileSync(join(dir, 'net', 'profile'), 'exit 1\n');
+    await host.codex();
+    expect((await host.run('dotnet')).stdout).toBe('dotnet 9\n');
+  });
+
+  overSsh('reads the PATH anew from what ssh gives, so a directory gone from the profile goes', async () => {
+    writeFileSync(join(dir, 'net', 'profile'), 'PATH="/obsolete/sdk:$PATH"; export PATH\n');
+    expect((await host.run('printf %s "$PATH"')).stdout).toContain('/obsolete/sdk');
+    writeFileSync(join(dir, 'net', 'profile'), 'PATH="/replacement/sdk:$PATH"; export PATH\n');
+    await host.claude();
+    const path = (await host.run('printf %s "$PATH"')).stdout;
+    expect(path).toContain('/replacement/sdk');
+    expect(path).not.toContain('/obsolete/sdk');
+  });
+
+  overSsh('gives up on a login shell that takes too long, and ends what it started', async () => {
+    const slow = registerHost({ name: `${name}-slow`, ssh: 'me@box', home: join(dir, 'home'), program: ssh, patience: 1000 });
+    const child = join(dir, 'child');
+    writeFileSync(join(dir, 'net', 'profile'), `sleep 60 & echo $! > ${child}; wait\n`);
+    const started = Date.now();
+    const r = await slow.run('echo ran');
+    expect(r.stdout).toBe('ran\n');
+    expect(Date.now() - started).toBeLessThan(8000);
+    const pid = Number(readFileSync(child, 'utf8'));
+    await until(() => {
+      try {
+        process.kill(pid, 0);
+        return false;
+      } catch {
+        return true;
+      }
+    });
+  });
+
+  overSsh('reads the PATH before the first command that finds the host back', async () => {
+    mkdirSync(join(dir, 'dotnet'));
+    writeFileSync(join(dir, 'dotnet', 'dotnet'), '#!/bin/sh\necho dotnet 9\n', { mode: 0o755 });
+    writeFileSync(join(dir, 'net', 'profile'), `PATH="${join(dir, 'dotnet')}:$PATH"; export PATH\n`);
+    writeFileSync(join(dir, 'net', 'down'), '');
+    const r = await host.run('dotnet');
+    expect(r.code).toBe(255);
+    expect(r.stderr).toContain('Connection refused');
+    expect(host.unreachable).toBe(true);
+    rmSync(join(dir, 'net', 'down'));
+    expect((await host.run('dotnet')).stdout).toBe('dotnet 9\n');
+    expect(host.unreachable).toBe(false);
+  });
+
+  overSsh('runs commands there with what ssh gives where its login shell says nothing', async () => {
+    writeFileSync(join(dir, 'net', 'profile'), 'exit 1\n');
+    const r = await host.run('printf %s "$PATH"');
+    expect(r.code).toBe(0);
+    expect(r.stdout).toStartWith(`${join(dir, 'net', 'home')}/.local/bin:${join(dir, 'net', 'home')}/.bun/bin:`);
+    // asked once, not before every command
+    const tries = readFileSync(join(dir, 'net', 'tries'), 'utf8').split('\n').length;
+    await host.run('true');
+    expect(readFileSync(join(dir, 'net', 'tries'), 'utf8').split('\n').length).toBe(tries + 1);
+  });
+
   overSsh('copies directories there and back', async () => {
     mkdirSync(join(dir, 'demo', 'sub'), { recursive: true });
     writeFileSync(join(dir, 'demo', 'demo.mp4'), 'video');
@@ -161,6 +244,15 @@ describe('a session on a host', () => {
     expect(got).toBe('got ping');
     expect(readFileSync(join(remoteDir, 'plugin.stamp'), 'utf8')).toHaveLength(16);
     expect(log()).not.toContain('sk-claude');
+  });
+
+  overSsh('finds the programs a terminal there finds', async () => {
+    mkdirSync(join(dir, 'dotnet'));
+    writeFileSync(join(dir, 'dotnet', 'dotnet'), '#!/bin/sh\necho dotnet 9\n', { mode: 0o755 });
+    writeFileSync(join(dir, 'net', 'profile'), `PATH="${join(dir, 'dotnet')}:$PATH"; export PATH\n`);
+    const s = spawnSession({ command: 'dotnet', args: [], env: {} });
+    expect(await s.exited).toBe(0);
+    expect(s.out()).toBe('dotnet 9\n');
   });
 
   overSsh("ends as a lost connection when the host cannot be made ready", async () => {

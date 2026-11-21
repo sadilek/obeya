@@ -732,9 +732,18 @@ as `ssh://<host>/<path>`; a new card goes there when the machines before it have
 
 Every git call, stack command and worker session (Claude Code, or Codex's app server, whichever its
 group runs on) in such a workspace runs there through `ssh`,
-unseen by its callers: `ssh <target> exec sh -c '…'` with the installers' directories on the `PATH`;
-`exec`, so a shell that forks for a command (dash) does not stay as the session's parent under
-another pid. One shared connection where `ControlMaster` exists (not Windows), its sockets in
+unseen by its callers: `ssh <target> exec sh -c '…'` with the installers' directories first on the
+`PATH`; `exec`, so a shell that forks for a command (dash) does not stay as the session's parent under
+another pid. That shell is neither a login shell nor interactive, so it lacks what a terminal there
+adds (`/etc/paths.d` on a Mac, the profile and rc files), which agents need to find what a terminal
+there finds (`dotnet`, say). Obeya asks the host's login shell for its `PATH` as it does here (see
+Setup assistant in Running Obeya: `SHELL` there as a login shell and interactive, without a terminal, at most 10
+seconds, then ended with what it started) before the host's first command, the one that finds an
+unreachable host back included, and again at each look at its harnesses, so what was installed there
+since is found. The shell starts from the `PATH` ssh gives, not from the one read before, so a
+directory gone from the profile goes; what it says goes after the installers' directories and before
+what ssh gives. A shell that says nothing leaves the `PATH` read before; only the `PATH` is taken,
+for the same reason as here (a token in an rc file would change the logins there). One shared connection where `ControlMaster` exists (not Windows), its sockets in
 `/tmp/obeya-ssh-<uid>` for the owner alone, since whoever reaches a socket uses its connection;
 `BatchMode`; keep-alives that notice a dropped link within 45 s. The server never waits on a call
 there: each runs beside its other work. A host whose connection failed counts as unreachable until a

@@ -59,7 +59,7 @@ export function putFirst(env: Env, dirs: string[]) {
 }
 
 /** How long the login shell may take to say its PATH: one that takes longer is not waited for. */
-const SHELL_PATIENCE_MS = 10_000;
+export const SHELL_PATIENCE_MS = 10_000;
 
 /**
  * The PATH a new terminal has: the owner's login shell (`SHELL`) started as a terminal starts it,

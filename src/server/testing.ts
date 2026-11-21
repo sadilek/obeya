@@ -590,12 +590,24 @@ export function syncGitCalls() {
  * its workers one in `GH_TOKEN`) does not reach the host. Each command it ran is appended to `<dir>/log`, with the target first; each
  * connection it tried, reachable or not, adds a line to `<dir>/tries`. A forward (`-L` from here,
  * `-R` from there, the same on one machine) is a proxy on this machine for as long as the command
- * runs; the command's pid goes to `<dir>/forwards`, each proxy's to `<dir>/proxies`.
+ * runs; the command's pid goes to `<dir>/forwards`, each proxy's to `<dir>/proxies`. The host's
+ * login shell (`SHELL` there) is a stand-in too, not this machine's: it reads `<dir>/profile` where
+ * that exists, as a login shell reads the owner's profile, then runs its command.
  */
 export function fakeSsh(dir: string): string {
   mkdirSync(dir, { recursive: true });
   const program = join(dir, 'ssh');
   const proxy = join(dir, 'forward.ts');
+  const shell = join(dir, 'login-shell');
+  writeFileSync(
+    shell,
+    `#!/bin/sh
+while [ $# -gt 0 ] && [ "$1" != -c ]; do shift; done
+[ -f ${JSON.stringify(join(dir, 'profile'))} ] && . ${JSON.stringify(join(dir, 'profile'))}
+exec sh -c "$2"
+`,
+    { mode: 0o755 },
+  );
   writeFileSync(
     proxy,
     `import { connect, createServer } from 'node:net';
@@ -620,6 +632,7 @@ echo x >> ${JSON.stringify(join(dir, 'tries'))}
 [ -e ${JSON.stringify(join(dir, 'down'))} ] && { echo "ssh: connect to host $target: Connection refused" >&2; exit 255; }
 printf '%s %s\\n' "$target" "$*" >> ${JSON.stringify(join(dir, 'log'))}
 HOME=${JSON.stringify(join(dir, 'home'))}; export HOME; mkdir -p "$HOME"
+SHELL=${JSON.stringify(shell)}; export SHELL
 unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
 [ -z "$fwd" ] && exec sh -c "$*"
 echo $$ >> ${JSON.stringify(join(dir, 'forwards'))}
