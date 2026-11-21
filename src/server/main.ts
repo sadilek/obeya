@@ -86,7 +86,7 @@ import { LocalTranscriber, VoiceIn } from './voice';
 import { cloudInUse } from './voice-cloud';
 import { VoiceSetup } from './voice-setup';
 import { useLib } from '../../plugin/skills/demo/lib/here.ts';
-import { DEMO_SETTINGS_FILE, expandHome, inLanguage, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
+import { DEMO_SETTINGS_FILE, demoDirectory, expandHome, inLanguage, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { DemoSpace } from './demo-space';
 import { qwen3Serve, speak, voiceSpec } from '../../plugin/skills/demo/lib/voices.ts';
 import { Voicing } from './walkthrough';
@@ -375,7 +375,8 @@ function agentRuntime() {
   // a harness that is at its usage limit for two hours from the start (`OBEYA_FAKE_LIMIT`: claude, codex or gemini), for demos and live checks of its fallback
   const fake = process.env.OBEYA_FAKE_LIMIT;
   const atLimit = (h: Harness, r: AgentRuntime) => (fake === h ? limitedRuntime(Date.now() + 2 * 3_600_000) : r);
-  const gemini = geminiRuntime({ dir: join(home, 'gemini') });
+  // a worker's demos and artifacts go to the demo directory, outside its workspace
+  const gemini = geminiRuntime({ dir: join(home, 'gemini'), writable: () => [demoDirectory(readDemoSettings(home))] });
   const live = byHarness({ claude: atLimit('claude', withRest(newest, rest)), codex: atLimit('codex', withRest(codexRuntime, rest)), gemini: atLimit('gemini', withRest(gemini, rest)) });
   if (values.record) return recordingRuntime(live, resolve(values.record), home);
   if (!values.replay) return live;

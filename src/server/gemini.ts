@@ -498,11 +498,15 @@ export function geminiTranscripts(session: string): string[] {
   return [...runtimeDirs].map((dir) => join(dir, 'antigravity-cli', 'brain', id, '.system_generated', 'logs', 'transcript.jsonl'));
 }
 
-/** Runs agents through `agy acp` on this machine's Antigravity login, with `dir` as Obeya's own Gemini directory. */
-export function geminiRuntime(o: { dir: string; own?: string }): AgentRuntime {
+/**
+ * Runs agents through `agy acp` on this machine's Antigravity login, with `dir` as Obeya's own Gemini
+ * directory. `writable`: directories outside every workspace that agents which act write to as well
+ * (the demo directory, where their demos and artifacts go), asked at each start.
+ */
+export function geminiRuntime(o: { dir: string; own?: string; writable?: () => string[] }): AgentRuntime {
   runtimeDirs.add(o.dir);
   const dir = new GeminiDir(o.dir, o.own);
-  return { start: (spec, firstMessage, images) => new GeminiSession(spec, dir, firstMessage, images) };
+  return { start: (spec, firstMessage, images) => new GeminiSession(spec, dir, firstMessage, images, o.writable) };
 }
 
 class GeminiSession implements AgentSession {
@@ -541,6 +545,7 @@ class GeminiSession implements AgentSession {
     private dir: GeminiDir,
     firstMessage: string | undefined,
     images: string[] | undefined,
+    private writable: () => string[] = () => [],
   ) {
     this.effort = spec.effort;
     if (firstMessage !== undefined) this.queue.push({ text: firstMessage, ...(images?.length ? { images } : {}) });
@@ -587,7 +592,7 @@ class GeminiSession implements AgentSession {
     const common = spec.readOnly ? undefined : await gitCommonDir(spec.cwd);
     const grants: Grants = {
       read: await gitConfigFiles(spec.cwd),
-      write: spec.readOnly ? [] : [...(spec.dirs ?? []), tmpdir(), ...(common ? [common] : [])],
+      write: spec.readOnly ? [] : [...(spec.dirs ?? []), tmpdir(), ...(common ? [common] : []), ...this.writable()],
     };
     if (this.closed) return;
     await this.dir.prepare(this, grants, spec.plugins ?? []);

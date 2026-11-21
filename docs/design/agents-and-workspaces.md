@@ -127,7 +127,8 @@ at each start with the grants of the sessions that run: readable the global git 
 every file it includes (so commits carry the owner's identity and signing; agy's sandbox blocks
 reading outside the workspace, and an agent that could not read an include committed with the global
 configuration switched off), writable the git directory a worktree commits into, the agent's extra
-directories and the temporary directory, as for Codex. Commands run in that sandbox; what would
+directories, the temporary directory and the demo directory (agy asks before its file tools write
+outside the workspace, so a worker's demo would otherwise be a question to the owner each time). Commands run in that sandbox; what would
 leave it (a command run outside it, a file written outside the workspace) agy's own reviewer in auto
 mode allows or refuses, and what it leaves to a person becomes the question the card waits on.
 Obeya approves nothing of agy's on its own, but its own tools. agy ends a turn without a word to the
