@@ -335,7 +335,8 @@ async function threadOptions(o: Options): Promise<Record<string, unknown> | null
   if (stdin instanceof Blob) stdin = new Uint8Array(await stdin.arrayBuffer());
   else if (!(stdin == null || typeof stdin === 'string' || ArrayBuffer.isView(stdin))) return null;
   // as hideConsoleWindows does on the server's thread; the thread's environment may be older
-  return { ...o, stdin, env: o.env ?? { ...process.env }, windowsHide: o.windowsHide ?? true };
+  // o.env can be process.env itself, so snapshot it before posting to the worker.
+  return { ...o, stdin, env: { ...(o.env ?? process.env) }, windowsHide: o.windowsHide ?? true };
 }
 
 async function run(argv: string[], o: Options): Promise<Output> {
