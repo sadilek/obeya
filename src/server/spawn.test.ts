@@ -42,6 +42,7 @@ test('a process on a thread of its own gets what the server gives it: directory,
   process.env.OBEYA_SPAWN_TEST = 'now';
   try {
     expect((await script('console.log(process.env.OBEYA_SPAWN_TEST)')).stdout.trim()).toBe('now');
+    expect((await script('console.log(process.env.OBEYA_SPAWN_TEST)', { env: process.env })).stdout.trim()).toBe('now');
   } finally {
     delete process.env.OBEYA_SPAWN_TEST;
   }
