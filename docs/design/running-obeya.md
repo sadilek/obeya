@@ -899,7 +899,10 @@ beside the scratch dirs.
   in which phones showed "Obeya is not answering" and WebSockets timed out opening. The processes Obeya
   runs most often and reads once they end (git above all) are started by two worker threads, which hand back the exit code and output; options
   that cannot cross to a thread (a stream as input), or no thread to be had, start on the server's
-  thread as before. A thread that fails or ends before its code ran started nothing: what it was
+  thread as before. So does a process whose options fail to be copied to its thread (a value that
+  cannot be copied): failing it instead read as a program not installed to callers that take a
+  failure for "not there" (Codex on Windows, whose `process.env` Bun cannot copy to a thread; the
+  environment is copied into a plain object before it goes). A thread that fails or ends before its code ran started nothing: what it was
   given starts on the server's thread. One that fails or ends later fails what it was running, and
   nothing is started twice (a push, a landing). What a thread answers settles in a turn of the event
   loop of its own: settled straight from the thread's message, a promise `bun test` waits for with

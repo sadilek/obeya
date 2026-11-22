@@ -46,6 +46,18 @@ test('a process on a thread of its own gets what the server gives it: directory,
   } finally {
     delete process.env.OBEYA_SPAWN_TEST;
   }
+  // an environment that cannot be copied as it is, on any system, as process.env cannot on
+  // Windows: it reaches the thread all the same, not only the server's thread
+  const spawn = Bun.spawn;
+  let here = 0;
+  Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => (here++, spawn(...args))) as typeof Bun.spawn;
+  try {
+    const env = new Proxy({ ...process.env, OBEYA_SPAWN_TEST: 'proxy' }, {});
+    expect((await script('console.log(process.env.OBEYA_SPAWN_TEST)', { env })).stdout.trim()).toBe('proxy');
+  } finally {
+    Bun.spawn = spawn;
+  }
+  expect(here).toBe(0);
   const echo = 'process.stdout.write(await Bun.stdin.text())';
   expect((await script(echo, { stdin: new Blob(['from a ', 'blob']) })).stdout).toBe('from a blob');
   expect((await script(echo, { stdin: Buffer.from('from a buffer') })).stdout).toBe('from a buffer');
@@ -55,6 +67,29 @@ test('a process on a thread of its own gets what the server gives it: directory,
   expect(slow.signal).not.toBeNull();
   expect(await spawnOutput(['obeya-no-such-program']).then(() => null, (e: unknown) => e)).toBeInstanceOf(Error);
 }, 30_000);
+
+test('a process a thread cannot be given starts on the server’s thread, once, and leaves nothing waiting on the thread', async () => {
+  const spawn = Bun.spawn;
+  let here = 0;
+  Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => (here++, spawn(...args))) as typeof Bun.spawn;
+  const told: string[][] = [];
+  const stop = onStart((argv) => told.push(argv));
+  try {
+    // a function crosses to no thread; Bun.spawn takes it by its text
+    const value = Object.assign(() => '', { toString: () => 'on the server' });
+    const env = { ...process.env, OBEYA_SPAWN_TEST: value as unknown as string };
+    const out = await spawnOutput([process.execPath, '-e', 'console.log(process.env.OBEYA_SPAWN_TEST)'], { env });
+    expect([out.code, out.stdout.trim()]).toEqual([0, 'on the server']);
+    expect([here, told.length]).toEqual([1, 1]);
+    expect(forTests.waiting()).toBe(0);
+    // and the threads take the next one as before
+    expect((await spawnOutput([process.execPath, '--version'])).stdout.trim()).toBe(Bun.version);
+    expect(here).toBe(1);
+  } finally {
+    stop();
+    Bun.spawn = spawn;
+  }
+});
 
 // Windows alone: elsewhere no process inherits another's pipes, and there is no lock to test
 test.skipIf(process.platform !== 'win32')('a process started next to slow ones, on a thread or the server’s, ends as quickly as it would alone', async () => {

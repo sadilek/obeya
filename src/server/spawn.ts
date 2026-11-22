@@ -111,7 +111,12 @@ function release(lock: Int32Array, owner: number) {
 function tookOver(from: number, limit: number) {
   if (from > 1) console.error(`Obeya: a process start took over the lock on starting processes from a thread that held it ${limit / 1000} s`);
 }
-export const forTests = { acquire, release };
+export const forTests = {
+  acquire,
+  release,
+  /** How many processes the threads have been given and not answered yet. */
+  waiting: () => threads.reduce((n, t) => n + t.waiting.size, 0),
+};
 
 /** Makes `Bun.spawn` and `Bun.spawnSync` on the server's thread start one process at a time with the threads (see `STARTS`). */
 export function oneStartAtATime() {
@@ -316,26 +321,47 @@ export function spawnOutput(argv: string[], o: Options = {}): Promise<Output> {
   return out;
 }
 
+/**
+ * Starts `argv` on a thread, or on the server's thread where it cannot go to one. A handover that
+ * fails (`postMessage` throws, as it does for a value it cannot copy: a function among the
+ * environment's values) starts the process on the server's thread instead, once: the thread was
+ * given nothing, so nothing is noted as waiting on it and it keeps the server running no longer.
+ * Failing the call instead would read as a program not installed to callers that take a failure
+ * for "not there" (`runCodex`).
+ */
 async function start(argv: string[], o: Options): Promise<Output> {
   const given = await threadOptions(o);
   const t = given && thread();
   if (!t) return run(argv, o);
   const id = ++lastId;
+  // its answer comes in a turn of the event loop of its own: noted as waiting below in time
+  try {
+    t.worker.postMessage({ id, argv, o: given });
+  } catch (e) {
+    if (!handoverFailed) console.error(`Obeya: a process could not go to a thread of its own and starts on the server's thread: ${(e as Error).message}`);
+    handoverFailed = true;
+    return run(argv, o);
+  }
   return new Promise<Output>((done, failed) => {
     if (!t.waiting.size) t.worker.ref();
     t.waiting.set(id, { argv, o, done, failed });
-    t.worker.postMessage({ id, argv, o: given });
   });
 }
+/** Set once a handover failed: said once, not at each process. */
+let handoverFailed = false;
 
-/** `o` as a thread is given it: the server's environment where it names none, stdin's bytes; null where an option cannot cross. */
+/**
+ * `o` as a thread is given it: the server's environment where it names none, stdin's bytes; null
+ * where an option cannot cross. The environment is copied, also where it is given: `process.env`
+ * itself cannot be copied to a thread on Windows (Bun), and an environment behind a `Proxy` can
+ * nowhere; their copies can.
+ */
 async function threadOptions(o: Options): Promise<Record<string, unknown> | null> {
   if (Object.keys(o).some((k) => !THREADED.has(k))) return null;
   let stdin: unknown = o.stdin;
   if (stdin instanceof Blob) stdin = new Uint8Array(await stdin.arrayBuffer());
   else if (!(stdin == null || typeof stdin === 'string' || ArrayBuffer.isView(stdin))) return null;
-  // as hideConsoleWindows does on the server's thread; the thread's environment may be older
-  // o.env can be process.env itself, so snapshot it before posting to the worker.
+  // windowsHide as hideConsoleWindows does on the server's thread; the thread's environment may be older
   return { ...o, stdin, env: { ...(o.env ?? process.env) }, windowsHide: o.windowsHide ?? true };
 }
 
