@@ -57,11 +57,19 @@ const demo = options.demo ?? newestDemo();
 // the render's demo of the owner's comment, a comma as the decimal point, under whatever name its agent gave it
 const reviewDemo = options['review-demo'] ?? demosOf((n) => n.startsWith('tipjar-') && n.includes('comma'))[0] ?? demosOf((n) => n.startsWith('tipjar-split-the-bill'))[0]!;
 
-/** The demo's chapters from its `chapters.vtt`, as a card has them: [start in seconds, title]. */
+/**
+ * The demo's chapters from its `chapters.vtt`, as a card has them: [start in seconds, title]. A copy
+ * Obeya kept of a demo (`kept-demos/` in its home) has no `chapters.vtt`; its `index.html` lists them.
+ */
 function chaptersOf(dir: string): [number, string][] {
   const chapters = rereadChapters(dir);
-  if (typeof chapters === 'string') throw new Error(chapters);
-  return chapters;
+  if (typeof chapters !== 'string') return chapters;
+  const page = join(dir, 'index.html');
+  const listed = existsSync(page)
+    ? [...readFileSync(page, 'utf8').matchAll(/data-t="([\d.]+)"><span class="t">[^<]*<\/span>([^<]*)</g)].map((m): [number, string] => [Number(m[1]), m[2]!.trim()])
+    : [];
+  if (!listed.length) throw new Error(chapters);
+  return listed;
 }
 /** A moment `share` into the second chapter, the change at work; 3 s into a demo without one. */
 const inSecondChapter = (chapters: [number, string][], share: number) => {

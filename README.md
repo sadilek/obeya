@@ -40,7 +40,9 @@ Approved work lands on `main` or goes out as a pull request on GitHub (GitHub En
 Forgejo or Gitea (Codeberg, for example). Obeya looks after the pull request until it is merged.
 Where your team merges pull requests itself, Obeya looks after the pull request until it is ready to merge. Beside the branch,
 the card shows how large the change is, and a click shows the diff. An approval given by mistake
-can be taken back, even after the work landed: Obeya closes the pull request or reverts the change.
+can be taken back, even after the work landed: Obeya closes the pull request or reverts the change. Work that
+still needs a check by hand after it landed (on a server, say) can stay out of the archive, with a
+note on its card of what to check, until you tick it off.
 
 Give Obeya a branch of yours, or a link to your own pull request, and the task carries on there:
 its work goes onto that pull request. In a fork, each task can also go to the original repository
@@ -54,7 +56,7 @@ one click.
 Say "Review PR #14", and a pull request someone else opened gets a card. Its agent reads the diff
 before any of that code runs on your machine, reviews it, and records a demo of the app before and
 after the change. For each finding you choose what happens: it goes to the contributor, the agent
-fixes it, it becomes a follow-up task, or you ignore it. You can edit the text that goes onto the
+fixes it, it becomes a follow-up task, or you ignore it, and you can add a comment to it. You can edit the text that goes onto the
 pull request, then click "Push and merge" or "Push and comment only". When it is the contributor's
 turn, the card waits. Once they comment or push, the agent reviews the pull request again.
 
